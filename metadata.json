@@ -1,0 +1,11 @@
+{
+  "name": "Mart Pro",
+  "description": "Mart Pro - Supermarket & POS Management System with Store Admin, Product Register stock management, and Cash Counter POS with real-time sync.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

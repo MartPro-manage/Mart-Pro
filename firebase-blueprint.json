@@ -1,0 +1,54 @@
+{
+  "collections": {
+    "stores": {
+      "description": "Supermarket store locations managed by Super Admin and Store Admins",
+      "fields": {
+        "name": { "type": "string", "description": "Store name" },
+        "adminUsername": { "type": "string", "description": "Store admin login username" },
+        "adminPassword": { "type": "string", "description": "Store admin login password" },
+        "createdAt": { "type": "string", "description": "Creation ISO date string" }
+      }
+    },
+    "users": {
+      "description": "System user accounts created by Super Admin or Store Admin",
+      "fields": {
+        "storeId": { "type": "string", "description": "Associated store ID or 'all' for super admin" },
+        "storeName": { "type": "string", "description": "Associated store name" },
+        "role": { "type": "string", "description": "User role: 'super_admin' | 'admin' | 'cash_counter' | 'product_register'" },
+        "username": { "type": "string", "description": "Login username" },
+        "password": { "type": "string", "description": "Login password" },
+        "name": { "type": "string", "description": "Full name or counter name" },
+        "counterNumber": { "type": "string", "description": "Counter number for cash counters" },
+        "createdAt": { "type": "string", "description": "Creation ISO date string" }
+      }
+    },
+    "products": {
+      "description": "Product catalog and stock inventory per store",
+      "fields": {
+        "storeId": { "type": "string", "description": "Associated store ID" },
+        "barcode": { "type": "string", "description": "Product barcode standard or custom code" },
+        "name": { "type": "string", "description": "Product name" },
+        "category": { "type": "string", "description": "Product category" },
+        "price": { "type": "number", "description": "Latest product selling price" },
+        "stockQuantity": { "type": "number", "description": "Current available stock quantity" },
+        "minStockLevel": { "type": "number", "description": "Low stock alert threshold" },
+        "updatedAt": { "type": "string", "description": "Last updated ISO date" },
+        "createdAt": { "type": "string", "description": "Created ISO date" }
+      }
+    },
+    "sales": {
+      "description": "Completed checkout sales transactions per store and cash counter",
+      "fields": {
+        "storeId": { "type": "string", "description": "Associated store ID" },
+        "counterId": { "type": "string", "description": "Cash counter user ID" },
+        "counterName": { "type": "string", "description": "Cash counter name or number" },
+        "cashierUsername": { "type": "string", "description": "Username of cash counter" },
+        "items": { "type": "array", "description": "List of sold items with barcode, name, price, quantity, total" },
+        "totalAmount": { "type": "number", "description": "Total checkout price" },
+        "paymentMethod": { "type": "string", "description": "'cash' or 'online'" },
+        "receiptNumber": { "type": "string", "description": "Unique transaction receipt reference" },
+        "timestamp": { "type": "string", "description": "ISO date string of sale" }
+      }
+    }
+  }
+}

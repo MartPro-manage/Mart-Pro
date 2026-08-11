@@ -70,6 +70,9 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const [hasTorch, setHasTorch] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
 
+  const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
+  const [useDeviceSelection, setUseDeviceSelection] = useState<boolean>(false);
+
   // Fetch available cameras
   useEffect(() => {
     if (isOpen) {
@@ -77,9 +80,17 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
         .then((devices) => {
           if (devices && devices.length > 0) {
             setCameras(devices);
-            // Default to back/environment camera if present
-            const backCam = devices.find(d => d.label.toLowerCase().includes('back') || d.label.toLowerCase().includes('rear') || d.label.toLowerCase().includes('environment'));
-            setSelectedCameraId(backCam ? backCam.id : devices[0].id);
+            // Look for back / environment camera label
+            const backCam = devices.find(d => 
+              d.label.toLowerCase().includes('back') || 
+              d.label.toLowerCase().includes('rear') || 
+              d.label.toLowerCase().includes('environment') ||
+              d.label.toLowerCase().includes('0, facing back')
+            );
+            if (backCam) {
+              setSelectedCameraId(backCam.id);
+              setUseDeviceSelection(true);
+            }
           }
         })
         .catch((err) => {
@@ -144,9 +155,9 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           return { width: Math.max(width, 220), height: Math.max(height, 120) };
         };
 
-        const cameraConfig = selectedCameraId 
+        const cameraConfig = (useDeviceSelection && selectedCameraId) 
           ? { deviceId: { exact: selectedCameraId } } 
-          : { facingMode: 'environment' };
+          : { facingMode: facingMode };
 
         await html5QrcodeScanner.start(
           cameraConfig,
@@ -181,6 +192,14 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           await stopScanner();
         } else {
           setIsScanning(true);
+          
+          // Re-enumerate cameras after permission is granted to get real device names (e.g. Back Camera, Front Camera)
+          Html5Qrcode.getCameras().then((updatedDevices) => {
+            if (updatedDevices && updatedDevices.length > 0 && isMountedRef.current) {
+              setCameras(updatedDevices);
+            }
+          }).catch(() => {});
+
           // Check if torch track capability is present
           try {
             const capabilities = html5QrcodeScanner.getRunningTrackCapabilities();
@@ -210,7 +229,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
       clearTimeout(timer);
       stopScanner();
     };
-  }, [isOpen, selectedCameraId]);
+  }, [isOpen, selectedCameraId, facingMode, useDeviceSelection]);
 
   const stopScanner = async () => {
     if (scannerRef.current) {
@@ -304,34 +323,53 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           </button>
         </div>
 
-        {/* Camera Selector Dropdown & Torch Controls */}
-        <div className="flex items-center justify-between gap-2 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-          {cameras.length > 1 ? (
-            <div className="flex items-center gap-1.5">
-              <SwitchCamera className="w-4 h-4 text-orange-600" />
+        {/* Camera Selector Dropdown & Switch Camera Controls */}
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Quick Back/Front Camera Toggle Button */}
+            <button
+              type="button"
+              onClick={() => {
+                const nextMode = facingMode === 'environment' ? 'user' : 'environment';
+                setFacingMode(nextMode);
+                setUseDeviceSelection(false);
+              }}
+              className="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shadow-sm text-xs"
+              title="Switch between rear back camera and front selfie camera"
+            >
+              <SwitchCamera className="w-3.5 h-3.5" />
+              {facingMode === 'environment' ? 'Back Cam (Active)' : 'Front Cam'}
+            </button>
+
+            {/* Camera Device Dropdown if multiple hardware devices enumerated */}
+            {cameras.length > 0 && (
               <select
-                value={selectedCameraId}
-                onChange={(e) => setSelectedCameraId(e.target.value)}
-                className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-slate-800 font-medium focus:outline-none focus:border-orange-500 text-xs"
+                value={useDeviceSelection ? selectedCameraId : ''}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    setSelectedCameraId(e.target.value);
+                    setUseDeviceSelection(true);
+                  } else {
+                    setUseDeviceSelection(false);
+                  }
+                }}
+                className="bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-800 font-medium focus:outline-none focus:border-orange-500 text-xs max-w-[170px] truncate"
               >
-                {cameras.map((cam) => (
-                  <option key={cam.id} value={cam.id}>
-                    {cam.label || `Camera ${cam.id.slice(0, 5)}...`}
+                <option value="">Auto ({facingMode === 'environment' ? 'Back' : 'Front'})</option>
+                {cameras.map((cam, idx) => (
+                  <option key={cam.id || idx} value={cam.id}>
+                    {cam.label || `Camera ${idx + 1}`}
                   </option>
                 ))}
               </select>
-            </div>
-          ) : (
-            <span className="font-bold text-slate-700 flex items-center gap-1.5">
-              <Camera className="w-4 h-4 text-orange-600" /> High-Accuracy Auto Scanner
-            </span>
-          )}
+            )}
+          </div>
 
           {hasTorch && (
             <button
               type="button"
               onClick={toggleTorch}
-              className={`px-3 py-1 rounded-lg font-bold text-xs flex items-center gap-1 transition-all cursor-pointer ${
+              className={`px-3 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1 transition-all cursor-pointer ${
                 torchOn ? 'bg-amber-400 text-slate-900 shadow-sm' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
               }`}
             >

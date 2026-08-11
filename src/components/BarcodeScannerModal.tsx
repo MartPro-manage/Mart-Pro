@@ -63,8 +63,12 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     Html5QrcodeSupportedFormats.UPC_EAN_EXTENSION,
     Html5QrcodeSupportedFormats.ITF,
     Html5QrcodeSupportedFormats.QR_CODE,
-    Html5QrcodeSupportedFormats.CODABAR
+    Html5QrcodeSupportedFormats.CODABAR,
+    Html5QrcodeSupportedFormats.DATA_MATRIX
   ];
+
+  const [hasTorch, setHasTorch] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
 
   // Fetch available cameras
   useEffect(() => {
@@ -91,6 +95,19 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     };
   }, []);
 
+  const toggleTorch = async () => {
+    if (!scannerRef.current) return;
+    try {
+      const newState = !torchOn;
+      await scannerRef.current.applyVideoConstraints({
+        advanced: [{ torch: newState } as any]
+      });
+      setTorchOn(newState);
+    } catch (err) {
+      console.warn('Failed to toggle torch:', err);
+    }
+  };
+
   useEffect(() => {
     if (!isOpen) {
       stopScanner();
@@ -98,6 +115,8 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     }
 
     setCameraError(null);
+    setTorchOn(false);
+    setHasTorch(false);
 
     const startScanner = async () => {
       if (isStartingRef.current) return;
@@ -113,29 +132,39 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
         const html5QrcodeScanner = new Html5Qrcode(qrRegionId, {
           formatsToSupport,
-          verbose: false
+          verbose: false,
+          useBarCodeDetectorIfSupported: true
         });
         scannerRef.current = html5QrcodeScanner;
 
-        // Custom horizontal scanner box tailored for 1D product barcodes
+        // Optimized viewport bounding box for both 1D barcodes and 2D codes
         const qrboxFunction = (viewfinderWidth: number, viewfinderHeight: number) => {
-          const width = Math.min(viewfinderWidth * 0.85, 320);
-          const height = Math.min(viewfinderHeight * 0.5, 160);
-          return { width: Math.max(width, 200), height: Math.max(height, 100) };
+          const width = Math.min(viewfinderWidth * 0.9, 360);
+          const height = Math.min(viewfinderHeight * 0.6, 200);
+          return { width: Math.max(width, 220), height: Math.max(height, 120) };
         };
 
-        const cameraConfig = selectedCameraId ? { deviceId: { exact: selectedCameraId } } : { facingMode: 'environment' };
+        const cameraConfig = selectedCameraId 
+          ? { deviceId: { exact: selectedCameraId } } 
+          : { facingMode: 'environment' };
 
         await html5QrcodeScanner.start(
           cameraConfig,
           {
-            fps: 15,
+            fps: 20, // Higher scanning FPS for faster barcode capture
             qrbox: qrboxFunction,
-            aspectRatio: 1.3333
+            aspectRatio: 1.3333,
+            videoConstraints: {
+              width: { min: 640, ideal: 1280, max: 1920 },
+              height: { min: 480, ideal: 720, max: 1080 },
+              focusMode: 'continuous'
+            } as any
           },
           async (decodedText) => {
             if (isMountedRef.current) {
-              const code = decodedText.trim();
+              // Sanitize non-printable control characters often emitted by hardware scanners
+              const code = decodedText.replace(/[\x00-\x1F\x7F]/g, '').trim();
+              if (!code) return;
               playBeepSound();
               setScanSuccessFlash(true);
               await stopScanner();
@@ -152,6 +181,13 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           await stopScanner();
         } else {
           setIsScanning(true);
+          // Check if torch track capability is present
+          try {
+            const capabilities = html5QrcodeScanner.getRunningTrackCapabilities();
+            if ((capabilities as any).torch) {
+              setHasTorch(true);
+            }
+          } catch (e) {}
         }
       } catch (err: any) {
         console.warn('Camera scanner initialization error:', err);
@@ -268,25 +304,41 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           </button>
         </div>
 
-        {/* Camera Selector Dropdown (if multiple cameras available) */}
-        {cameras.length > 1 && (
-          <div className="flex items-center justify-between gap-2 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+        {/* Camera Selector Dropdown & Torch Controls */}
+        <div className="flex items-center justify-between gap-2 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+          {cameras.length > 1 ? (
+            <div className="flex items-center gap-1.5">
+              <SwitchCamera className="w-4 h-4 text-orange-600" />
+              <select
+                value={selectedCameraId}
+                onChange={(e) => setSelectedCameraId(e.target.value)}
+                className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-slate-800 font-medium focus:outline-none focus:border-orange-500 text-xs"
+              >
+                {cameras.map((cam) => (
+                  <option key={cam.id} value={cam.id}>
+                    {cam.label || `Camera ${cam.id.slice(0, 5)}...`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
             <span className="font-bold text-slate-700 flex items-center gap-1.5">
-              <SwitchCamera className="w-4 h-4 text-orange-600" /> Camera:
+              <Camera className="w-4 h-4 text-orange-600" /> High-Accuracy Auto Scanner
             </span>
-            <select
-              value={selectedCameraId}
-              onChange={(e) => setSelectedCameraId(e.target.value)}
-              className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-slate-800 font-medium focus:outline-none focus:border-orange-500 text-xs"
+          )}
+
+          {hasTorch && (
+            <button
+              type="button"
+              onClick={toggleTorch}
+              className={`px-3 py-1 rounded-lg font-bold text-xs flex items-center gap-1 transition-all cursor-pointer ${
+                torchOn ? 'bg-amber-400 text-slate-900 shadow-sm' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+              }`}
             >
-              {cameras.map((cam) => (
-                <option key={cam.id} value={cam.id}>
-                  {cam.label || `Camera ${cam.id.slice(0, 5)}...`}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+              <Sparkles className="w-3.5 h-3.5" /> {torchOn ? 'Flash On' : 'Flashlight'}
+            </button>
+          )}
+        </div>
 
         {/* Camera Region Viewfinder */}
         <div className="relative rounded-2xl overflow-hidden bg-slate-900 border border-slate-300 min-h-[220px] flex items-center justify-center shadow-inner">

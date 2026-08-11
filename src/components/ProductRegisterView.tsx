@@ -102,10 +102,13 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   }, [store?.id]);
 
   // Whenever barcode changes, check if existing product
+  // Whenever barcode or serial number changes, check if existing product
   useEffect(() => {
-    if (!barcode.trim()) {
+    const trimmedBc = barcode.trim().toLowerCase();
+    const trimmedSn = serialNumber.trim().toLowerCase();
+
+    if (!trimmedBc && !trimmedSn) {
       setExistingProduct(null);
-      setSerialNumber('');
       setName('');
       setCategory('General');
       setPrice('');
@@ -113,12 +116,19 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
       return;
     }
 
-    const trimmedBarcode = barcode.trim().toLowerCase();
-    const found = products.find(p => p.barcode.trim().toLowerCase() === trimmedBarcode);
+    const found = products.find(p => {
+      const pBc = p.barcode ? p.barcode.trim().toLowerCase() : '';
+      const pSn = p.serialNumber ? p.serialNumber.trim().toLowerCase() : '';
+      return (trimmedBc && pBc === trimmedBc) ||
+             (trimmedBc && pSn === trimmedBc) ||
+             (trimmedSn && pSn === trimmedSn) ||
+             (trimmedSn && pBc === trimmedSn);
+    });
 
     if (found) {
       setExistingProduct(found);
-      setSerialNumber(found.serialNumber || '');
+      if (!barcode && found.barcode) setBarcode(found.barcode);
+      if (!serialNumber && found.serialNumber) setSerialNumber(found.serialNumber);
       setName(found.name);
       setCategory(found.category || 'General');
       setPrice(found.price);
@@ -128,7 +138,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     } else {
       setExistingProduct(null);
     }
-  }, [barcode, products]);
+  }, [barcode, serialNumber, products]);
 
   const showNotification = (type: 'success' | 'error', text: string) => {
     setMsg({ type, text });
@@ -157,15 +167,15 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     const numericPrice = typeof price === 'number' ? price : parseFloat(price as any);
     const addedQuantity = typeof stockQuantityToAdd === 'number' ? stockQuantityToAdd : parseInt(stockQuantityToAdd as string, 10);
 
-    if (!trimmedBarcode) {
-      showNotification('error', 'Barcode is required. Please scan or enter barcode.');
+    // Require AT LEAST ONE of Barcode OR Serial Number
+    if (!trimmedBarcode && !trimmedSerial) {
+      showNotification('error', 'Please enter at least a Barcode OR a Serial Number (S/N) for the product.');
       return;
     }
 
-    if (!trimmedSerial) {
-      showNotification('error', 'Serial Number (S/N) is compulsory! Please enter a serial number for the product.');
-      return;
-    }
+    // Ensure database barcode & serial fields are filled seamlessly
+    const finalBarcode = trimmedBarcode || trimmedSerial;
+    const finalSerial = trimmedSerial || trimmedBarcode;
 
     if (!trimmedName) {
       showNotification('error', 'Product Name is required.');
@@ -182,18 +192,21 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
       return;
     }
 
-    // CHECK FOR BARCODE AND NAME MISMATCH VALIDATION
-    // "if someone enter the same barcode the site will not proceed it, if the name of product is different from product that enter before, site will not proceed it"
-    const existingBarcodeProduct = products.find(
-      p => p.barcode.trim().toLowerCase() === trimmedBarcode.toLowerCase()
-    );
+    // CHECK FOR CODE AND NAME MISMATCH VALIDATION
+    // If someone enters an existing barcode/serial number, prevent assigning a different product name
+    const existingCodeProduct = products.find(p => {
+      const pBc = p.barcode?.trim().toLowerCase();
+      const pSn = p.serialNumber?.trim().toLowerCase();
+      return (trimmedBarcode && (pBc === trimmedBarcode.toLowerCase() || pSn === trimmedBarcode.toLowerCase())) ||
+             (trimmedSerial && (pSn === trimmedSerial.toLowerCase() || pBc === trimmedSerial.toLowerCase()));
+    });
 
-    if (existingBarcodeProduct) {
+    if (existingCodeProduct) {
       // Check if product names differ
-      if (existingBarcodeProduct.name.trim().toLowerCase() !== trimmedName.toLowerCase()) {
+      if (existingCodeProduct.name.trim().toLowerCase() !== trimmedName.toLowerCase()) {
         showNotification(
           'error',
-          `Cannot proceed! Barcode "${trimmedBarcode}" is already registered under product name "${existingBarcodeProduct.name}". You cannot assign a different product name to an existing barcode. Use name "${existingBarcodeProduct.name}" or enter a new barcode.`
+          `Cannot proceed! Code is already registered under product name "${existingCodeProduct.name}". You cannot assign a different product name to an existing item. Use name "${existingCodeProduct.name}" or enter a new barcode/serial number.`
         );
         return;
       }
@@ -202,7 +215,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     setLoading(true);
 
     try {
-      const targetProduct = existingProduct || existingBarcodeProduct;
+      const targetProduct = existingProduct || existingCodeProduct;
 
       if (targetProduct) {
         // UPDATE EXISTING PRODUCT
@@ -210,8 +223,8 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
         const productDocRef = doc(db, 'products', targetProduct.id);
 
         await updateDoc(productDocRef, {
-          barcode: trimmedBarcode,
-          serialNumber: trimmedSerial,
+          barcode: finalBarcode,
+          serialNumber: finalSerial,
           name: trimmedName,
           category: category.trim() || 'General',
           price: numericPrice,
@@ -222,7 +235,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
 
         showNotification(
           'success',
-          `Updated "${trimmedName}" (S/N: ${trimmedSerial})! Added +${addedQuantity} units (New Total Stock: ${newTotalStock}). Latest Price: $${numericPrice.toFixed(2)}`
+          `Updated "${trimmedName}"! Added +${addedQuantity} units (New Total Stock: ${newTotalStock}). Latest Price: ₹${numericPrice.toFixed(2)}`
         );
       } else {
         // REGISTER NEW PRODUCT
@@ -230,8 +243,8 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
         const newProduct: Product = {
           id: productDocRef.id,
           storeId: store.id,
-          barcode: trimmedBarcode,
-          serialNumber: trimmedSerial,
+          barcode: finalBarcode,
+          serialNumber: finalSerial,
           name: trimmedName,
           category: category.trim() || 'General',
           price: numericPrice,
@@ -245,7 +258,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
 
         showNotification(
           'success',
-          `Registered new product "${trimmedName}" (S/N: ${trimmedSerial}) with initial stock of ${addedQuantity} units at $${numericPrice.toFixed(2)}.`
+          `Registered new product "${trimmedName}" with initial stock of ${addedQuantity} units at ₹${numericPrice.toFixed(2)}.`
         );
       }
 
@@ -440,8 +453,8 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
               
               {/* Barcode Field with Scan Trigger */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                  <span>Product Barcode *</span>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between flex-wrap gap-1">
+                  <span>Product Barcode <span className="text-slate-400 font-normal lowercase">(or S/N)</span></span>
                   <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                     USB / Bluetooth Scanner Ready
                   </span>
@@ -452,7 +465,6 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                     <input
                       ref={barcodeInputRef}
                       type="text"
-                      required
                       autoComplete="off"
                       autoCorrect="off"
                       spellCheck={false}
@@ -497,16 +509,15 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                 </div>
               )}
 
-              {/* Product Serial Number (Compulsory) */}
+              {/* Product Serial Number */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                  <span>Serial Number (S/N) *</span>
-                  <span className="text-[10px] text-red-600 font-bold">Compulsory for Cashier Lookup</span>
+                  <span>Serial Number (S/N) <span className="text-slate-400 font-normal lowercase">(or Barcode)</span></span>
+                  <span className="text-[10px] text-slate-500 font-medium">Provide Barcode or S/N</span>
                 </label>
                 <input
                   ref={serialNumberInputRef}
                   type="text"
-                  required
                   placeholder="e.g. SN-8839210 or 1004"
                   value={serialNumber}
                   onChange={(e) => setSerialNumber(e.target.value)}

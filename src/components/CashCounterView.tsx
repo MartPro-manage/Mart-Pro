@@ -107,18 +107,19 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
 
   // Add Product to Cart by Barcode or Serial Number
   const handleAddByBarcode = (targetBarcodeOrSerial: string) => {
-    const trimmed = targetBarcodeOrSerial.trim().toLowerCase();
-    if (!trimmed) return;
+    // Sanitize non-printable control characters often emitted by hardware scanners
+    const cleaned = targetBarcodeOrSerial.replace(/[\x00-\x1F\x7F]/g, '').trim().toLowerCase();
+    if (!cleaned) return;
 
     // Look up product by Barcode OR Serial Number OR Name
     const found = products.find(
-      p => p.barcode.trim().toLowerCase() === trimmed || 
-           (p.serialNumber && p.serialNumber.trim().toLowerCase() === trimmed) ||
-           p.name.trim().toLowerCase() === trimmed
+      p => (p.barcode && p.barcode.replace(/[\x00-\x1F\x7F]/g, '').trim().toLowerCase() === cleaned) || 
+           (p.serialNumber && p.serialNumber.replace(/[\x00-\x1F\x7F]/g, '').trim().toLowerCase() === cleaned) ||
+           p.name.trim().toLowerCase() === cleaned
     );
 
     if (!found) {
-      showNotification('error', `No product found matching Barcode/Serial Number "${targetBarcodeOrSerial}". Please check or register it first.`);
+      showNotification('error', `No product found matching Barcode/Serial Number "${targetBarcodeOrSerial.trim()}". Please check or register it first.`);
       setBarcodeInput('');
       return;
     }

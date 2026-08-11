@@ -1,6 +1,8 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { 
   getFirestore, 
+  initializeFirestore,
+  memoryLocalCache,
   collection, 
   doc, 
   getDoc, 
@@ -20,9 +22,21 @@ import { UserAccount, Store, Product, Sale } from '../types';
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-export const db = firebaseConfig.firestoreDatabaseId 
-  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
-  : getFirestore(app);
+// Safely initialize Firestore with memoryLocalCache to prevent Chrome IndexedDB LevelDB FILE_ERROR_NO_SPACE crashes
+function initDb() {
+  const dbId = firebaseConfig.firestoreDatabaseId || undefined;
+  try {
+    if (dbId) {
+      return initializeFirestore(app, { localCache: memoryLocalCache() }, dbId);
+    }
+    return initializeFirestore(app, { localCache: memoryLocalCache() });
+  } catch (err) {
+    console.warn('initializeFirestore warning, falling back to getFirestore:', err);
+    return dbId ? getFirestore(app, dbId) : getFirestore(app);
+  }
+}
+
+export const db = initDb();
 
 // Default Super Admin credentials constant
 export const SUPER_ADMIN_USERNAME = 'supermarketmanage@gmail.com';

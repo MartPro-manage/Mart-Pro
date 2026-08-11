@@ -9,7 +9,9 @@ import {
   updateDoc,
   deleteDoc,
   query, 
-  where 
+  where,
+  handleFirestoreError,
+  OperationType
 } from '../lib/firebase';
 import { Store, UserAccount } from '../types';
 import { 
@@ -94,12 +96,16 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
         if (!selectedStoreIdForCounter) setSelectedStoreIdForCounter(storeList[0].id);
         if (!selectedStoreIdForReg) setSelectedStoreIdForReg(storeList[0].id);
       }
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, 'stores');
     });
 
     const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
       const userList: UserAccount[] = [];
       snapshot.forEach((d) => userList.push({ id: d.id, ...d.data() } as UserAccount));
       setUsers(userList);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, 'users');
     });
 
     return () => {

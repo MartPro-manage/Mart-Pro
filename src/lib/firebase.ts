@@ -22,14 +22,18 @@ import { UserAccount, Store, Product, Sale } from '../types';
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Safely initialize Firestore with memoryLocalCache to prevent Chrome IndexedDB LevelDB FILE_ERROR_NO_SPACE crashes
+// Safely initialize Firestore with memoryLocalCache and auto long polling to prevent network stream drops in Cloud Run/iframe environments
 function initDb() {
   const dbId = firebaseConfig.firestoreDatabaseId || undefined;
+  const firestoreSettings = {
+    localCache: memoryLocalCache(),
+    experimentalForceLongPolling: true
+  };
   try {
     if (dbId) {
-      return initializeFirestore(app, { localCache: memoryLocalCache() }, dbId);
+      return initializeFirestore(app, firestoreSettings, dbId);
     }
-    return initializeFirestore(app, { localCache: memoryLocalCache() });
+    return initializeFirestore(app, firestoreSettings);
   } catch (err) {
     console.warn('initializeFirestore warning, falling back to getFirestore:', err);
     return dbId ? getFirestore(app, dbId) : getFirestore(app);
@@ -37,6 +41,32 @@ function initDb() {
 }
 
 export const db = initDb();
+
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const message = error instanceof Error ? error.message : String(error);
+  const errInfo: FirestoreErrorInfo = {
+    error: message,
+    operationType,
+    path
+  };
+  console.warn(`Firestore [${operationType}] at ${path}:`, message);
+  return errInfo;
+}
 
 // Default Super Admin credentials constant
 export const SUPER_ADMIN_USERNAME = 'supermarketmanage@gmail.com';

@@ -5,7 +5,9 @@ import {
   onSnapshot, 
   query, 
   where, 
-  orderBy 
+  orderBy,
+  handleFirestoreError,
+  OperationType 
 } from '../lib/firebase';
 import { Product, Sale, Store, UserAccount } from '../types';
 import { 
@@ -62,6 +64,8 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
         prodList.push({ id: doc.id, ...doc.data() } as Product);
       });
       setProducts(prodList);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, 'products');
     });
 
     // 2. Subscribe to Sales
@@ -78,6 +82,8 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       // Sort sales by timestamp descending
       saleList.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       setSales(saleList);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, 'sales');
     });
 
     // 3. Subscribe to Staff Users
@@ -92,6 +98,8 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
         userList.push({ id: doc.id, ...doc.data() } as UserAccount);
       });
       setStoreUsers(userList);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, 'users');
     });
 
     return () => {

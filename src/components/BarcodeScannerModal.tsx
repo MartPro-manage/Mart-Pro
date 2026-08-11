@@ -63,15 +63,8 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     Html5QrcodeSupportedFormats.UPC_EAN_EXTENSION,
     Html5QrcodeSupportedFormats.ITF,
     Html5QrcodeSupportedFormats.QR_CODE,
-    Html5QrcodeSupportedFormats.CODABAR,
-    Html5QrcodeSupportedFormats.DATA_MATRIX
+    Html5QrcodeSupportedFormats.CODABAR
   ];
-
-  const [hasTorch, setHasTorch] = useState(false);
-  const [torchOn, setTorchOn] = useState(false);
-
-  const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
-  const [useDeviceSelection, setUseDeviceSelection] = useState<boolean>(false);
 
   // Fetch available cameras
   useEffect(() => {
@@ -80,17 +73,9 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
         .then((devices) => {
           if (devices && devices.length > 0) {
             setCameras(devices);
-            // Look for back / environment camera label
-            const backCam = devices.find(d => 
-              d.label.toLowerCase().includes('back') || 
-              d.label.toLowerCase().includes('rear') || 
-              d.label.toLowerCase().includes('environment') ||
-              d.label.toLowerCase().includes('0, facing back')
-            );
-            if (backCam) {
-              setSelectedCameraId(backCam.id);
-              setUseDeviceSelection(true);
-            }
+            // Default to back/environment camera if present
+            const backCam = devices.find(d => d.label.toLowerCase().includes('back') || d.label.toLowerCase().includes('rear') || d.label.toLowerCase().includes('environment'));
+            setSelectedCameraId(backCam ? backCam.id : devices[0].id);
           }
         })
         .catch((err) => {
@@ -106,19 +91,6 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     };
   }, []);
 
-  const toggleTorch = async () => {
-    if (!scannerRef.current) return;
-    try {
-      const newState = !torchOn;
-      await scannerRef.current.applyVideoConstraints({
-        advanced: [{ torch: newState } as any]
-      });
-      setTorchOn(newState);
-    } catch (err) {
-      console.warn('Failed to toggle torch:', err);
-    }
-  };
-
   useEffect(() => {
     if (!isOpen) {
       stopScanner();
@@ -126,8 +98,6 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     }
 
     setCameraError(null);
-    setTorchOn(false);
-    setHasTorch(false);
 
     const startScanner = async () => {
       if (isStartingRef.current) return;
@@ -143,39 +113,29 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
         const html5QrcodeScanner = new Html5Qrcode(qrRegionId, {
           formatsToSupport,
-          verbose: false,
-          useBarCodeDetectorIfSupported: true
+          verbose: false
         });
         scannerRef.current = html5QrcodeScanner;
 
-        // Optimized viewport bounding box for both 1D barcodes and 2D codes
+        // Custom horizontal scanner box tailored for 1D product barcodes
         const qrboxFunction = (viewfinderWidth: number, viewfinderHeight: number) => {
-          const width = Math.min(viewfinderWidth * 0.9, 360);
-          const height = Math.min(viewfinderHeight * 0.6, 200);
-          return { width: Math.max(width, 220), height: Math.max(height, 120) };
+          const width = Math.min(viewfinderWidth * 0.85, 320);
+          const height = Math.min(viewfinderHeight * 0.5, 160);
+          return { width: Math.max(width, 200), height: Math.max(height, 100) };
         };
 
-        const cameraConfig = (useDeviceSelection && selectedCameraId) 
-          ? { deviceId: { exact: selectedCameraId } } 
-          : { facingMode: facingMode };
+        const cameraConfig = selectedCameraId ? { deviceId: { exact: selectedCameraId } } : { facingMode: 'environment' };
 
         await html5QrcodeScanner.start(
           cameraConfig,
           {
-            fps: 20, // Higher scanning FPS for faster barcode capture
+            fps: 15,
             qrbox: qrboxFunction,
-            aspectRatio: 1.3333,
-            videoConstraints: {
-              width: { min: 640, ideal: 1280, max: 1920 },
-              height: { min: 480, ideal: 720, max: 1080 },
-              focusMode: 'continuous'
-            } as any
+            aspectRatio: 1.3333
           },
           async (decodedText) => {
             if (isMountedRef.current) {
-              // Sanitize non-printable control characters often emitted by hardware scanners
-              const code = decodedText.replace(/[\x00-\x1F\x7F]/g, '').trim();
-              if (!code) return;
+              const code = decodedText.trim();
               playBeepSound();
               setScanSuccessFlash(true);
               await stopScanner();
@@ -192,21 +152,6 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           await stopScanner();
         } else {
           setIsScanning(true);
-          
-          // Re-enumerate cameras after permission is granted to get real device names (e.g. Back Camera, Front Camera)
-          Html5Qrcode.getCameras().then((updatedDevices) => {
-            if (updatedDevices && updatedDevices.length > 0 && isMountedRef.current) {
-              setCameras(updatedDevices);
-            }
-          }).catch(() => {});
-
-          // Check if torch track capability is present
-          try {
-            const capabilities = html5QrcodeScanner.getRunningTrackCapabilities();
-            if ((capabilities as any).torch) {
-              setHasTorch(true);
-            }
-          } catch (e) {}
         }
       } catch (err: any) {
         console.warn('Camera scanner initialization error:', err);
@@ -229,7 +174,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
       clearTimeout(timer);
       stopScanner();
     };
-  }, [isOpen, selectedCameraId, facingMode, useDeviceSelection]);
+  }, [isOpen, selectedCameraId]);
 
   const stopScanner = async () => {
     if (scannerRef.current) {
@@ -323,60 +268,25 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           </button>
         </div>
 
-        {/* Camera Selector Dropdown & Switch Camera Controls */}
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Quick Back/Front Camera Toggle Button */}
-            <button
-              type="button"
-              onClick={() => {
-                const nextMode = facingMode === 'environment' ? 'user' : 'environment';
-                setFacingMode(nextMode);
-                setUseDeviceSelection(false);
-              }}
-              className="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shadow-sm text-xs"
-              title="Switch between rear back camera and front selfie camera"
+        {/* Camera Selector Dropdown (if multiple cameras available) */}
+        {cameras.length > 1 && (
+          <div className="flex items-center justify-between gap-2 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+            <span className="font-bold text-slate-700 flex items-center gap-1.5">
+              <SwitchCamera className="w-4 h-4 text-orange-600" /> Camera:
+            </span>
+            <select
+              value={selectedCameraId}
+              onChange={(e) => setSelectedCameraId(e.target.value)}
+              className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-slate-800 font-medium focus:outline-none focus:border-orange-500 text-xs"
             >
-              <SwitchCamera className="w-3.5 h-3.5" />
-              {facingMode === 'environment' ? 'Back Cam (Active)' : 'Front Cam'}
-            </button>
-
-            {/* Camera Device Dropdown if multiple hardware devices enumerated */}
-            {cameras.length > 0 && (
-              <select
-                value={useDeviceSelection ? selectedCameraId : ''}
-                onChange={(e) => {
-                  if (e.target.value) {
-                    setSelectedCameraId(e.target.value);
-                    setUseDeviceSelection(true);
-                  } else {
-                    setUseDeviceSelection(false);
-                  }
-                }}
-                className="bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-800 font-medium focus:outline-none focus:border-orange-500 text-xs max-w-[170px] truncate"
-              >
-                <option value="">Auto ({facingMode === 'environment' ? 'Back' : 'Front'})</option>
-                {cameras.map((cam, idx) => (
-                  <option key={cam.id || idx} value={cam.id}>
-                    {cam.label || `Camera ${idx + 1}`}
-                  </option>
-                ))}
-              </select>
-            )}
+              {cameras.map((cam) => (
+                <option key={cam.id} value={cam.id}>
+                  {cam.label || `Camera ${cam.id.slice(0, 5)}...`}
+                </option>
+              ))}
+            </select>
           </div>
-
-          {hasTorch && (
-            <button
-              type="button"
-              onClick={toggleTorch}
-              className={`px-3 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1 transition-all cursor-pointer ${
-                torchOn ? 'bg-amber-400 text-slate-900 shadow-sm' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5" /> {torchOn ? 'Flash On' : 'Flashlight'}
-            </button>
-          )}
-        </div>
+        )}
 
         {/* Camera Region Viewfinder */}
         <div className="relative rounded-2xl overflow-hidden bg-slate-900 border border-slate-300 min-h-[220px] flex items-center justify-center shadow-inner">

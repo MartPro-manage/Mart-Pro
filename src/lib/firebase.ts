@@ -22,12 +22,13 @@ import { UserAccount, Store, Product, Sale } from '../types';
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Safely initialize Firestore with memoryLocalCache and auto long polling to prevent network stream drops in Cloud Run/iframe environments
+// Safely initialize Firestore with memoryLocalCache and auto-detected long polling for resilient connections
 function initDb() {
   const dbId = firebaseConfig.firestoreDatabaseId || undefined;
   const firestoreSettings = {
     localCache: memoryLocalCache(),
-    experimentalForceLongPolling: true
+    experimentalAutoDetectLongPolling: true,
+    ignoreUndefinedProperties: true
   };
   try {
     if (dbId) {
@@ -35,12 +36,34 @@ function initDb() {
     }
     return initializeFirestore(app, firestoreSettings);
   } catch (err) {
-    console.warn('initializeFirestore warning, falling back to getFirestore:', err);
+    console.warn('initializeFirestore fallback to getFirestore:', err);
     return dbId ? getFirestore(app, dbId) : getFirestore(app);
   }
 }
 
 export const db = initDb();
+
+/**
+ * Removes any undefined values recursively from objects and arrays before writing to Firestore
+ */
+export function cleanFirestoreData<T>(obj: T): T {
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(item => cleanFirestoreData(item)) as unknown as T;
+  }
+  if (typeof obj === 'object' && !(obj instanceof Date)) {
+    const cleaned: Record<string, any> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (value !== undefined) {
+        cleaned[key] = cleanFirestoreData(value);
+      }
+    }
+    return cleaned as T;
+  }
+  return obj;
+}
 
 export enum OperationType {
   CREATE = 'create',
@@ -97,7 +120,7 @@ export async function ensureSuperAdminExists(): Promise<void> {
       console.log('Super Admin account seeded successfully');
     }
   } catch (error) {
-    console.error('Error seeding Super Admin account:', error);
+    console.warn('Super Admin account check deferred (offline / connecting):', error);
   }
 }
 

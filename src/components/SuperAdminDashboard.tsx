@@ -37,7 +37,10 @@ import {
   Info,
   Lock,
   User,
-  Shield
+  Shield,
+  Camera,
+  ToggleLeft,
+  ToggleRight
 } from 'lucide-react';
 
 interface SuperAdminProps {
@@ -53,6 +56,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
   const [newStoreName, setNewStoreName] = useState('');
   const [newStoreAdminUsername, setNewStoreAdminUsername] = useState('');
   const [newStoreAdminPassword, setNewStoreAdminPassword] = useState('');
+  const [newStoreCameraScannerEnabled, setNewStoreCameraScannerEnabled] = useState(true);
 
   // Form states - Create Cash Counter
   const [selectedStoreIdForCounter, setSelectedStoreIdForCounter] = useState('');
@@ -164,6 +168,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
         adminUsername: adminUsername,
         adminPassword: adminPassword,
         status: 'active',
+        cameraScannerEnabled: newStoreCameraScannerEnabled,
         createdAt: new Date().toISOString()
       };
       await setDoc(storeDocRef, newStoreData);
@@ -185,9 +190,36 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
       setNewStoreName('');
       setNewStoreAdminUsername('');
       setNewStoreAdminPassword('');
+      setNewStoreCameraScannerEnabled(true);
     } catch (err: any) {
       console.error(err);
       showNotification('error', 'Failed to create store: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Toggle Inbuilt Camera Scanner per Store (Super Admin Exclusive)
+  const handleToggleCameraScanner = async (store: Store) => {
+    setLoading(true);
+    try {
+      const currentVal = store.cameraScannerEnabled !== false;
+      const nextVal = !currentVal;
+      const storeRef = doc(db, 'stores', store.id);
+      await updateDoc(storeRef, { cameraScannerEnabled: nextVal });
+
+      showNotification(
+        'success',
+        `Inbuilt Camera Barcode Scanner ${nextVal ? 'ENABLED' : 'DISABLED'} for store "${store.name}".`
+      );
+
+      // Also update local modal state if open
+      if (furtherDetailsStore && furtherDetailsStore.id === store.id) {
+        setFurtherDetailsStore({ ...furtherDetailsStore, cameraScannerEnabled: nextVal });
+      }
+    } catch (err: any) {
+      console.error(err);
+      showNotification('error', 'Failed to toggle camera scanner setting: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -571,6 +603,38 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                   />
                 </div>
 
+                {/* Built-in Camera Scanner Default Setting */}
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <Camera className="w-4 h-4 text-orange-600 shrink-0" />
+                    <div>
+                      <div className="text-xs font-bold text-slate-800">Inbuilt Barcode Camera Scanner</div>
+                      <div className="text-[11px] text-slate-500 font-medium">Enable camera scanning for cashiers in this store</div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setNewStoreCameraScannerEnabled(!newStoreCameraScannerEnabled)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 border transition-all cursor-pointer ${
+                      newStoreCameraScannerEnabled
+                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100'
+                        : 'bg-slate-200 border-slate-300 text-slate-600 hover:bg-slate-300'
+                    }`}
+                  >
+                    {newStoreCameraScannerEnabled ? (
+                      <>
+                        <ToggleRight className="w-4 h-4 text-emerald-600" />
+                        <span>Enabled</span>
+                      </>
+                    ) : (
+                      <>
+                        <ToggleLeft className="w-4 h-4 text-slate-400" />
+                        <span>Disabled</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
                 <button
                   type="submit"
                   disabled={loading}
@@ -611,7 +675,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                       >
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                           <div>
-                            <div className="flex items-center gap-2.5">
+                            <div className="flex items-center gap-2.5 flex-wrap">
                               <h3 className="text-base font-extrabold text-slate-900">{s.name}</h3>
                               {isDisabled ? (
                                 <span className="text-[11px] font-bold bg-red-100 text-red-700 px-2.5 py-0.5 rounded-full border border-red-200 flex items-center gap-1">
@@ -622,20 +686,46 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                                   <CheckCircle className="w-3 h-3" /> Active Store
                                 </span>
                               )}
+                              {s.cameraScannerEnabled !== false ? (
+                                <span className="text-[11px] font-bold bg-purple-50 text-purple-700 px-2.5 py-0.5 rounded-full border border-purple-200 flex items-center gap-1">
+                                  <Camera className="w-3 h-3 text-purple-600" /> Camera Scanner: ON
+                                </span>
+                              ) : (
+                                <span className="text-[11px] font-bold bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full border border-slate-200 flex items-center gap-1">
+                                  <Camera className="w-3 h-3 text-slate-400" /> Camera Scanner: OFF
+                                </span>
+                              )}
                             </div>
                             <p className="text-xs text-slate-500 mt-1 font-medium">
                               Admin Username: <span className="text-slate-800 font-bold font-mono">{s.adminUsername}</span> | ID: <span className="font-mono">{s.id.substring(0, 8)}</span>
                             </p>
                           </div>
 
-                          {onSelectStoreToManage && (
+                          <div className="flex items-center gap-2">
+                            {/* Super Admin Camera Scanner Toggle */}
                             <button
-                              onClick={() => onSelectStoreToManage(s)}
-                              className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer self-start sm:self-auto"
+                              onClick={() => handleToggleCameraScanner(s)}
+                              disabled={loading}
+                              className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
+                                s.cameraScannerEnabled !== false
+                                  ? 'bg-purple-50 hover:bg-purple-100 text-purple-800 border-purple-200'
+                                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                              }`}
+                              title={s.cameraScannerEnabled !== false ? "Disable inbuilt camera barcode scanner for this store" : "Enable inbuilt camera barcode scanner for this store"}
                             >
-                              <Eye className="w-4 h-4 text-orange-600" /> Inspect Store Operations
+                              <Camera className="w-3.5 h-3.5" />
+                              <span>{s.cameraScannerEnabled !== false ? 'Camera: ON' : 'Camera: OFF'}</span>
                             </button>
-                          )}
+
+                            {onSelectStoreToManage && (
+                              <button
+                                onClick={() => onSelectStoreToManage(s)}
+                                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer self-start sm:self-auto"
+                              >
+                                <Eye className="w-4 h-4 text-orange-600" /> Inspect
+                              </button>
+                            )}
+                          </div>
                         </div>
 
                         {/* Store Action Controls */}
@@ -1090,13 +1180,26 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
 
                         {/* Secondary Store Bar */}
                         <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
-                          <div className="flex items-center gap-2 text-slate-600 font-medium">
+                          <div className="flex items-center gap-2 text-slate-600 font-medium flex-wrap">
                             <span className="bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
                               Cashiers: <strong className="text-emerald-700">{storeCashiers.length}</strong>
                             </span>
                             <span className="bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
                               Registers: <strong className="text-blue-700">{storeRegistrars.length}</strong>
                             </span>
+                            <button
+                              onClick={() => handleToggleCameraScanner(s)}
+                              disabled={loading}
+                              className={`px-2.5 py-1 rounded-lg border font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                                s.cameraScannerEnabled !== false
+                                  ? 'bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200'
+                                  : 'bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-200'
+                              }`}
+                              title="Click to toggle inbuilt camera scanner for this store"
+                            >
+                              <Camera className="w-3.5 h-3.5" />
+                              <span>Camera Scanner: {s.cameraScannerEnabled !== false ? 'Enabled' : 'Disabled'}</span>
+                            </button>
                           </div>
 
                           <div className="flex items-center gap-2">
@@ -1141,11 +1244,11 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
 
       {/* MODAL 1: FURTHER DETAILS FOR A STORE */}
       {furtherDetailsStore && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white border border-slate-200 rounded-3xl max-w-3xl w-full p-6 sm:p-8 shadow-2xl space-y-6 relative my-8">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-3xl w-full p-5 sm:p-8 shadow-2xl space-y-6 relative my-auto max-h-[92vh] overflow-y-auto overscroll-contain custom-scrollbar">
             
             {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-4 sticky top-0 bg-white z-10">
               <div>
                 <span className="text-xs font-bold text-orange-600 uppercase tracking-wider bg-orange-50 px-2.5 py-0.5 rounded-full border border-orange-200">
                   Store Security Matrix Breakdown
@@ -1163,6 +1266,46 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                 className="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
               >
                 <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* SUPER ADMIN HARDWARE & CAMERA SCANNER CONFIGURATION */}
+            <div className="p-4 bg-purple-50/50 border border-purple-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-purple-100 text-purple-700 rounded-xl">
+                  <Camera className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-extrabold text-purple-950">Inbuilt Barcode Camera Scanner (Store Cashiers)</h4>
+                  <p className="text-xs text-purple-800/80 font-medium">
+                    {furtherDetailsStore.cameraScannerEnabled !== false 
+                      ? 'Camera scanning is ENABLED for checkout cashiers in this store.' 
+                      : 'Camera scanning is DISABLED for this store (Cashiers use external hardware scanner).'}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleToggleCameraScanner(furtherDetailsStore)}
+                disabled={loading}
+                className={`px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 border transition-all cursor-pointer shrink-0 ${
+                  furtherDetailsStore.cameraScannerEnabled !== false
+                    ? 'bg-purple-600 text-white border-purple-600 hover:bg-purple-500 shadow-sm'
+                    : 'bg-white text-purple-800 border-purple-300 hover:bg-purple-50'
+                }`}
+              >
+                {furtherDetailsStore.cameraScannerEnabled !== false ? (
+                  <>
+                    <ToggleRight className="w-4 h-4 text-white" />
+                    <span>Camera: Enabled (Click to Disable)</span>
+                  </>
+                ) : (
+                  <>
+                    <ToggleLeft className="w-4 h-4 text-purple-400" />
+                    <span>Camera: Disabled (Click to Enable)</span>
+                  </>
+                )}
               </button>
             </div>
 

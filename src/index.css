@@ -1,1 +1,61 @@
 @import "tailwindcss";
+
+@layer utilities {
+  /* Clean, elegant custom scrollbar */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 #f8fafc;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 8px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 8px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
+
+  /* Dark custom scrollbar */
+  .custom-scrollbar-dark {
+    scrollbar-width: thin;
+    scrollbar-color: #475569 #0f172a;
+  }
+
+  .custom-scrollbar-dark::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .custom-scrollbar-dark::-webkit-scrollbar-track {
+    background: #0f172a;
+    border-radius: 8px;
+  }
+
+  .custom-scrollbar-dark::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 8px;
+  }
+
+  .custom-scrollbar-dark::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  overflow-x: hidden;
+}

@@ -6,6 +6,7 @@ export interface Store {
   adminUsername: string;
   adminPassword?: string;
   status?: 'active' | 'disabled';
+  cameraScannerEnabled?: boolean; // Super admin can enable/disable inbuilt barcode camera for each store
   createdAt: string;
 }
 
@@ -31,6 +32,7 @@ export interface Product {
   price: number;
   stockQuantity: number;
   minStockLevel?: number;
+  weight?: string; // e.g. 1 kg, 500 g, 250 ml
   updatedAt: string;
   createdAt: string;
 }
@@ -59,6 +61,10 @@ export interface Sale {
   counterName: string;
   cashierUsername: string;
   items: SaleItem[];
+  subtotalAmount?: number;
+  discountType?: 'percentage' | 'fixed';
+  discountValue?: number;
+  discountAmount?: number;
   totalAmount: number;
   paymentMethod: 'cash' | 'online';
   cashReceived?: number;

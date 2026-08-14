@@ -221,12 +221,12 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Sales Revenue</span>
-              <div className="p-2 rounded-xl bg-orange-50 text-orange-600 border border-orange-200">
-                <span className="font-extrabold text-base">₹</span>
+              <div className="p-2 rounded-xl bg-orange-50 text-orange-600 border border-orange-200 font-bold text-xs">
+                <span>PKR</span>
               </div>
             </div>
             <div className="mt-3 text-2xl sm:text-3xl font-extrabold text-slate-900">
-              ₹{totalRevenue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              Rs. {totalRevenue.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
             <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1 font-medium">
               <TrendingUp className="w-3.5 h-3.5 text-emerald-600" /> From {sales.length} completed orders
@@ -362,7 +362,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                 No products sold yet. When sales are processed at the cash counter, they appear here live.
               </div>
             ) : (
-              <div className="overflow-x-auto overflow-y-auto max-h-[500px] border border-slate-200 rounded-xl">
+              <div className="overflow-x-auto overflow-y-auto max-h-[580px] overscroll-contain custom-scrollbar border border-slate-200 rounded-xl">
                 <table className="w-full text-left text-sm">
                   <thead className="bg-slate-50 text-xs text-slate-600 uppercase tracking-wider border-b border-slate-200 sticky top-0 z-10">
                     <tr>
@@ -386,7 +386,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                           {sp.barcode}
                         </td>
                         <td className="p-3.5 text-center font-semibold text-slate-700">
-                          ₹{sp.lastPrice.toFixed(2)}
+                          Rs. {sp.lastPrice.toFixed(2)}
                         </td>
                         <td className="p-3.5 text-center">
                           <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -394,7 +394,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                           </span>
                         </td>
                         <td className="p-3.5 text-right font-extrabold text-orange-600">
-                          ₹{sp.totalRevenue.toFixed(2)}
+                          Rs. {sp.totalRevenue.toFixed(2)}
                         </td>
                       </tr>
                     ))}
@@ -424,7 +424,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                 No products found in inventory. Product Registers can scan barcodes and add stock.
               </div>
             ) : (
-              <div className="overflow-x-auto overflow-y-auto max-h-[500px] border border-slate-200 rounded-xl">
+              <div className="overflow-x-auto overflow-y-auto max-h-[580px] overscroll-contain custom-scrollbar border border-slate-200 rounded-xl">
                 <table className="w-full text-left text-sm">
                   <thead className="bg-slate-50 text-xs text-slate-600 uppercase tracking-wider border-b border-slate-200 sticky top-0 z-10">
                     <tr>
@@ -455,7 +455,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                             </span>
                           </td>
                           <td className="p-3.5 text-center font-bold text-orange-600">
-                            ₹{p.price?.toFixed(2)}
+                            Rs. {p.price?.toFixed(2)}
                           </td>
                           <td className="p-3.5 text-center font-black text-lg">
                             <span className={isOutOfStock ? 'text-red-600' : isLowStock ? 'text-amber-600' : 'text-emerald-600'}>
@@ -499,7 +499,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                 No checkout transactions recorded yet.
               </p>
             ) : (
-              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+              <div className="space-y-3 max-h-[580px] overflow-y-auto overscroll-contain pr-1.5 custom-scrollbar">
                 {sales.map((sale) => (
                   <div key={sale.id} className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-slate-300 transition-colors">
                     <div>
@@ -521,7 +521,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
 
                     <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0">
                       <span className="text-lg font-extrabold text-orange-600">
-                        ₹{sale.totalAmount.toFixed(2)}
+                        Rs. {sale.totalAmount.toFixed(2)}
                       </span>
                       {onViewReceipt && (
                         <button

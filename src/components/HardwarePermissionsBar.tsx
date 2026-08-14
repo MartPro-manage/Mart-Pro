@@ -19,11 +19,15 @@ import { speakMessage } from '../lib/speech';
 interface HardwarePermissionsBarProps {
   voiceEnabled: boolean;
   onToggleVoice: (enabled: boolean) => void;
+  cameraScannerEnabled?: boolean;
+  onToggleCameraScanner?: (enabled: boolean) => void;
 }
 
 export const HardwarePermissionsBar: React.FC<HardwarePermissionsBarProps> = ({
   voiceEnabled,
-  onToggleVoice
+  onToggleVoice,
+  cameraScannerEnabled = true,
+  onToggleCameraScanner
 }) => {
   const [cameraState, setCameraState] = useState<'granted' | 'denied' | 'prompt' | 'active' | 'inactive'>('prompt');
   const [micState, setMicState] = useState<'granted' | 'denied' | 'prompt' | 'active' | 'inactive'>('prompt');
@@ -122,7 +126,23 @@ export const HardwarePermissionsBar: React.FC<HardwarePermissionsBarProps> = ({
         </div>
 
         {/* Audio Voice Greeting Toggle & Test */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {onToggleCameraScanner && (
+            <button
+              type="button"
+              onClick={() => onToggleCameraScanner(!cameraScannerEnabled)}
+              className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer border ${
+                cameraScannerEnabled
+                  ? 'bg-blue-500/20 text-blue-300 border-blue-500/40 hover:bg-blue-500/30'
+                  : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'
+              }`}
+              title="Enable or disable the built-in on-screen camera barcode scanner"
+            >
+              <Camera className="w-3.5 h-3.5" />
+              <span>Camera Scanner: {cameraScannerEnabled ? 'ENABLED' : 'DISABLED'}</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={handleTestVoice}
@@ -155,47 +175,60 @@ export const HardwarePermissionsBar: React.FC<HardwarePermissionsBarProps> = ({
         </div>
       )}
 
-      {/* Hardware Camera & Microphone Permission Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {/* Hardware Camera & External Scanner Permission Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         
-        {/* Camera Permission Control */}
+        {/* Built-in Camera Scanner Status */}
         <div className="bg-slate-950/70 p-3 rounded-xl border border-slate-800 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <div className={`p-2 rounded-lg ${cameraState === 'granted' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-400'}`}>
+            <div className={`p-2 rounded-lg ${cameraScannerEnabled && cameraState === 'granted' ? 'bg-blue-500/20 text-blue-400' : 'bg-slate-800 text-slate-400'}`}>
               <Camera className="w-4 h-4" />
             </div>
             <div>
               <div className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                Camera Access
-                {cameraState === 'granted' ? (
-                  <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.2 rounded font-mono font-bold">ALLOWED</span>
+                Camera Scanner
+                {cameraScannerEnabled ? (
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.2 rounded font-mono font-bold">SHOWN</span>
                 ) : (
-                  <span className="text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.2 rounded font-mono font-bold">DISALLOWED</span>
+                  <span className="text-[10px] bg-slate-700 text-slate-300 px-1.5 py-0.2 rounded font-mono font-bold">HIDDEN</span>
                 )}
               </div>
-              <div className="text-[10px] text-slate-400">Barcode camera live feed</div>
+              <div className="text-[10px] text-slate-400">
+                {cameraScannerEnabled ? 'On-screen scan button active' : 'Disabled for this account'}
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
-            {cameraState === 'granted' ? (
-              <button
-                type="button"
-                onClick={stopCameraAccess}
-                className="px-2.5 py-1 bg-red-500/20 hover:bg-red-500/30 text-red-300 rounded-lg text-[11px] font-bold border border-red-500/30 transition-all cursor-pointer"
-              >
-                Disallow
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={requestCameraPermission}
-                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold transition-all cursor-pointer shadow-sm"
-              >
-                Allow Camera
-              </button>
-            )}
+          {onToggleCameraScanner && (
+            <button
+              type="button"
+              onClick={() => onToggleCameraScanner(!cameraScannerEnabled)}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                cameraScannerEnabled
+                  ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                  : 'bg-blue-600 hover:bg-blue-500 text-white shadow-sm'
+              }`}
+            >
+              {cameraScannerEnabled ? 'Disable' : 'Enable'}
+            </button>
+          )}
+        </div>
+
+        {/* External Hardware Barcode Scanner Status */}
+        <div className="bg-slate-950/70 p-3 rounded-xl border border-slate-800 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400">
+              <ShieldCheck className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                External Scanner
+                <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.2 rounded font-mono font-bold">HANDS-FREE</span>
+              </div>
+              <div className="text-[10px] text-slate-400">USB / Bluetooth auto-scan & add</div>
+            </div>
           </div>
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" title="External Scanner Listener Active" />
         </div>
 
         {/* Microphone Permission Control */}
@@ -206,35 +239,29 @@ export const HardwarePermissionsBar: React.FC<HardwarePermissionsBarProps> = ({
             </div>
             <div>
               <div className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                Microphone Access
-                {micState === 'granted' ? (
-                  <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.2 rounded font-mono font-bold">ALLOWED</span>
+                Voice Audio
+                {voiceEnabled ? (
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.2 rounded font-mono font-bold">READY</span>
                 ) : (
-                  <span className="text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.2 rounded font-mono font-bold">DISALLOWED</span>
+                  <span className="text-[10px] bg-slate-700 text-slate-400 px-1.5 py-0.2 rounded font-mono font-bold">MUTED</span>
                 )}
               </div>
-              <div className="text-[10px] text-slate-400 font-medium">Audio input & voice mic</div>
+              <div className="text-[10px] text-slate-400 font-medium">Thank you voice greeting</div>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5">
-            {micState === 'granted' ? (
-              <button
-                type="button"
-                onClick={stopMicAccess}
-                className="px-2.5 py-1 bg-red-500/20 hover:bg-red-500/30 text-red-300 rounded-lg text-[11px] font-bold border border-red-500/30 transition-all cursor-pointer"
-              >
-                Disallow
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={requestMicPermission}
-                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold transition-all cursor-pointer shadow-sm"
-              >
-                Allow Mic
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => onToggleVoice(!voiceEnabled)}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                voiceEnabled
+                  ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                  : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm'
+              }`}
+            >
+              {voiceEnabled ? 'Mute' : 'Unmute'}
+            </button>
           </div>
         </div>
 

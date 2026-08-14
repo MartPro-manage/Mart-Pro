@@ -124,8 +124,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 <tr>
                   <td><strong>${item.name}</strong></td>
                   <td class="text-center">${item.quantity}</td>
-                  <td class="text-right">₹${item.price.toFixed(2)}</td>
-                  <td class="text-right">₹${item.total.toFixed(2)}</td>
+                  <td class="text-right">Rs. ${item.price.toFixed(2)}</td>
+                  <td class="text-right">Rs. ${item.total.toFixed(2)}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -133,19 +133,30 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
           <div class="double-divider"></div>
 
+          ${sale.discountAmount && sale.discountAmount > 0 ? `
+            <div class="flex-row" style="margin-top: 4px; font-size: 11px;">
+              <span>Subtotal:</span>
+              <span>Rs. ${(sale.subtotalAmount || (sale.totalAmount + sale.discountAmount)).toFixed(2)}</span>
+            </div>
+            <div class="flex-row font-bold" style="margin-top: 2px; font-size: 11px; color: #047857;">
+              <span>Discount ${sale.discountType === 'percentage' && sale.discountValue ? `(${sale.discountValue}%)` : ''}:</span>
+              <span>-Rs. ${sale.discountAmount.toFixed(2)}</span>
+            </div>
+          ` : ''}
+
           <div class="flex-row total-box">
             <span>GRAND TOTAL:</span>
-            <span>₹${sale.totalAmount.toFixed(2)}</span>
+            <span>Rs. ${sale.totalAmount.toFixed(2)}</span>
           </div>
 
           ${sale.paymentMethod === 'cash' && sale.cashReceived !== undefined ? `
             <div class="flex-row" style="margin-top: 4px; font-size: 11px;">
               <span>Cash Received:</span>
-              <span>₹${sale.cashReceived.toFixed(2)}</span>
+              <span>Rs. ${sale.cashReceived.toFixed(2)}</span>
             </div>
             <div class="flex-row font-bold" style="font-size: 11px; color: #047857;">
               <span>Change Returned:</span>
-              <span>₹${(sale.changeReturned || 0).toFixed(2)}</span>
+              <span>Rs. ${(sale.changeReturned || 0).toFixed(2)}</span>
             </div>
           ` : ''}
 
@@ -203,10 +214,16 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     text += `ITEMS:\n`;
     sale.items.forEach((item, index) => {
       text += `${index + 1}. ${item.name}\n`;
-      text += `   ${item.quantity} x ₹${item.price.toFixed(2)} = ₹${item.total.toFixed(2)}\n`;
+      text += `   ${item.quantity} x Rs. ${item.price.toFixed(2)} = Rs. ${item.total.toFixed(2)}\n`;
     });
     text += `-----------------------------------\n`;
-    text += `TOTAL AMOUNT: ₹${sale.totalAmount.toFixed(2)}\n`;
+    if (sale.discountAmount && sale.discountAmount > 0) {
+      const sub = sale.subtotalAmount || (sale.totalAmount + sale.discountAmount);
+      text += `SUBTOTAL:     Rs. ${sub.toFixed(2)}\n`;
+      text += `DISCOUNT${sale.discountType === 'percentage' && sale.discountValue ? ` (${sale.discountValue}%)` : ''}: -Rs. ${sale.discountAmount.toFixed(2)}\n`;
+      text += `-----------------------------------\n`;
+    }
+    text += `TOTAL AMOUNT: Rs. ${sale.totalAmount.toFixed(2)}\n`;
     text += `===================================\n`;
     text += `  Thank you for shopping with ${storeName}!  \n`;
     text += `===================================\n`;
@@ -248,7 +265,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
       
       {/* Print-Only Stylesheet override for in-page browser print fallback */}
       <style>{`
@@ -277,10 +294,10 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
         }
       `}</style>
 
-      <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 shadow-2xl relative space-y-5 max-h-[90vh] flex flex-col">
+      <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl relative space-y-5 max-h-[92vh] flex flex-col my-auto overflow-y-auto overscroll-contain custom-scrollbar">
         
         {/* Header (Hidden during print) */}
-        <div className="flex items-center justify-between border-b border-slate-200 pb-4 no-print shrink-0">
+        <div className="flex items-center justify-between border-b border-slate-200 pb-4 no-print shrink-0 sticky top-0 bg-white z-10">
           <div className="flex items-center gap-2.5">
             <div className="p-2.5 bg-emerald-50 text-emerald-700 rounded-2xl border border-emerald-200 shadow-sm">
               <CheckCircle2 className="w-5 h-5 text-emerald-600" />
@@ -299,7 +316,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
         </div>
 
         {/* THANK YOU FOR YOUR PURCHASE VOICE & TEXT BANNER */}
-        <div className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-4 rounded-2xl shadow-md no-print flex flex-col sm:flex-row items-center justify-between gap-3 animate-fade-in border border-emerald-500">
+        <div className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-4 rounded-2xl shadow-md no-print flex flex-col sm:flex-row items-center justify-between gap-3 animate-fade-in border border-emerald-500 shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-white/20 rounded-xl backdrop-blur-sm shrink-0">
               <Sparkles className="w-5 h-5 text-amber-300 animate-pulse" />
@@ -326,7 +343,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
         {/* Print Status Feedback */}
         {printStatus && (
-          <div className="px-4 py-2 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center gap-2 no-print animate-fade-in">
+          <div className="px-4 py-2 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center gap-2 no-print animate-fade-in shrink-0">
             <Printer className="w-4 h-4 text-emerald-600 animate-pulse" />
             <span>{printStatus}</span>
           </div>
@@ -335,7 +352,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
         {/* PRINTABLE RECEIPT CARD */}
         <div 
           id="printable-receipt" 
-          className="bg-slate-50 text-slate-900 p-6 rounded-2xl shadow-inner font-mono text-xs space-y-4 overflow-y-auto border border-slate-200"
+          className="bg-slate-50 text-slate-900 p-5 sm:p-6 rounded-2xl shadow-inner font-mono text-xs space-y-4 overflow-y-auto overscroll-contain max-h-[46vh] border border-slate-200 custom-scrollbar"
         >
           {/* Receipt Header */}
           <div className="text-center space-y-1 pb-3 border-b border-dashed border-slate-300">
@@ -374,28 +391,41 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               <div key={idx} className="grid grid-cols-12 text-slate-900 text-[11px] py-0.5 items-center">
                 <span className="col-span-5 font-semibold truncate">{item.name}</span>
                 <span className="col-span-2 text-center font-bold">{item.quantity}</span>
-                <span className="col-span-2 text-right text-slate-600">₹{item.price.toFixed(2)}</span>
-                <span className="col-span-3 text-right font-extrabold text-slate-900">₹{item.total.toFixed(2)}</span>
+                <span className="col-span-2 text-right text-slate-600">Rs. {item.price.toFixed(2)}</span>
+                <span className="col-span-3 text-right font-extrabold text-slate-900">Rs. {item.total.toFixed(2)}</span>
               </div>
             ))}
           </div>
 
           {/* Totals */}
           <div className="pt-3 border-t-2 border-slate-900 space-y-1">
-            <div className="flex justify-between text-sm font-black text-slate-900">
+            {sale.discountAmount && sale.discountAmount > 0 ? (
+              <>
+                <div className="flex justify-between text-xs text-slate-600">
+                  <span>Subtotal:</span>
+                  <span className="font-mono font-semibold">Rs. {(sale.subtotalAmount || (sale.totalAmount + sale.discountAmount)).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-xs font-bold text-emerald-700">
+                  <span>Discount {sale.discountType === 'percentage' && sale.discountValue ? `(${sale.discountValue}%)` : ''}:</span>
+                  <span className="font-mono">-Rs. {sale.discountAmount.toFixed(2)}</span>
+                </div>
+              </>
+            ) : null}
+
+            <div className="flex justify-between text-sm font-black text-slate-900 pt-1 border-t border-slate-200">
               <span>GRAND TOTAL:</span>
-              <span className="text-orange-700">₹{sale.totalAmount.toFixed(2)}</span>
+              <span className="text-orange-700">Rs. {sale.totalAmount.toFixed(2)}</span>
             </div>
 
             {sale.paymentMethod === 'cash' && sale.cashReceived !== undefined && (
               <>
                 <div className="flex justify-between text-xs font-semibold text-slate-600 pt-1">
                   <span>Cash Received:</span>
-                  <span className="font-mono">₹{sale.cashReceived.toFixed(2)}</span>
+                  <span className="font-mono">Rs. {sale.cashReceived.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-xs font-black text-emerald-700">
                   <span>Change Returned:</span>
-                  <span className="font-mono">₹{(sale.changeReturned || 0).toFixed(2)}</span>
+                  <span className="font-mono">Rs. {(sale.changeReturned || 0).toFixed(2)}</span>
                 </div>
               </>
             )}

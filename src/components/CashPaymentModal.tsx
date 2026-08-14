@@ -4,6 +4,10 @@ import { Banknote, Calculator, CheckCircle2, X, ArrowRight, Coins, AlertCircle }
 interface CashPaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
+  subtotalAmount?: number;
+  discountAmount?: number;
+  discountType?: 'percentage' | 'fixed';
+  discountValue?: number;
   totalAmount: number;
   onConfirmPayment: (cashReceived: number, changeReturned: number) => void;
   loading: boolean;
@@ -12,6 +16,10 @@ interface CashPaymentModalProps {
 export const CashPaymentModal: React.FC<CashPaymentModalProps> = ({
   isOpen,
   onClose,
+  subtotalAmount,
+  discountAmount = 0,
+  discountType,
+  discountValue,
   totalAmount,
   onConfirmPayment,
   loading
@@ -39,11 +47,11 @@ export const CashPaymentModal: React.FC<CashPaymentModalProps> = ({
 
   const quickNotes = [
     { label: 'Exact', value: totalAmount },
-    { label: '₹100', value: 100 },
-    { label: '₹200', value: 200 },
-    { label: '₹500', value: 500 },
-    { label: '₹1000', value: 1000 },
-    { label: '₹2000', value: 2000 },
+    { label: 'Rs. 100', value: 100 },
+    { label: 'Rs. 500', value: 500 },
+    { label: 'Rs. 1000', value: 1000 },
+    { label: 'Rs. 2000', value: 2000 },
+    { label: 'Rs. 5000', value: 5000 },
   ];
 
   const handleQuickAdd = (val: number) => {
@@ -66,11 +74,11 @@ export const CashPaymentModal: React.FC<CashPaymentModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-6 relative border border-slate-200 animate-fade-in">
+    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+      <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl space-y-6 relative border border-slate-200 animate-fade-in my-auto max-h-[92vh] overflow-y-auto overscroll-contain custom-scrollbar">
         
         {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-4 sticky top-0 bg-white z-10">
           <div className="flex items-center gap-3">
             <div className="p-3 bg-emerald-50 text-emerald-700 rounded-2xl border border-emerald-200">
               <Banknote className="w-6 h-6 text-emerald-600" />
@@ -80,7 +88,7 @@ export const CashPaymentModal: React.FC<CashPaymentModalProps> = ({
                 Cash Payment Calculator
               </h3>
               <p className="text-xs text-slate-500 font-medium">
-                Enter customer cash received & calculate change return
+                Enter customer cash received & calculate change return (Pakistani Rupees)
               </p>
             </div>
           </div>
@@ -97,28 +105,48 @@ export const CashPaymentModal: React.FC<CashPaymentModalProps> = ({
         <form onSubmit={handleSubmit} className="space-y-5">
           
           {/* Section 1: Total Customer Bill */}
-          <div className="bg-slate-900 text-white p-5 rounded-2xl shadow-inner space-y-1">
+          <div className="bg-slate-900 text-white p-5 rounded-2xl shadow-inner space-y-2">
             <div className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
               <span>Total Bill of Customer</span>
               <span className="text-[10px] bg-slate-800 text-amber-400 px-2 py-0.5 rounded-full font-mono font-bold">POS SALE</span>
             </div>
-            <div className="text-3xl sm:text-4xl font-black text-amber-400 tracking-tight">
-              ₹{totalAmount.toFixed(2)}
-            </div>
+
+            {discountAmount > 0 ? (
+              <div className="space-y-1.5 pt-1 border-t border-slate-800">
+                <div className="flex justify-between text-xs text-slate-300">
+                  <span>Cart Subtotal:</span>
+                  <span className="font-mono font-semibold">Rs. {(subtotalAmount ?? (totalAmount + discountAmount)).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-xs text-emerald-400 font-bold">
+                  <span>Discount {discountType === 'percentage' && discountValue ? `(${discountValue}%)` : ''}:</span>
+                  <span className="font-mono">-Rs. {discountAmount.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between items-baseline pt-1 border-t border-slate-800">
+                  <span className="text-xs text-amber-300 font-bold uppercase">Payable Total:</span>
+                  <div className="text-3xl sm:text-4xl font-black text-amber-400 tracking-tight">
+                    Rs. {totalAmount.toFixed(2)}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-3xl sm:text-4xl font-black text-amber-400 tracking-tight">
+                Rs. {totalAmount.toFixed(2)}
+              </div>
+            )}
           </div>
 
           {/* Section 2: Cash Received Input */}
           <div className="space-y-2">
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
-              <span>Money Received From Customer (₹) *</span>
+              <span>Money Received From Customer (Rs.) *</span>
               <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                 Cashier Input
               </span>
             </label>
 
             <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-black text-slate-400">
-                ₹
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-base font-black text-slate-500">
+                Rs.
               </span>
               <input
                 ref={inputRef}
@@ -129,7 +157,7 @@ export const CashPaymentModal: React.FC<CashPaymentModalProps> = ({
                 placeholder="0.00"
                 value={receivedInput}
                 onChange={(e) => setReceivedInput(e.target.value)}
-                className="w-full pl-10 pr-4 py-3.5 bg-slate-50 border-2 border-slate-300 focus:border-emerald-500 focus:bg-white rounded-2xl text-slate-900 text-2xl font-black focus:outline-none transition-all shadow-inner font-mono"
+                className="w-full pl-14 pr-4 py-3.5 bg-slate-50 border-2 border-slate-300 focus:border-emerald-500 focus:bg-white rounded-2xl text-slate-900 text-2xl font-black focus:outline-none transition-all shadow-inner font-mono"
               />
             </div>
 
@@ -165,7 +193,7 @@ export const CashPaymentModal: React.FC<CashPaymentModalProps> = ({
                       Return Change
                     </div>
                     <div className="text-2xl sm:text-3xl font-black text-emerald-700 font-mono">
-                      ₹{changeToReturn.toFixed(2)}
+                      Rs. {changeToReturn.toFixed(2)}
                     </div>
                   </div>
                 </div>
@@ -185,7 +213,7 @@ export const CashPaymentModal: React.FC<CashPaymentModalProps> = ({
                       Short Cash Received
                     </div>
                     <div className="text-xl font-bold text-amber-800 font-mono">
-                      Need ₹{(totalAmount - numReceived).toFixed(2)} more
+                      Need Rs. {(totalAmount - numReceived).toFixed(2)} more
                     </div>
                   </div>
                 </div>

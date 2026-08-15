@@ -5,7 +5,6 @@ import {
   onSnapshot, 
   query, 
   where, 
-  orderBy,
   handleFirestoreError,
   OperationType 
 } from '../lib/firebase';
@@ -23,7 +22,18 @@ import {
   Eye, 
   ArrowUpRight, 
   RefreshCw,
-  Layers
+  Layers,
+  Calendar,
+  CalendarDays,
+  Clock,
+  Filter,
+  Check,
+  RotateCcw,
+  CreditCard,
+  Banknote,
+  ChevronRight,
+  ArrowDownRight,
+  Tag
 } from 'lucide-react';
 
 interface StoreAdminDashboardProps {
@@ -32,6 +42,33 @@ interface StoreAdminDashboardProps {
   onNavigateToPOS?: () => void;
   onNavigateToInventory?: () => void;
   onViewReceipt?: (sale: Sale) => void;
+}
+
+type DateFilterType = 'all' | 'today' | 'yesterday' | 'last_7_days' | 'this_month' | 'custom_single' | 'custom_range';
+
+// Helper to get YYYY-MM-DD from an ISO string or Date in local time
+function getLocalDateString(isoOrDate: string | Date): string {
+  const d = typeof isoOrDate === 'string' ? new Date(isoOrDate) : isoOrDate;
+  if (isNaN(d.getTime())) return '';
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+// Helper to format display date (e.g. "Sat, 15 Aug 2026")
+function formatDisplayDate(dateStr: string): string {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  const [y, m, d] = parts.map(Number);
+  const date = new Date(y, m - 1, d);
+  return date.toLocaleDateString('en-US', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric'
+  });
 }
 
 export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
@@ -46,7 +83,17 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
   const [storeUsers, setStoreUsers] = useState<UserAccount[]>([]);
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'sold_products' | 'stock_remaining' | 'sales_history' | 'staff'>('sold_products');
+  const [activeTab, setActiveTab] = useState<'sales_by_date' | 'sold_products' | 'stock_remaining' | 'sales_history' | 'staff'>('sales_by_date');
+
+  // Date Filtering State
+  const todayStr = useMemo(() => getLocalDateString(new Date()), []);
+  const [dateFilter, setDateFilter] = useState<DateFilterType>('all');
+  const [selectedSingleDate, setSelectedSingleDate] = useState<string>(todayStr);
+  const [customStartDate, setCustomStartDate] = useState<string>(todayStr);
+  const [customEndDate, setCustomEndDate] = useState<string>(todayStr);
+
+  // Selected date for deep inspection in Sales by Date tab
+  const [expandedDate, setExpandedDate] = useState<string | null>(null);
 
   // Real-time synchronization of Products, Sales, and Staff for this store
   useEffect(() => {
@@ -79,7 +126,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       snapshot.forEach((doc) => {
         saleList.push({ id: doc.id, ...doc.data() } as Sale);
       });
-      // Sort sales by timestamp descending
+      // Sort sales by timestamp descending (newest first)
       saleList.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       setSales(saleList);
     }, (err) => {
@@ -109,23 +156,129 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
     };
   }, [store?.id]);
 
-  // Compute Aggregations
-  const totalRevenue = useMemo(() => {
-    return sales.reduce((sum, s) => sum + (s.totalAmount || 0), 0);
+  // Compute yesterday string
+  const yesterdayStr = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return getLocalDateString(d);
+  }, []);
+
+  // Filter Sales according to selected Date Range
+  const filteredSalesByDate = useMemo(() => {
+    if (dateFilter === 'all') return sales;
+
+    const now = new Date();
+
+    if (dateFilter === 'today') {
+      return sales.filter(s => getLocalDateString(s.timestamp) === todayStr);
+    }
+
+    if (dateFilter === 'yesterday') {
+      return sales.filter(s => getLocalDateString(s.timestamp) === yesterdayStr);
+    }
+
+    if (dateFilter === 'last_7_days') {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(now.getDate() - 7);
+      sevenDaysAgo.setHours(0, 0, 0, 0);
+      return sales.filter(s => new Date(s.timestamp) >= sevenDaysAgo);
+    }
+
+    if (dateFilter === 'this_month') {
+      const curYear = now.getFullYear();
+      const curMonth = now.getMonth();
+      return sales.filter(s => {
+        const d = new Date(s.timestamp);
+        return d.getFullYear() === curYear && d.getMonth() === curMonth;
+      });
+    }
+
+    if (dateFilter === 'custom_single') {
+      return sales.filter(s => getLocalDateString(s.timestamp) === selectedSingleDate);
+    }
+
+    if (dateFilter === 'custom_range') {
+      return sales.filter(s => {
+        const saleDate = getLocalDateString(s.timestamp);
+        return saleDate >= customStartDate && saleDate <= customEndDate;
+      });
+    }
+
+    return sales;
+  }, [sales, dateFilter, todayStr, yesterdayStr, selectedSingleDate, customStartDate, customEndDate]);
+
+  // Daily Sales Grouping (Day-by-Day Breakdown)
+  const dailySalesBreakdown = useMemo(() => {
+    const dateMap: { 
+      [dateKey: string]: {
+        date: string;
+        formattedDate: string;
+        totalRevenue: number;
+        totalInvoices: number;
+        totalUnitsSold: number;
+        cashRevenue: number;
+        onlineRevenue: number;
+        totalDiscount: number;
+        sales: Sale[];
+      }
+    } = {};
+
+    sales.forEach((sale) => {
+      const dateKey = getLocalDateString(sale.timestamp) || 'Unknown Date';
+      if (!dateMap[dateKey]) {
+        dateMap[dateKey] = {
+          date: dateKey,
+          formattedDate: formatDisplayDate(dateKey),
+          totalRevenue: 0,
+          totalInvoices: 0,
+          totalUnitsSold: 0,
+          cashRevenue: 0,
+          onlineRevenue: 0,
+          totalDiscount: 0,
+          sales: []
+        };
+      }
+
+      dateMap[dateKey].totalInvoices += 1;
+      dateMap[dateKey].totalRevenue += (sale.totalAmount || 0);
+      dateMap[dateKey].totalDiscount += (sale.discountAmount || 0);
+
+      if (sale.paymentMethod === 'online') {
+        dateMap[dateKey].onlineRevenue += (sale.totalAmount || 0);
+      } else {
+        dateMap[dateKey].cashRevenue += (sale.totalAmount || 0);
+      }
+
+      const unitsInSale = sale.items?.reduce((u, item) => u + (item.quantity || 0), 0) || 0;
+      dateMap[dateKey].totalUnitsSold += unitsInSale;
+      dateMap[dateKey].sales.push(sale);
+    });
+
+    // Sort descending by date
+    return Object.values(dateMap).sort((a, b) => b.date.localeCompare(a.date));
   }, [sales]);
 
-  const totalItemsSoldQuantity = useMemo(() => {
-    return sales.reduce((sum, sale) => {
+  // Compute Aggregations for Active Date Filter
+  const filteredRevenue = useMemo(() => {
+    return filteredSalesByDate.reduce((sum, s) => sum + (s.totalAmount || 0), 0);
+  }, [filteredSalesByDate]);
+
+  const filteredItemsSoldQuantity = useMemo(() => {
+    return filteredSalesByDate.reduce((sum, sale) => {
       const itemsCount = sale.items?.reduce((iSum, item) => iSum + (item.quantity || 0), 0) || 0;
       return sum + itemsCount;
     }, 0);
-  }, [sales]);
+  }, [filteredSalesByDate]);
 
-  // Aggregate Sold Products with quantity and total revenue per product
+  const filteredDiscounts = useMemo(() => {
+    return filteredSalesByDate.reduce((sum, s) => sum + (s.discountAmount || 0), 0);
+  }, [filteredSalesByDate]);
+
+  // Aggregate Sold Products for Active Date Filter
   const soldProductsSummary = useMemo(() => {
     const summaryMap: { [barcodeOrId: string]: { barcode: string; name: string; quantitySold: number; totalRevenue: number; lastPrice: number } } = {};
 
-    sales.forEach((sale) => {
+    filteredSalesByDate.forEach((sale) => {
       sale.items?.forEach((item) => {
         const key = item.barcode || item.name;
         if (!summaryMap[key]) {
@@ -144,14 +297,14 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
     });
 
     return Object.values(summaryMap).sort((a, b) => b.quantitySold - a.quantitySold);
-  }, [sales]);
+  }, [filteredSalesByDate]);
 
   // Low stock products count
   const lowStockCount = useMemo(() => {
     return products.filter(p => p.stockQuantity <= (p.minStockLevel || 5)).length;
   }, [products]);
 
-  // Filtered sold products
+  // Filtered sold products by search query
   const filteredSoldProducts = useMemo(() => {
     if (!searchTerm.trim()) return soldProductsSummary;
     const term = searchTerm.toLowerCase();
@@ -169,9 +322,42 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
     );
   }, [products, searchTerm]);
 
+  // Filtered sales receipts by search query
+  const filteredReceipts = useMemo(() => {
+    if (!searchTerm.trim()) return filteredSalesByDate;
+    const term = searchTerm.toLowerCase();
+    return filteredSalesByDate.filter((s) => 
+      s.receiptNumber.toLowerCase().includes(term) ||
+      (s.counterName && s.counterName.toLowerCase().includes(term)) ||
+      (s.cashierUsername && s.cashierUsername.toLowerCase().includes(term)) ||
+      s.items?.some(i => i.name.toLowerCase().includes(term) || i.barcode.toLowerCase().includes(term))
+    );
+  }, [filteredSalesByDate, searchTerm]);
+
+  // Text label describing active date filter
+  const activeDateFilterLabel = useMemo(() => {
+    switch (dateFilter) {
+      case 'today':
+        return `Today (${formatDisplayDate(todayStr)})`;
+      case 'yesterday':
+        return `Yesterday (${formatDisplayDate(yesterdayStr)})`;
+      case 'last_7_days':
+        return 'Last 7 Days';
+      case 'this_month':
+        return new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      case 'custom_single':
+        return formatDisplayDate(selectedSingleDate);
+      case 'custom_range':
+        return `${formatDisplayDate(customStartDate)} to ${formatDisplayDate(customEndDate)}`;
+      case 'all':
+      default:
+        return 'All Time (Lifetime History)';
+    }
+  }, [dateFilter, todayStr, yesterdayStr, selectedSingleDate, customStartDate, customEndDate]);
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 p-4 sm:p-6 lg:p-8">
-      <div className="max-w-7xl mx-auto space-y-8">
+      <div className="max-w-7xl mx-auto space-y-6">
 
         {/* Store Admin Top Bar */}
         <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative overflow-hidden">
@@ -185,10 +371,10 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
               </span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-              {store.name} <span className="text-orange-600">Analytics & Inventory</span>
+              {store.name} <span className="text-orange-600">Analytics & Sales Reports</span>
             </h1>
             <p className="text-sm text-slate-600 max-w-2xl font-medium">
-              Track real-time stock levels, monitor total items sold by cash counters, and directly access inventory register and POS selling controls.
+              View sales filtered by date, day-by-day revenue breakdown, product sales velocity, real-time inventory levels, and cashier checkout logs.
             </p>
           </div>
 
@@ -214,35 +400,201 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
           </div>
         </div>
 
-        {/* Real-time High-Level Metrics Cards */}
+        {/* DATE FILTERING CONTROL TOOLBAR */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 pb-3.5">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center font-bold">
+                <Calendar className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                  <span>Filter Sales By Date</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-orange-100 text-orange-800 border border-orange-200">
+                    {activeDateFilterLabel}
+                  </span>
+                </h3>
+                <p className="text-[11px] text-slate-500 font-medium">
+                  Select any date or range to analyze sales revenue, transactions count, and sold items for that specific period.
+                </p>
+              </div>
+            </div>
+
+            {dateFilter !== 'all' && (
+              <button
+                type="button"
+                onClick={() => setDateFilter('all')}
+                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg flex items-center gap-1.5 cursor-pointer transition-colors self-start md:self-auto"
+              >
+                <RotateCcw className="w-3.5 h-3.5" /> Show All Time Sales
+              </button>
+            )}
+          </div>
+
+          {/* Quick Preset Buttons & Date Pickers */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setDateFilter('all')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                dateFilter === 'all'
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              All Time
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDateFilter('today')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                dateFilter === 'today'
+                  ? 'bg-orange-600 text-white shadow-xs'
+                  : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5" /> Today
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDateFilter('yesterday')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                dateFilter === 'yesterday'
+                  ? 'bg-orange-600 text-white shadow-xs'
+                  : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              Yesterday
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDateFilter('last_7_days')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                dateFilter === 'last_7_days'
+                  ? 'bg-orange-600 text-white shadow-xs'
+                  : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              Last 7 Days
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDateFilter('this_month')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                dateFilter === 'this_month'
+                  ? 'bg-orange-600 text-white shadow-xs'
+                  : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              This Month
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDateFilter('custom_single')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                dateFilter === 'custom_single'
+                  ? 'bg-orange-600 text-white shadow-xs'
+                  : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              <CalendarDays className="w-3.5 h-3.5" /> Specific Date
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDateFilter('custom_range')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                dateFilter === 'custom_range'
+                  ? 'bg-orange-600 text-white shadow-xs'
+                  : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5" /> Date Range
+            </button>
+          </div>
+
+          {/* SPECIFIC DATE INPUT */}
+          {dateFilter === 'custom_single' && (
+            <div className="flex items-center gap-3 bg-orange-50/70 p-3 rounded-xl border border-orange-200 animate-fade-in flex-wrap">
+              <span className="text-xs font-bold text-orange-950 flex items-center gap-1.5">
+                <Calendar className="w-4 h-4 text-orange-600" /> Select Date:
+              </span>
+              <input
+                type="date"
+                value={selectedSingleDate}
+                onChange={(e) => setSelectedSingleDate(e.target.value)}
+                className="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-orange-500 shadow-xs"
+              />
+              <span className="text-xs text-orange-800 font-medium">
+                Viewing sales for: <strong>{formatDisplayDate(selectedSingleDate)}</strong>
+              </span>
+            </div>
+          )}
+
+          {/* CUSTOM DATE RANGE INPUTS */}
+          {dateFilter === 'custom_range' && (
+            <div className="flex items-center gap-3 bg-orange-50/70 p-3 rounded-xl border border-orange-200 animate-fade-in flex-wrap">
+              <span className="text-xs font-bold text-orange-950 flex items-center gap-1.5">
+                <Calendar className="w-4 h-4 text-orange-600" /> From:
+              </span>
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-orange-500 shadow-xs"
+              />
+              <span className="text-xs font-bold text-orange-950">To:</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-orange-500 shadow-xs"
+              />
+              <span className="text-xs text-orange-800 font-medium">
+                ({formatDisplayDate(customStartDate)} – {formatDisplayDate(customEndDate)})
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* DYNAMIC REALTIME METRICS CARDS (Adjusts to selected Date Filter) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           
-          {/* Revenue */}
+          {/* Revenue for Date */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Sales Revenue</span>
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                {dateFilter === 'all' ? 'Total Sales Revenue' : 'Sales Revenue (Filtered Date)'}
+              </span>
               <div className="p-2 rounded-xl bg-orange-50 text-orange-600 border border-orange-200 font-bold text-xs">
                 <span>PKR</span>
               </div>
             </div>
             <div className="mt-3 text-2xl sm:text-3xl font-extrabold text-slate-900">
-              Rs. {totalRevenue.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              Rs. {filteredRevenue.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
             <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1 font-medium">
-              <TrendingUp className="w-3.5 h-3.5 text-emerald-600" /> From {sales.length} completed orders
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-600" /> From {filteredSalesByDate.length} completed transactions
             </p>
           </div>
 
-          {/* Sold Products Quantity */}
+          {/* Sold Products Quantity for Date */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Units Sold</span>
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                {dateFilter === 'all' ? 'Total Units Sold' : 'Units Sold (Filtered Date)'}
+              </span>
               <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200">
                 <ShoppingBag className="w-5 h-5" />
               </div>
             </div>
             <div className="mt-3 text-2xl sm:text-3xl font-extrabold text-emerald-600">
-              {totalItemsSoldQuantity.toLocaleString()} <span className="text-xs text-slate-500 font-normal">items</span>
+              {filteredItemsSoldQuantity.toLocaleString()} <span className="text-xs text-slate-500 font-normal">items</span>
             </div>
             <p className="text-[11px] text-slate-500 mt-1 font-medium">
               {soldProductsSummary.length} distinct products sold
@@ -265,19 +617,25 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             </p>
           </div>
 
-          {/* Low Stock Warning */}
+          {/* Low Stock Warning or Total Discounts */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Low Stock Alerts</span>
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                {filteredDiscounts > 0 ? 'Discounts Given' : 'Low Stock Alerts'}
+              </span>
               <div className="p-2 rounded-xl bg-amber-50 text-amber-600 border border-amber-200">
-                <AlertTriangle className="w-5 h-5" />
+                {filteredDiscounts > 0 ? <Tag className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
               </div>
             </div>
             <div className="mt-3 text-2xl sm:text-3xl font-extrabold text-amber-600">
-              {lowStockCount} <span className="text-xs text-slate-500 font-normal">items critical</span>
+              {filteredDiscounts > 0 ? (
+                <>Rs. {filteredDiscounts.toFixed(2)}</>
+              ) : (
+                <>{lowStockCount} <span className="text-xs text-slate-500 font-normal">items critical</span></>
+              )}
             </div>
             <p className="text-[11px] text-slate-500 mt-1 font-medium">
-              Stock ≤ 5 units remaining
+              {filteredDiscounts > 0 ? `Savings given to customers` : `Stock ≤ 5 units remaining`}
             </p>
           </div>
 
@@ -287,6 +645,17 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
           <div className="flex flex-wrap items-center gap-2">
             <button
+              onClick={() => setActiveTab('sales_by_date')}
+              className={`px-4 py-2.5 rounded-xl font-bold text-xs cursor-pointer transition-all flex items-center gap-1.5 ${
+                activeTab === 'sales_by_date'
+                  ? 'bg-orange-600 text-white shadow-sm'
+                  : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+              }`}
+            >
+              <CalendarDays className="w-4 h-4" /> Sales by Date ({dailySalesBreakdown.length} Days)
+            </button>
+
+            <button
               onClick={() => setActiveTab('sold_products')}
               className={`px-4 py-2.5 rounded-xl font-bold text-xs cursor-pointer transition-all ${
                 activeTab === 'sold_products'
@@ -294,7 +663,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                   : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
               }`}
             >
-              Total Products Sold ({soldProductsSummary.length})
+              Sold Products Breakdown ({soldProductsSummary.length})
             </button>
 
             <button
@@ -316,7 +685,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                   : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
               }`}
             >
-              Sales Receipt Log ({sales.length})
+              Receipts Log ({filteredSalesByDate.length})
             </button>
 
             <button
@@ -327,7 +696,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                   : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
               }`}
             >
-              Store Cashiers & Staff
+              Store Staff ({storeUsers.length})
             </button>
           </div>
 
@@ -335,7 +704,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="Filter by product or barcode..."
+              placeholder="Filter products or receipt #..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-xl text-slate-900 text-xs focus:outline-none focus:border-orange-500 font-medium"
@@ -343,23 +712,235 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
           </div>
         </div>
 
-        {/* TAB 1: TOTAL PRODUCTS SOLD WITH NAMES AND QUANTITY */}
-        {activeTab === 'sold_products' && (
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+        {/* TAB 1: SALES BY DATE - DAY BY DAY BREAKDOWN TABLE */}
+        {activeTab === 'sales_by_date' && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
               <div>
                 <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <ShoppingBag className="w-5 h-5 text-orange-600" /> Total Sold Products Overview
+                  <CalendarDays className="w-5 h-5 text-orange-600" /> Day-by-Day Sales Breakdown
                 </h2>
                 <p className="text-xs text-slate-600 font-medium">
-                  Breakdown of all products sold across cash counters with total quantities and revenue.
+                  Summary of total revenue, transactions count, units sold, and payment methods for every date.
                 </p>
               </div>
+
+              <div className="text-xs text-slate-500 font-medium bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
+                Total Days with Sales: <strong className="text-slate-900">{dailySalesBreakdown.length}</strong>
+              </div>
+            </div>
+
+            {dailySalesBreakdown.length === 0 ? (
+              <div className="p-12 text-center text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-300 space-y-2">
+                <Calendar className="w-8 h-8 text-slate-400 mx-auto" />
+                <p className="text-sm font-bold text-slate-700">No Sales Recorded Yet</p>
+                <p className="text-xs text-slate-500">Sales completed at cash counters will be grouped and displayed by date here.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-slate-50 text-xs text-slate-600 uppercase tracking-wider border-b border-slate-200">
+                      <tr>
+                        <th className="p-3.5">Date</th>
+                        <th className="p-3.5 text-center">Invoices / Orders</th>
+                        <th className="p-3.5 text-center">Items Sold</th>
+                        <th className="p-3.5 text-center">Payment Split</th>
+                        <th className="p-3.5 text-right">Discount</th>
+                        <th className="p-3.5 text-right">Total Revenue</th>
+                        <th className="p-3.5 text-center">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {dailySalesBreakdown.map((daySummary) => {
+                        const isToday = daySummary.date === todayStr;
+                        const isYesterday = daySummary.date === yesterdayStr;
+                        const isExpanded = expandedDate === daySummary.date;
+
+                        return (
+                          <React.Fragment key={daySummary.date}>
+                            <tr className={`hover:bg-orange-50/40 transition-colors ${isExpanded ? 'bg-orange-50/60' : ''}`}>
+                              <td className="p-3.5">
+                                <div className="flex items-center gap-2">
+                                  <div className="font-extrabold text-slate-900 text-sm">
+                                    {daySummary.formattedDate}
+                                  </div>
+                                  {isToday && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                      TODAY
+                                    </span>
+                                  )}
+                                  {isYesterday && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-300">
+                                      YESTERDAY
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                                  {daySummary.date}
+                                </div>
+                              </td>
+
+                              <td className="p-3.5 text-center">
+                                <span className="px-2.5 py-1 rounded-lg text-xs font-extrabold bg-slate-100 text-slate-800">
+                                  {daySummary.totalInvoices} {daySummary.totalInvoices === 1 ? 'order' : 'orders'}
+                                </span>
+                              </td>
+
+                              <td className="p-3.5 text-center font-bold text-slate-700">
+                                {daySummary.totalUnitsSold} units
+                              </td>
+
+                              <td className="p-3.5 text-center text-xs">
+                                <div className="flex items-center justify-center gap-2">
+                                  <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold" title="Cash Revenue">
+                                    Cash: Rs. {daySummary.cashRevenue.toFixed(0)}
+                                  </span>
+                                  {daySummary.onlineRevenue > 0 && (
+                                    <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 font-bold" title="Online Revenue">
+                                      Online: Rs. {daySummary.onlineRevenue.toFixed(0)}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+
+                              <td className="p-3.5 text-right font-medium text-slate-600 text-xs">
+                                {daySummary.totalDiscount > 0 ? (
+                                  <span className="text-amber-700 font-bold">-Rs. {daySummary.totalDiscount.toFixed(2)}</span>
+                                ) : (
+                                  <span className="text-slate-400">-</span>
+                                )}
+                              </td>
+
+                              <td className="p-3.5 text-right">
+                                <span className="text-base font-black text-orange-600">
+                                  Rs. {daySummary.totalRevenue.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              </td>
+
+                              <td className="p-3.5 text-center">
+                                <div className="flex items-center justify-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => setExpandedDate(isExpanded ? null : daySummary.date)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all flex items-center gap-1 ${
+                                      isExpanded
+                                        ? 'bg-orange-600 text-white shadow-xs'
+                                        : 'bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200'
+                                    }`}
+                                  >
+                                    <Eye className="w-3.5 h-3.5" />
+                                    {isExpanded ? 'Hide Invoices' : `View ${daySummary.totalInvoices} Invoices`}
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setDateFilter('custom_single');
+                                      setSelectedSingleDate(daySummary.date);
+                                      setActiveTab('sales_history');
+                                    }}
+                                    className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer transition-colors"
+                                    title="Drill down to receipt log for this date"
+                                  >
+                                    Filter History →
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+
+                            {/* EXPANDED INVOICES LIST FOR THIS DATE */}
+                            {isExpanded && (
+                              <tr className="bg-slate-50/90 border-b border-orange-200">
+                                <td colSpan={7} className="p-4 sm:p-6">
+                                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+                                    <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+                                      <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                                        <Receipt className="w-4 h-4 text-orange-600" />
+                                        Invoices Issued on {daySummary.formattedDate} ({daySummary.sales.length} transactions)
+                                      </h4>
+                                      <span className="text-xs font-black text-orange-600">
+                                        Daily Total: Rs. {daySummary.totalRevenue.toFixed(2)}
+                                      </span>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[380px] overflow-y-auto overscroll-contain pr-1 custom-scrollbar">
+                                      {daySummary.sales.map((sale) => (
+                                        <div key={sale.id} className="p-3 rounded-lg border border-slate-200 bg-slate-50/50 hover:bg-orange-50/30 transition-colors flex items-center justify-between gap-3">
+                                          <div className="min-w-0">
+                                            <div className="flex items-center gap-2">
+                                              <span className="font-extrabold text-xs text-slate-900">#{sale.receiptNumber}</span>
+                                              <span className={`px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase ${
+                                                sale.paymentMethod === 'cash' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
+                                              }`}>
+                                                {sale.paymentMethod}
+                                              </span>
+                                            </div>
+                                            <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                                              {sale.counterName} ({sale.cashierUsername}) • {new Date(sale.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            </div>
+                                            <div className="text-[10px] text-slate-600 font-medium truncate mt-0.5">
+                                              {sale.items?.map(i => `${i.name} (x${i.quantity})`).join(', ')}
+                                            </div>
+                                          </div>
+
+                                          <div className="flex items-center gap-2 shrink-0">
+                                            <div className="text-right">
+                                              <div className="font-extrabold text-orange-600 text-xs">Rs. {sale.totalAmount.toFixed(2)}</div>
+                                              {sale.discountAmount && sale.discountAmount > 0 ? (
+                                                <div className="text-[9px] text-amber-700 font-bold">-Rs. {sale.discountAmount.toFixed(0)} off</div>
+                                              ) : null}
+                                            </div>
+                                            {onViewReceipt && (
+                                              <button
+                                                type="button"
+                                                onClick={() => onViewReceipt(sale)}
+                                                className="p-1.5 bg-orange-50 hover:bg-orange-600 text-orange-700 hover:text-white rounded-lg border border-orange-200 transition-colors cursor-pointer"
+                                                title="View Full Receipt"
+                                              >
+                                                <Eye className="w-3.5 h-3.5" />
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 2: TOTAL PRODUCTS SOLD WITH NAMES AND QUANTITY (FILTERED BY DATE) */}
+        {activeTab === 'sold_products' && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <ShoppingBag className="w-5 h-5 text-orange-600" /> Products Sold Velocity Breakdown
+                </h2>
+                <p className="text-xs text-slate-600 font-medium">
+                  Showing sold items for: <strong className="text-orange-700">{activeDateFilterLabel}</strong>
+                </p>
+              </div>
+
+              <span className="text-xs font-bold text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
+                {filteredSoldProducts.length} Distinct Products Sold
+              </span>
             </div>
 
             {filteredSoldProducts.length === 0 ? (
               <div className="p-10 text-center text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-300">
-                No products sold yet. When sales are processed at the cash counter, they appear here live.
+                No products sold during the selected date range ({activeDateFilterLabel}).
               </div>
             ) : (
               <div className="overflow-x-auto overflow-y-auto max-h-[580px] overscroll-contain custom-scrollbar border border-slate-200 rounded-xl">
@@ -405,7 +986,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
           </div>
         )}
 
-        {/* TAB 2: REALTIME REMAINING STOCK */}
+        {/* TAB 3: REALTIME REMAINING STOCK */}
         {activeTab === 'stock_remaining' && (
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
@@ -487,20 +1068,31 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
           </div>
         )}
 
-        {/* TAB 3: SALES HISTORY */}
+        {/* TAB 4: SALES HISTORY (FILTERED BY SELECTED DATE) */}
         {activeTab === 'sales_history' && (
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
-            <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-              <Receipt className="w-5 h-5 text-emerald-600" /> Completed Checkout Receipts ({sales.length})
-            </h2>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <Receipt className="w-5 h-5 text-emerald-600" /> Completed Checkout Receipts Log
+                </h2>
+                <p className="text-xs text-slate-600 font-medium">
+                  Showing receipts for: <strong className="text-orange-700">{activeDateFilterLabel}</strong>
+                </p>
+              </div>
 
-            {sales.length === 0 ? (
+              <span className="text-xs font-bold text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
+                {filteredReceipts.length} Receipts
+              </span>
+            </div>
+
+            {filteredReceipts.length === 0 ? (
               <p className="text-sm text-slate-500 p-8 text-center border border-dashed border-slate-300 rounded-xl bg-slate-50">
-                No checkout transactions recorded yet.
+                No checkout transactions recorded for {activeDateFilterLabel}.
               </p>
             ) : (
               <div className="space-y-3 max-h-[580px] overflow-y-auto overscroll-contain pr-1.5 custom-scrollbar">
-                {sales.map((sale) => (
+                {filteredReceipts.map((sale) => (
                   <div key={sale.id} className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-slate-300 transition-colors">
                     <div>
                       <div className="flex items-center gap-2">
@@ -510,12 +1102,17 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                         }`}>
                           {sale.paymentMethod}
                         </span>
+                        {sale.discountAmount && sale.discountAmount > 0 ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                            Discount -Rs. {sale.discountAmount.toFixed(2)}
+                          </span>
+                        ) : null}
                       </div>
                       <p className="text-xs text-slate-600 mt-1 font-medium">
-                        Counter: <span className="text-slate-900 font-semibold">{sale.counterName}</span> ({sale.cashierUsername}) • {new Date(sale.timestamp).toLocaleString()}
+                        Counter: <span className="text-slate-900 font-semibold">{sale.counterName}</span> ({sale.cashierUsername}) • <span className="text-orange-700 font-bold">{new Date(sale.timestamp).toLocaleString()}</span>
                       </p>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        Items: {sale.items?.map(i => `${i.name} (x${i.quantity})`).join(', ')}
+                        Items ({sale.items?.reduce((s, i) => s + i.quantity, 0)}): {sale.items?.map(i => `${i.name} (x${i.quantity})`).join(', ')}
                       </p>
                     </div>
 
@@ -539,7 +1136,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
           </div>
         )}
 
-        {/* TAB 4: STORE STAFF */}
+        {/* TAB 5: STORE STAFF */}
         {activeTab === 'staff' && (
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
             <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">

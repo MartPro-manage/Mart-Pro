@@ -79,22 +79,34 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     setTimeout(() => setMsg(null), 5000);
   };
 
-  // Add Product to Cart by Barcode or Serial Number (Hands-free automatic support)
+  // Add Product to Cart by Barcode, Serial Number, Name or ID (Hands-free automatic support)
   const handleAddByBarcode = useCallback((targetBarcodeOrSerial: string, isExternalScanner: boolean = false) => {
     const trimmed = targetBarcodeOrSerial.trim().toLowerCase();
     if (!trimmed) return;
 
-    // Look up product by Barcode OR Serial Number OR Name OR ID
-    const found = products.find(
+    // Look up product by:
+    // 1. Exact Barcode OR Serial Number OR ID
+    // 2. Exact Name (case-insensitive)
+    // 3. Substring/prefix match on name or barcode
+    let found = products.find(
       p => (p.barcode && p.barcode.trim().toLowerCase() === trimmed) || 
            (p.serialNumber && p.serialNumber.trim().toLowerCase() === trimmed) ||
-           p.name.trim().toLowerCase() === trimmed ||
-           p.id === targetBarcodeOrSerial
+           p.id === targetBarcodeOrSerial ||
+           p.name.trim().toLowerCase() === trimmed
     );
 
     if (!found) {
+      // Try partial match if no exact match
+      found = products.find(
+        p => p.name.trim().toLowerCase().includes(trimmed) ||
+             (p.barcode && p.barcode.trim().toLowerCase().includes(trimmed)) ||
+             (p.serialNumber && p.serialNumber.trim().toLowerCase().includes(trimmed))
+      );
+    }
+
+    if (!found) {
       playScanErrorBeep();
-      showNotification('error', `No product found matching Barcode/Serial Number "${targetBarcodeOrSerial}". Please check or register it first.`);
+      showNotification('error', `No product found matching "${targetBarcodeOrSerial}". Please check code or register it.`);
       setBarcodeInput('');
       return;
     }
@@ -111,32 +123,32 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
 
     // Add or increment in cart
     setCart((prevCart) => {
-      const existingIdx = prevCart.findIndex(item => item.product.id === found.id);
+      const existingIdx = prevCart.findIndex(item => item.product.id === found!.id);
       if (existingIdx >= 0) {
         const updated = [...prevCart];
         const currentQty = updated[existingIdx].quantity;
-        if (currentQty + 1 > found.stockQuantity) {
+        if (currentQty + 1 > found!.stockQuantity) {
           playScanErrorBeep();
-          showNotification('error', `Cannot add more. Only ${found.stockQuantity} units available in stock!`);
+          showNotification('error', `Cannot add more. Only ${found!.stockQuantity} units available in stock!`);
           return prevCart;
         }
         const newQty = currentQty + 1;
         updated[existingIdx] = {
           ...updated[existingIdx],
-          product: found, // update latest stock/price ref
+          product: found!, // update latest stock/price ref
           quantity: newQty,
-          totalPrice: newQty * found.price
+          totalPrice: newQty * found!.price
         };
-        showNotification('success', `Incremented "${found.name}" (Qty: ${newQty})`);
+        showNotification('success', `Incremented "${found!.name}" (Qty: ${newQty})`);
         return updated;
       } else {
-        showNotification('success', `Added "${found.name}" to cart (Rs. ${found.price.toFixed(2)})`);
+        showNotification('success', `Added "${found!.name}" to cart (Rs. ${found!.price.toFixed(2)})`);
         return [
           ...prevCart,
           {
-            product: found,
+            product: found!,
             quantity: 1,
-            totalPrice: found.price
+            totalPrice: found!.price
           }
         ];
       }
@@ -336,22 +348,45 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
       const newSaleDocRef = doc(collection(db, 'sales'));
 
       await runTransaction(db, async (transaction) => {
-        // 1. Verify and Decrement Stock for every item
+        // PHASE 1: ALL READS FIRST (Strict Firestore rule: All reads must happen before any writes)
+        // Aggregate quantities by product ID
+        const productQuantities = new Map<string, { product: Product; quantity: number }>();
         for (const item of cart) {
-          const prodRef = doc(db, 'products', item.product.id);
-          const prodSnap = await transaction.get(prodRef);
+          const existing = productQuantities.get(item.product.id);
+          if (existing) {
+            existing.quantity += item.quantity;
+          } else {
+            productQuantities.set(item.product.id, { product: item.product, quantity: item.quantity });
+          }
+        }
+
+        const readSnapshots: { prodRef: any; currentStock: number; newStock: number; name: string }[] = [];
+
+        for (const [prodId, entry] of productQuantities.entries()) {
+          const prodRef = doc(db, 'products', prodId);
+          const prodSnap = await transaction.get(prodRef); // READ
 
           if (!prodSnap.exists()) {
-            throw new Error(`Product "${item.product.name}" no longer exists in database.`);
+            throw new Error(`Product "${entry.product.name}" no longer exists in database.`);
           }
 
-          const currentStock = prodSnap.data().stockQuantity || 0;
-          if (currentStock < item.quantity) {
-            throw new Error(`Stock for "${item.product.name}" was reduced. Only ${currentStock} remaining.`);
+          const currentStock = Number(prodSnap.data().stockQuantity) || 0;
+          if (currentStock < entry.quantity) {
+            throw new Error(`Insufficient stock for "${entry.product.name}". Available: ${currentStock}, In Cart: ${entry.quantity}`);
           }
 
+          readSnapshots.push({
+            prodRef,
+            currentStock,
+            newStock: Math.max(0, currentStock - entry.quantity),
+            name: entry.product.name
+          });
+        }
+
+        // PHASE 2: ALL WRITES AFTER ALL READS HAVE COMPLETED
+        for (const { prodRef, newStock } of readSnapshots) {
           transaction.update(prodRef, {
-            stockQuantity: currentStock - item.quantity,
+            stockQuantity: newStock,
             updatedAt: nowIso
           });
         }
@@ -566,18 +601,43 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">Quick Product Selector</h3>
                 </div>
 
-                {/* Search Bar */}
-                <div className="relative">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    id="product-search-input"
-                    type="text"
-                    placeholder="Search name or barcode..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-orange-500"
-                  />
-                </div>
+                  {/* Search Bar */}
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      id="product-search-input"
+                      type="text"
+                      placeholder="Search & Press Enter to Add..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const term = searchTerm.trim();
+                          if (!term) return;
+
+                          // If there's an exact or filtered match
+                          if (filteredQuickProducts.length > 0) {
+                            const targetProduct = filteredQuickProducts[0];
+                            if (targetProduct.stockQuantity <= 0) {
+                              playScanErrorBeep();
+                              showNotification('error', `"${targetProduct.name}" is OUT OF STOCK!`);
+                            } else {
+                              handleAddProductClick(targetProduct);
+                              setSearchTerm('');
+                              if (barcodeInputRef.current) {
+                                barcodeInputRef.current.focus();
+                              }
+                            }
+                          } else {
+                            handleAddByBarcode(term);
+                            setSearchTerm('');
+                          }
+                        }
+                      }}
+                      className="pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-orange-500 font-medium"
+                    />
+                  </div>
               </div>
 
               {products.length === 0 ? (

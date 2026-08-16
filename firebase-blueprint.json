@@ -49,6 +49,27 @@
         "receiptNumber": { "type": "string", "description": "Unique transaction receipt reference" },
         "timestamp": { "type": "string", "description": "ISO date string of sale" }
       }
+    },
+    "returns": {
+      "description": "Product return and refund transactions per store, restocking products and deducting from revenue",
+      "fields": {
+        "storeId": { "type": "string", "description": "Associated store ID" },
+        "counterId": { "type": "string", "description": "Cash counter user ID who processed return" },
+        "counterName": { "type": "string", "description": "Cash counter name or number" },
+        "cashierUsername": { "type": "string", "description": "Username of cashier who processed return" },
+        "productId": { "type": "string", "description": "Product ID of returned product" },
+        "productName": { "type": "string", "description": "Name of returned product" },
+        "barcode": { "type": "string", "description": "Barcode of returned product" },
+        "serialNumber": { "type": "string", "description": "Serial number if applicable" },
+        "price": { "type": "number", "description": "Unit price refunded" },
+        "quantity": { "type": "number", "description": "Quantity returned and re-entered to stock" },
+        "refundAmount": { "type": "number", "description": "Total refund amount minus from profit/revenue" },
+        "refundMethod": { "type": "string", "description": "'cash' or 'online'" },
+        "reason": { "type": "string", "description": "Customer return reason" },
+        "originalReceiptNumber": { "type": "string", "description": "Original sales receipt number if linked" },
+        "returnSlipNumber": { "type": "string", "description": "Unique return voucher/slip reference" },
+        "timestamp": { "type": "string", "description": "ISO date string of return transaction" }
+      }
     }
   }
 }

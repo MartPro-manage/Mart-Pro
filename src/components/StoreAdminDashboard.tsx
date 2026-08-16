@@ -8,7 +8,8 @@ import {
   handleFirestoreError,
   OperationType 
 } from '../lib/firebase';
-import { Product, Sale, Store, UserAccount } from '../types';
+import { Product, Sale, Store, UserAccount, ProductReturn } from '../types';
+import { ReturnSlipModal } from './ReturnSlipModal';
 import { 
   TrendingUp, 
   Package, 
@@ -33,7 +34,8 @@ import {
   Banknote,
   ChevronRight,
   ArrowDownRight,
-  Tag
+  Tag,
+  Undo2
 } from 'lucide-react';
 
 interface StoreAdminDashboardProps {
@@ -80,10 +82,15 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
 }) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
+  const [returns, setReturns] = useState<ProductReturn[]>([]);
   const [storeUsers, setStoreUsers] = useState<UserAccount[]>([]);
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'sales_by_date' | 'sold_products' | 'stock_remaining' | 'sales_history' | 'staff'>('sales_by_date');
+  const [activeTab, setActiveTab] = useState<'sales_by_date' | 'returns' | 'sold_products' | 'stock_remaining' | 'sales_history' | 'staff'>('sales_by_date');
+
+  // Return Voucher Modal State
+  const [viewingReturnSlip, setViewingReturnSlip] = useState<ProductReturn | null>(null);
+  const [isReturnSlipOpen, setIsReturnSlipOpen] = useState(false);
 
   // Date Filtering State
   const todayStr = useMemo(() => getLocalDateString(new Date()), []);
@@ -95,7 +102,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
   // Selected date for deep inspection in Sales by Date tab
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
 
-  // Real-time synchronization of Products, Sales, and Staff for this store
+  // Real-time synchronization of Products, Sales, Returns, and Staff for this store
   useEffect(() => {
     if (!store?.id) return;
 
@@ -133,7 +140,24 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       handleFirestoreError(err, OperationType.GET, 'sales');
     });
 
-    // 3. Subscribe to Staff Users
+    // 3. Subscribe to Product Returns & Refunds
+    const returnsQuery = query(
+      collection(db, 'returns'),
+      where('storeId', '==', store.id)
+    );
+
+    const unsubReturns = onSnapshot(returnsQuery, (snapshot) => {
+      const returnList: ProductReturn[] = [];
+      snapshot.forEach((doc) => {
+        returnList.push({ id: doc.id, ...doc.data() } as ProductReturn);
+      });
+      returnList.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      setReturns(returnList);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, 'returns');
+    });
+
+    // 4. Subscribe to Staff Users
     const usersQuery = query(
       collection(db, 'users'),
       where('storeId', '==', store.id)
@@ -152,6 +176,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
     return () => {
       unsubProducts();
       unsubSales();
+      unsubReturns();
       unsubUsers();
     };
   }, [store?.id]);
@@ -207,76 +232,181 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
     return sales;
   }, [sales, dateFilter, todayStr, yesterdayStr, selectedSingleDate, customStartDate, customEndDate]);
 
-  // Daily Sales Grouping (Day-by-Day Breakdown)
+  // Filter Returns according to selected Date Range
+  const filteredReturnsByDate = useMemo(() => {
+    if (dateFilter === 'all') return returns;
+
+    const now = new Date();
+
+    if (dateFilter === 'today') {
+      return returns.filter(r => getLocalDateString(r.timestamp) === todayStr);
+    }
+
+    if (dateFilter === 'yesterday') {
+      return returns.filter(r => getLocalDateString(r.timestamp) === yesterdayStr);
+    }
+
+    if (dateFilter === 'last_7_days') {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(now.getDate() - 7);
+      sevenDaysAgo.setHours(0, 0, 0, 0);
+      return returns.filter(r => new Date(r.timestamp) >= sevenDaysAgo);
+    }
+
+    if (dateFilter === 'this_month') {
+      const curYear = now.getFullYear();
+      const curMonth = now.getMonth();
+      return returns.filter(r => {
+        const d = new Date(r.timestamp);
+        return d.getFullYear() === curYear && d.getMonth() === curMonth;
+      });
+    }
+
+    if (dateFilter === 'custom_single') {
+      return returns.filter(r => getLocalDateString(r.timestamp) === selectedSingleDate);
+    }
+
+    if (dateFilter === 'custom_range') {
+      return returns.filter(r => {
+        const returnDate = getLocalDateString(r.timestamp);
+        return returnDate >= customStartDate && returnDate <= customEndDate;
+      });
+    }
+
+    return returns;
+  }, [returns, dateFilter, todayStr, yesterdayStr, selectedSingleDate, customStartDate, customEndDate]);
+
+  // Daily Sales & Returns Grouping (Day-by-Day Financial Breakdown)
   const dailySalesBreakdown = useMemo(() => {
     const dateMap: { 
       [dateKey: string]: {
         date: string;
         formattedDate: string;
-        totalRevenue: number;
+        grossRevenue: number;
+        totalRefunds: number;
+        netProfit: number;
         totalInvoices: number;
-        totalUnitsSold: number;
+        totalReturnsCount: number;
+        grossUnitsSold: number;
+        unitsReturned: number;
+        netUnitsSold: number;
         cashRevenue: number;
         onlineRevenue: number;
         totalDiscount: number;
         sales: Sale[];
+        returns: ProductReturn[];
       }
     } = {};
 
-    sales.forEach((sale) => {
-      const dateKey = getLocalDateString(sale.timestamp) || 'Unknown Date';
+    const getOrCreate = (dateKey: string) => {
       if (!dateMap[dateKey]) {
         dateMap[dateKey] = {
           date: dateKey,
           formattedDate: formatDisplayDate(dateKey),
-          totalRevenue: 0,
+          grossRevenue: 0,
+          totalRefunds: 0,
+          netProfit: 0,
           totalInvoices: 0,
-          totalUnitsSold: 0,
+          totalReturnsCount: 0,
+          grossUnitsSold: 0,
+          unitsReturned: 0,
+          netUnitsSold: 0,
           cashRevenue: 0,
           onlineRevenue: 0,
           totalDiscount: 0,
-          sales: []
+          sales: [],
+          returns: []
         };
       }
+      return dateMap[dateKey];
+    };
 
-      dateMap[dateKey].totalInvoices += 1;
-      dateMap[dateKey].totalRevenue += (sale.totalAmount || 0);
-      dateMap[dateKey].totalDiscount += (sale.discountAmount || 0);
+    sales.forEach((sale) => {
+      const dateKey = getLocalDateString(sale.timestamp) || 'Unknown Date';
+      const d = getOrCreate(dateKey);
+
+      d.totalInvoices += 1;
+      d.grossRevenue += (sale.totalAmount || 0);
+      d.totalDiscount += (sale.discountAmount || 0);
 
       if (sale.paymentMethod === 'online') {
-        dateMap[dateKey].onlineRevenue += (sale.totalAmount || 0);
+        d.onlineRevenue += (sale.totalAmount || 0);
       } else {
-        dateMap[dateKey].cashRevenue += (sale.totalAmount || 0);
+        d.cashRevenue += (sale.totalAmount || 0);
       }
 
       const unitsInSale = sale.items?.reduce((u, item) => u + (item.quantity || 0), 0) || 0;
-      dateMap[dateKey].totalUnitsSold += unitsInSale;
-      dateMap[dateKey].sales.push(sale);
+      d.grossUnitsSold += unitsInSale;
+      d.sales.push(sale);
+    });
+
+    returns.forEach((ret) => {
+      const dateKey = getLocalDateString(ret.timestamp) || 'Unknown Date';
+      const d = getOrCreate(dateKey);
+
+      d.totalReturnsCount += 1;
+      d.totalRefunds += (ret.refundAmount || 0);
+      d.unitsReturned += (ret.quantity || 0);
+      d.returns.push(ret);
+    });
+
+    // Compute Net Profit & Net Units for every day
+    Object.values(dateMap).forEach((d) => {
+      d.netProfit = d.grossRevenue - d.totalRefunds;
+      d.netUnitsSold = d.grossUnitsSold - d.unitsReturned;
     });
 
     // Sort descending by date
     return Object.values(dateMap).sort((a, b) => b.date.localeCompare(a.date));
-  }, [sales]);
+  }, [sales, returns]);
 
   // Compute Aggregations for Active Date Filter
-  const filteredRevenue = useMemo(() => {
+  const filteredGrossRevenue = useMemo(() => {
     return filteredSalesByDate.reduce((sum, s) => sum + (s.totalAmount || 0), 0);
   }, [filteredSalesByDate]);
 
-  const filteredItemsSoldQuantity = useMemo(() => {
+  const filteredRefundsTotal = useMemo(() => {
+    return filteredReturnsByDate.reduce((sum, r) => sum + (r.refundAmount || 0), 0);
+  }, [filteredReturnsByDate]);
+
+  const filteredNetProfit = useMemo(() => {
+    return filteredGrossRevenue - filteredRefundsTotal;
+  }, [filteredGrossRevenue, filteredRefundsTotal]);
+
+  const filteredGrossUnitsSold = useMemo(() => {
     return filteredSalesByDate.reduce((sum, sale) => {
       const itemsCount = sale.items?.reduce((iSum, item) => iSum + (item.quantity || 0), 0) || 0;
       return sum + itemsCount;
     }, 0);
   }, [filteredSalesByDate]);
 
+  const filteredUnitsReturned = useMemo(() => {
+    return filteredReturnsByDate.reduce((sum, r) => sum + (r.quantity || 0), 0);
+  }, [filteredReturnsByDate]);
+
+  const filteredNetUnitsSold = useMemo(() => {
+    return filteredGrossUnitsSold - filteredUnitsReturned;
+  }, [filteredGrossUnitsSold, filteredUnitsReturned]);
+
   const filteredDiscounts = useMemo(() => {
     return filteredSalesByDate.reduce((sum, s) => sum + (s.discountAmount || 0), 0);
   }, [filteredSalesByDate]);
 
-  // Aggregate Sold Products for Active Date Filter
+  // Aggregate Sold Products for Active Date Filter with returns subtraction
   const soldProductsSummary = useMemo(() => {
-    const summaryMap: { [barcodeOrId: string]: { barcode: string; name: string; quantitySold: number; totalRevenue: number; lastPrice: number } } = {};
+    const summaryMap: { 
+      [barcodeOrId: string]: { 
+        barcode: string; 
+        name: string; 
+        grossUnitsSold: number; 
+        unitsReturned: number;
+        netUnitsSold: number;
+        grossRevenue: number; 
+        refundedAmount: number;
+        netRevenue: number;
+        lastPrice: number 
+      } 
+    } = {};
 
     filteredSalesByDate.forEach((sale) => {
       sale.items?.forEach((item) => {
@@ -285,19 +415,52 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
           summaryMap[key] = {
             barcode: item.barcode,
             name: item.name,
-            quantitySold: 0,
-            totalRevenue: 0,
+            grossUnitsSold: 0,
+            unitsReturned: 0,
+            netUnitsSold: 0,
+            grossRevenue: 0,
+            refundedAmount: 0,
+            netRevenue: 0,
             lastPrice: item.price
           };
         }
-        summaryMap[key].quantitySold += item.quantity;
-        summaryMap[key].totalRevenue += item.total;
+        summaryMap[key].grossUnitsSold += item.quantity;
+        summaryMap[key].grossRevenue += item.total;
         summaryMap[key].lastPrice = item.price;
       });
     });
 
-    return Object.values(summaryMap).sort((a, b) => b.quantitySold - a.quantitySold);
-  }, [filteredSalesByDate]);
+    filteredReturnsByDate.forEach((ret) => {
+      const key = ret.barcode || ret.productName;
+      if (!summaryMap[key]) {
+        summaryMap[key] = {
+          barcode: ret.barcode || '',
+          name: ret.productName || '',
+          grossUnitsSold: 0,
+          unitsReturned: 0,
+          netUnitsSold: 0,
+          grossRevenue: 0,
+          refundedAmount: 0,
+          netRevenue: 0,
+          lastPrice: ret.price ?? (ret as any).unitPrice ?? 0
+        };
+      }
+      summaryMap[key].unitsReturned += (ret.quantity || 0);
+      summaryMap[key].refundedAmount += (ret.refundAmount || 0);
+      if (typeof ret.price === 'number') {
+        summaryMap[key].lastPrice = ret.price;
+      } else if (typeof (ret as any).unitPrice === 'number') {
+        summaryMap[key].lastPrice = (ret as any).unitPrice;
+      }
+    });
+
+    Object.values(summaryMap).forEach((sp) => {
+      sp.netUnitsSold = sp.grossUnitsSold - sp.unitsReturned;
+      sp.netRevenue = sp.grossRevenue - sp.refundedAmount;
+    });
+
+    return Object.values(summaryMap).sort((a, b) => b.netRevenue - a.netRevenue);
+  }, [filteredSalesByDate, filteredReturnsByDate]);
 
   // Low stock products count
   const lowStockCount = useMemo(() => {
@@ -333,6 +496,20 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       s.items?.some(i => i.name.toLowerCase().includes(term) || i.barcode.toLowerCase().includes(term))
     );
   }, [filteredSalesByDate, searchTerm]);
+
+  // Filtered returns and refunds by search query
+  const filteredReturnsLog = useMemo(() => {
+    if (!searchTerm.trim()) return filteredReturnsByDate;
+    const term = searchTerm.toLowerCase();
+    return filteredReturnsByDate.filter((r) => 
+      r.returnSlipNumber.toLowerCase().includes(term) ||
+      r.productName.toLowerCase().includes(term) ||
+      r.barcode.toLowerCase().includes(term) ||
+      (r.originalReceiptNumber && r.originalReceiptNumber.toLowerCase().includes(term)) ||
+      (r.cashierUsername && r.cashierUsername.toLowerCase().includes(term)) ||
+      (r.reason && r.reason.toLowerCase().includes(term))
+    );
+  }, [filteredReturnsByDate, searchTerm]);
 
   // Text label describing active date filter
   const activeDateFilterLabel = useMemo(() => {
@@ -565,39 +742,60 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
         {/* DYNAMIC REALTIME METRICS CARDS (Adjusts to selected Date Filter) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           
-          {/* Revenue for Date */}
+          {/* Net Profit & Sales Revenue for Date */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                {dateFilter === 'all' ? 'Total Sales Revenue' : 'Sales Revenue (Filtered Date)'}
+                {dateFilter === 'all' ? 'Net Sales Profit' : 'Net Profit (Filtered Date)'}
               </span>
               <div className="p-2 rounded-xl bg-orange-50 text-orange-600 border border-orange-200 font-bold text-xs">
                 <span>PKR</span>
               </div>
             </div>
-            <div className="mt-3 text-2xl sm:text-3xl font-extrabold text-slate-900">
-              Rs. {filteredRevenue.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            <div className="mt-3 text-2xl sm:text-3xl font-black text-slate-900">
+              Rs. {filteredNetProfit.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
-            <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1 font-medium">
-              <TrendingUp className="w-3.5 h-3.5 text-emerald-600" /> From {filteredSalesByDate.length} completed transactions
-            </p>
+            <div className="text-[11px] text-slate-500 mt-1 flex flex-wrap items-center gap-1 font-medium">
+              <span className="text-slate-700 font-bold">Gross: Rs. {filteredGrossRevenue.toFixed(0)}</span>
+              {filteredRefundsTotal > 0 && (
+                <span className="text-red-600 font-bold ml-1">(-Rs. {filteredRefundsTotal.toFixed(0)} refunds)</span>
+              )}
+            </div>
           </div>
 
           {/* Sold Products Quantity for Date */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                {dateFilter === 'all' ? 'Total Units Sold' : 'Units Sold (Filtered Date)'}
+                {dateFilter === 'all' ? 'Net Units Sold' : 'Units Sold (Filtered Date)'}
               </span>
               <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200">
                 <ShoppingBag className="w-5 h-5" />
               </div>
             </div>
             <div className="mt-3 text-2xl sm:text-3xl font-extrabold text-emerald-600">
-              {filteredItemsSoldQuantity.toLocaleString()} <span className="text-xs text-slate-500 font-normal">items</span>
+              {filteredNetUnitsSold.toLocaleString()} <span className="text-xs text-slate-500 font-normal">items</span>
             </div>
             <p className="text-[11px] text-slate-500 mt-1 font-medium">
-              {soldProductsSummary.length} distinct products sold
+              {filteredGrossUnitsSold} gross sold {filteredUnitsReturned > 0 ? `• ${filteredUnitsReturned} restocked returned` : ''}
+            </p>
+          </div>
+
+          {/* Product Returns & Total Refunds */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                {dateFilter === 'all' ? 'Total Returns & Refunds' : 'Refunds (Filtered Date)'}
+              </span>
+              <div className="p-2 rounded-xl bg-red-50 text-red-600 border border-red-200">
+                <Undo2 className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-3 text-2xl sm:text-3xl font-extrabold text-red-600">
+              Rs. {filteredRefundsTotal.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1 font-medium flex items-center gap-1">
+              <RotateCcw className="w-3.5 h-3.5 text-red-500" /> {filteredReturnsByDate.length} return slips ({filteredUnitsReturned} units returned)
             </p>
           </div>
 
@@ -613,29 +811,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
               {products.reduce((acc, p) => acc + (p.stockQuantity || 0), 0).toLocaleString()} <span className="text-xs text-slate-500 font-normal">units</span>
             </div>
             <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1 font-medium">
-              <RefreshCw className="w-3 h-3 text-orange-600 animate-spin" /> Real-time Firestore sync
-            </p>
-          </div>
-
-          {/* Low Stock Warning or Total Discounts */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                {filteredDiscounts > 0 ? 'Discounts Given' : 'Low Stock Alerts'}
-              </span>
-              <div className="p-2 rounded-xl bg-amber-50 text-amber-600 border border-amber-200">
-                {filteredDiscounts > 0 ? <Tag className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
-              </div>
-            </div>
-            <div className="mt-3 text-2xl sm:text-3xl font-extrabold text-amber-600">
-              {filteredDiscounts > 0 ? (
-                <>Rs. {filteredDiscounts.toFixed(2)}</>
-              ) : (
-                <>{lowStockCount} <span className="text-xs text-slate-500 font-normal">items critical</span></>
-              )}
-            </div>
-            <p className="text-[11px] text-slate-500 mt-1 font-medium">
-              {filteredDiscounts > 0 ? `Savings given to customers` : `Stock ≤ 5 units remaining`}
+              <RefreshCw className="w-3 h-3 text-orange-600 animate-spin" /> Real-time Stock Updated
             </p>
           </div>
 
@@ -656,6 +832,17 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             </button>
 
             <button
+              onClick={() => setActiveTab('returns')}
+              className={`px-4 py-2.5 rounded-xl font-bold text-xs cursor-pointer transition-all flex items-center gap-1.5 ${
+                activeTab === 'returns'
+                  ? 'bg-red-600 text-white shadow-sm'
+                  : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+              }`}
+            >
+              <Undo2 className="w-4 h-4 text-red-500" /> Returns & Refunds ({filteredReturnsByDate.length})
+            </button>
+
+            <button
               onClick={() => setActiveTab('sold_products')}
               className={`px-4 py-2.5 rounded-xl font-bold text-xs cursor-pointer transition-all ${
                 activeTab === 'sold_products'
@@ -663,7 +850,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                   : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
               }`}
             >
-              Sold Products Breakdown ({soldProductsSummary.length})
+              Sold Products ({soldProductsSummary.length})
             </button>
 
             <button
@@ -674,7 +861,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                   : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
               }`}
             >
-              Realtime Stock Remaining ({products.length})
+              Realtime Stock ({products.length})
             </button>
 
             <button
@@ -718,15 +905,15 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
               <div>
                 <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <CalendarDays className="w-5 h-5 text-orange-600" /> Day-by-Day Sales Breakdown
+                  <CalendarDays className="w-5 h-5 text-orange-600" /> Day-by-Day Sales & Profit Breakdown
                 </h2>
                 <p className="text-xs text-slate-600 font-medium">
-                  Summary of total revenue, transactions count, units sold, and payment methods for every date.
+                  Summary of gross revenue, customer return refunds, net profit, orders count, and units sold.
                 </p>
               </div>
 
               <div className="text-xs text-slate-500 font-medium bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
-                Total Days with Sales: <strong className="text-slate-900">{dailySalesBreakdown.length}</strong>
+                Total Days with Activity: <strong className="text-slate-900">{dailySalesBreakdown.length}</strong>
               </div>
             </div>
 
@@ -743,11 +930,11 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                     <thead className="bg-slate-50 text-xs text-slate-600 uppercase tracking-wider border-b border-slate-200">
                       <tr>
                         <th className="p-3.5">Date</th>
-                        <th className="p-3.5 text-center">Invoices / Orders</th>
-                        <th className="p-3.5 text-center">Items Sold</th>
-                        <th className="p-3.5 text-center">Payment Split</th>
-                        <th className="p-3.5 text-right">Discount</th>
-                        <th className="p-3.5 text-right">Total Revenue</th>
+                        <th className="p-3.5 text-center">Invoices & Returns</th>
+                        <th className="p-3.5 text-center">Net Units Sold</th>
+                        <th className="p-3.5 text-right">Gross Sales</th>
+                        <th className="p-3.5 text-right">Refunds Deducted</th>
+                        <th className="p-3.5 text-right">Net Profit</th>
                         <th className="p-3.5 text-center">Actions</th>
                       </tr>
                     </thead>
@@ -782,39 +969,40 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                               </td>
 
                               <td className="p-3.5 text-center">
-                                <span className="px-2.5 py-1 rounded-lg text-xs font-extrabold bg-slate-100 text-slate-800">
-                                  {daySummary.totalInvoices} {daySummary.totalInvoices === 1 ? 'order' : 'orders'}
-                                </span>
-                              </td>
-
-                              <td className="p-3.5 text-center font-bold text-slate-700">
-                                {daySummary.totalUnitsSold} units
-                              </td>
-
-                              <td className="p-3.5 text-center text-xs">
-                                <div className="flex items-center justify-center gap-2">
-                                  <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold" title="Cash Revenue">
-                                    Cash: Rs. {daySummary.cashRevenue.toFixed(0)}
+                                <div className="flex flex-col items-center gap-1">
+                                  <span className="px-2.5 py-0.5 rounded-lg text-xs font-extrabold bg-slate-100 text-slate-800">
+                                    {daySummary.totalInvoices} {daySummary.totalInvoices === 1 ? 'order' : 'orders'}
                                   </span>
-                                  {daySummary.onlineRevenue > 0 && (
-                                    <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 font-bold" title="Online Revenue">
-                                      Online: Rs. {daySummary.onlineRevenue.toFixed(0)}
+                                  {daySummary.totalReturnsCount > 0 && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-50 text-red-700 border border-red-200">
+                                      {daySummary.totalReturnsCount} returns
                                     </span>
                                   )}
                                 </div>
                               </td>
 
-                              <td className="p-3.5 text-right font-medium text-slate-600 text-xs">
-                                {daySummary.totalDiscount > 0 ? (
-                                  <span className="text-amber-700 font-bold">-Rs. {daySummary.totalDiscount.toFixed(2)}</span>
+                              <td className="p-3.5 text-center font-bold text-slate-700">
+                                <div>{daySummary.netUnitsSold} units</div>
+                                {daySummary.unitsReturned > 0 && (
+                                  <div className="text-[10px] text-slate-400">({daySummary.grossUnitsSold} sold - {daySummary.unitsReturned} returned)</div>
+                                )}
+                              </td>
+
+                              <td className="p-3.5 text-right font-medium text-slate-700 text-xs">
+                                Rs. {daySummary.grossRevenue.toFixed(2)}
+                              </td>
+
+                              <td className="p-3.5 text-right font-bold text-xs">
+                                {daySummary.totalRefunds > 0 ? (
+                                  <span className="text-red-600">-Rs. {daySummary.totalRefunds.toFixed(2)}</span>
                                 ) : (
-                                  <span className="text-slate-400">-</span>
+                                  <span className="text-slate-400">Rs. 0.00</span>
                                 )}
                               </td>
 
                               <td className="p-3.5 text-right">
-                                <span className="text-base font-black text-orange-600">
-                                  Rs. {daySummary.totalRevenue.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                <span className="text-base font-black text-slate-900">
+                                  Rs. {daySummary.netProfit.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </span>
                               </td>
 
@@ -830,7 +1018,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                                     }`}
                                   >
                                     <Eye className="w-3.5 h-3.5" />
-                                    {isExpanded ? 'Hide Invoices' : `View ${daySummary.totalInvoices} Invoices`}
+                                    {isExpanded ? 'Hide Items' : `View Invoices (${daySummary.totalInvoices})`}
                                   </button>
 
                                   <button
@@ -853,14 +1041,14 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                             {isExpanded && (
                               <tr className="bg-slate-50/90 border-b border-orange-200">
                                 <td colSpan={7} className="p-4 sm:p-6">
-                                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+                                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
                                     <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
                                       <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
                                         <Receipt className="w-4 h-4 text-orange-600" />
                                         Invoices Issued on {daySummary.formattedDate} ({daySummary.sales.length} transactions)
                                       </h4>
                                       <span className="text-xs font-black text-orange-600">
-                                        Daily Total: Rs. {daySummary.totalRevenue.toFixed(2)}
+                                        Net Day Profit: Rs. {daySummary.netProfit.toFixed(2)}
                                       </span>
                                     </div>
 
@@ -905,6 +1093,27 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                                         </div>
                                       ))}
                                     </div>
+
+                                    {daySummary.returns.length > 0 && (
+                                      <div className="pt-2 border-t border-red-100">
+                                        <h5 className="text-[11px] font-bold text-red-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                          <Undo2 className="w-3.5 h-3.5 text-red-600" /> Returns & Refunds Processed on {daySummary.formattedDate}
+                                        </h5>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                          {daySummary.returns.map((ret) => (
+                                            <div key={ret.id} className="p-2.5 rounded-lg border border-red-200 bg-red-50/50 flex items-center justify-between text-xs">
+                                              <div>
+                                                <span className="font-bold text-red-950">Slip #{ret.returnSlipNumber}</span>
+                                                <p className="text-[11px] text-red-800">{ret.productName} ({ret.quantity} {ret.quantity === 1 ? 'unit' : 'units'} restocked)</p>
+                                              </div>
+                                              <div className="text-right font-black text-red-700">
+                                                -Rs. {ret.refundAmount.toFixed(2)}
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
                                 </td>
                               </tr>
@@ -920,21 +1129,120 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
           </div>
         )}
 
-        {/* TAB 2: TOTAL PRODUCTS SOLD WITH NAMES AND QUANTITY (FILTERED BY DATE) */}
+        {/* TAB 2: PRODUCT RETURNS & REFUNDS LOG */}
+        {activeTab === 'returns' && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <Undo2 className="w-5 h-5 text-red-600" /> Customer Product Returns & Refund Log
+                </h2>
+                <p className="text-xs text-slate-600 font-medium">
+                  Showing product returns for: <strong className="text-red-700">{activeDateFilterLabel}</strong>. All returned items are atomically restocked into store inventory and deducted from profits.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-bold text-red-800 bg-red-50 px-3 py-1.5 rounded-xl border border-red-200">
+                  Total Refunded: Rs. {filteredRefundsTotal.toFixed(2)}
+                </span>
+                <span className="text-xs font-bold text-slate-600 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
+                  {filteredReturnsLog.length} Returns
+                </span>
+              </div>
+            </div>
+
+            {filteredReturnsLog.length === 0 ? (
+              <div className="p-12 text-center text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-300">
+                <Undo2 className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                <p className="font-bold text-slate-700">No Product Returns Recorded</p>
+                <p className="text-xs text-slate-500">No product returns or refunds were logged during {activeDateFilterLabel}.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto overflow-y-auto max-h-[580px] overscroll-contain custom-scrollbar border border-slate-200 rounded-xl">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50 text-xs text-slate-600 uppercase tracking-wider border-b border-slate-200 sticky top-0 z-10">
+                    <tr>
+                      <th className="p-3.5">Return Slip #</th>
+                      <th className="p-3.5">Original Receipt</th>
+                      <th className="p-3.5">Product & Barcode</th>
+                      <th className="p-3.5 text-center">Restocked Units</th>
+                      <th className="p-3.5 text-right">Unit Price</th>
+                      <th className="p-3.5 text-right">Refund Deducted</th>
+                      <th className="p-3.5">Reason & Cashier</th>
+                      <th className="p-3.5 text-center">Voucher</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {filteredReturnsLog.map((ret) => (
+                      <tr key={ret.id} className="hover:bg-red-50/30 transition-colors">
+                        <td className="p-3.5">
+                          <span className="font-mono font-bold text-slate-900 text-xs bg-slate-100 px-2 py-1 rounded border border-slate-200">
+                            #{ret.returnSlipNumber}
+                          </span>
+                          <div className="text-[11px] text-slate-500 mt-1">
+                            {new Date(ret.timestamp).toLocaleString()}
+                          </div>
+                        </td>
+                        <td className="p-3.5 font-mono text-xs text-slate-700 font-bold">
+                          {ret.originalReceiptNumber ? `#${ret.originalReceiptNumber}` : 'Direct Return'}
+                        </td>
+                        <td className="p-3.5">
+                          <div className="font-bold text-slate-900">{ret.productName}</div>
+                          <div className="font-mono text-[11px] text-slate-500">{ret.barcode}</div>
+                        </td>
+                        <td className="p-3.5 text-center">
+                          <span className="px-2.5 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            +{ret.quantity} Restocked
+                          </span>
+                        </td>
+                        <td className="p-3.5 text-right font-medium text-slate-700">
+                          Rs. {(ret.price ?? (ret as any).unitPrice ?? 0).toFixed(2)}
+                        </td>
+                        <td className="p-3.5 text-right font-extrabold text-red-600">
+                          -Rs. {(ret.refundAmount || 0).toFixed(2)}
+                        </td>
+                        <td className="p-3.5 text-xs text-slate-600">
+                          <div className="font-medium">{ret.reason}</div>
+                          <div className="text-[11px] text-slate-500">By: {ret.cashierUsername} ({ret.counterName})</div>
+                        </td>
+                        <td className="p-3.5 text-center">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setViewingReturnSlip(ret);
+                              setIsReturnSlipOpen(true);
+                            }}
+                            className="px-2.5 py-1.5 bg-red-50 hover:bg-red-600 text-red-700 hover:text-white rounded-lg border border-red-200 transition-colors font-bold text-xs cursor-pointer flex items-center gap-1 mx-auto"
+                            title="View Return Slip Voucher"
+                          >
+                            <Eye className="w-3.5 h-3.5" /> Voucher
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 3: TOTAL PRODUCTS SOLD WITH NAMES AND QUANTITY (FILTERED BY DATE) */}
         {activeTab === 'sold_products' && (
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
               <div>
                 <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <ShoppingBag className="w-5 h-5 text-orange-600" /> Products Sold Velocity Breakdown
+                  <ShoppingBag className="w-5 h-5 text-orange-600" /> Products Sold Velocity & Net Revenue
                 </h2>
                 <p className="text-xs text-slate-600 font-medium">
-                  Showing sold items for: <strong className="text-orange-700">{activeDateFilterLabel}</strong>
+                  Showing sold items for: <strong className="text-orange-700">{activeDateFilterLabel}</strong> (returns automatically deducted)
                 </p>
               </div>
 
               <span className="text-xs font-bold text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
-                {filteredSoldProducts.length} Distinct Products Sold
+                {filteredSoldProducts.length} Distinct Products Active
               </span>
             </div>
 
@@ -950,8 +1258,10 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                       <th className="p-3.5">Product Name</th>
                       <th className="p-3.5">Barcode</th>
                       <th className="p-3.5 text-center">Unit Price</th>
-                      <th className="p-3.5 text-center">Quantity Sold</th>
-                      <th className="p-3.5 text-right">Total Revenue</th>
+                      <th className="p-3.5 text-center">Gross Sold</th>
+                      <th className="p-3.5 text-center">Restocked Returns</th>
+                      <th className="p-3.5 text-center">Net Units Sold</th>
+                      <th className="p-3.5 text-right">Net Profit / Revenue</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
@@ -967,15 +1277,27 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                           {sp.barcode}
                         </td>
                         <td className="p-3.5 text-center font-semibold text-slate-700">
-                          Rs. {sp.lastPrice.toFixed(2)}
+                          Rs. {(sp.lastPrice || 0).toFixed(2)}
+                        </td>
+                        <td className="p-3.5 text-center text-slate-700 font-medium">
+                          {sp.grossUnitsSold} units
+                        </td>
+                        <td className="p-3.5 text-center">
+                          {sp.unitsReturned > 0 ? (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-red-50 text-red-700 border border-red-200">
+                              -{sp.unitsReturned} returned
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
                         </td>
                         <td className="p-3.5 text-center">
                           <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            {sp.quantitySold} units
+                            {sp.netUnitsSold} units
                           </span>
                         </td>
                         <td className="p-3.5 text-right font-extrabold text-orange-600">
-                          Rs. {sp.totalRevenue.toFixed(2)}
+                          Rs. {(sp.netRevenue || 0).toFixed(2)}
                         </td>
                       </tr>
                     ))}
@@ -1036,7 +1358,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                             </span>
                           </td>
                           <td className="p-3.5 text-center font-bold text-orange-600">
-                            Rs. {p.price?.toFixed(2)}
+                            Rs. {(p.price ?? 0).toFixed(2)}
                           </td>
                           <td className="p-3.5 text-center font-black text-lg">
                             <span className={isOutOfStock ? 'text-red-600' : isLowStock ? 'text-amber-600' : 'text-emerald-600'}>
@@ -1162,6 +1484,19 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
               ))}
             </div>
           </div>
+        )}
+
+        {/* RETURN SLIP MODAL */}
+        {isReturnSlipOpen && viewingReturnSlip && (
+          <ReturnSlipModal
+            isOpen={isReturnSlipOpen}
+            onClose={() => {
+              setIsReturnSlipOpen(false);
+              setViewingReturnSlip(null);
+            }}
+            returnRecord={viewingReturnSlip}
+            storeName={store.name}
+          />
         )}
 
       </div>

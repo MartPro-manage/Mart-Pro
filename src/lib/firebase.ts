@@ -22,12 +22,12 @@ import { UserAccount, Store, Product, Sale } from '../types';
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Safely initialize Firestore with memoryLocalCache and auto-detected long polling for resilient connections
+// Safely initialize Firestore with memoryLocalCache and forced long polling for resilient connections in iframe sandbox
 function initDb() {
   const dbId = firebaseConfig.firestoreDatabaseId || undefined;
   const firestoreSettings = {
     localCache: memoryLocalCache(),
-    experimentalAutoDetectLongPolling: true,
+    experimentalForceLongPolling: true,
     ignoreUndefinedProperties: true
   };
   try {

@@ -73,6 +73,27 @@ export interface Sale {
   timestamp: string;
 }
 
+export interface ProductReturn {
+  id: string;
+  storeId: string;
+  storeName?: string;
+  counterId: string;
+  counterName: string;
+  cashierUsername: string;
+  productId: string;
+  productName: string;
+  barcode: string;
+  serialNumber?: string;
+  price: number;
+  quantity: number;
+  refundAmount: number;
+  refundMethod: 'cash' | 'online';
+  reason?: string;
+  originalReceiptNumber?: string;
+  returnSlipNumber: string;
+  timestamp: string;
+}
+
 export interface AuthState {
   user: UserAccount | null;
   store: Store | null;

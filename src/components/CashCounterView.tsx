@@ -11,9 +11,11 @@ import {
   OperationType,
   cleanFirestoreData
 } from '../lib/firebase';
-import { Product, Store, UserAccount, CartItem, Sale, SaleItem } from '../types';
+import { Product, Store, UserAccount, CartItem, Sale, SaleItem, ProductReturn } from '../types';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
 import { ReceiptModal } from './ReceiptModal';
+import { ReturnProductModal } from './ReturnProductModal';
+import { ReturnSlipModal } from './ReturnSlipModal';
 import { HardwarePermissionsBar } from './HardwarePermissionsBar';
 import { CashPaymentModal } from './CashPaymentModal';
 import { speakMessage } from '../lib/speech';
@@ -37,7 +39,10 @@ import {
   Percent,
   Tag,
   ToggleLeft,
-  ToggleRight
+  ToggleRight,
+  RotateCcw,
+  Undo2,
+  Receipt
 } from 'lucide-react';
 
 interface CashCounterViewProps {
@@ -47,6 +52,8 @@ interface CashCounterViewProps {
 
 export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, currentUser }) => {
   const [products, setProducts] = useState<Product[]>([]);
+  const [recentSales, setRecentSales] = useState<Sale[]>([]);
+  const [recentReturns, setRecentReturns] = useState<ProductReturn[]>([]);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
 
   // Inbuilt Camera Scanner is controlled exclusively by Super Admin per store
@@ -59,6 +66,11 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
   const [searchTerm, setSearchTerm] = useState('');
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [isCashModalOpen, setIsCashModalOpen] = useState(false);
+
+  // Return Product State
+  const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
+  const [isReturnSlipOpen, setIsReturnSlipOpen] = useState(false);
+  const [completedReturn, setCompletedReturn] = useState<ProductReturn | null>(null);
 
   // Discount State
   const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage');
@@ -79,34 +91,48 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     setTimeout(() => setMsg(null), 5000);
   };
 
-  // Add Product to Cart by Barcode, Serial Number, Name or ID (Hands-free automatic support)
+  // Normalization helper for accurate barcode and code matching
+  const cleanCode = (v: any) => String(v ?? '').replace(/[\r\n\t\s]/g, '').trim().toLowerCase();
+  const cleanName = (v: any) => String(v ?? '').trim().toLowerCase();
+
+  // Add Product to Cart by Full Barcode, Serial Number, or Code (Hands-free automatic support)
   const handleAddByBarcode = useCallback((targetBarcodeOrSerial: string, isExternalScanner: boolean = false) => {
-    const trimmed = targetBarcodeOrSerial.trim().toLowerCase();
-    if (!trimmed) return;
+    const rawCode = targetBarcodeOrSerial ? targetBarcodeOrSerial.replace(/[\r\n\t]/g, '').trim() : '';
+    if (!rawCode) return;
 
-    // Look up product by:
-    // 1. Exact Barcode OR Serial Number OR ID
-    // 2. Exact Name (case-insensitive)
-    // 3. Substring/prefix match on name or barcode
-    let found = products.find(
-      p => (p.barcode && p.barcode.trim().toLowerCase() === trimmed) || 
-           (p.serialNumber && p.serialNumber.trim().toLowerCase() === trimmed) ||
-           p.id === targetBarcodeOrSerial ||
-           p.name.trim().toLowerCase() === trimmed
-    );
+    const targetCode = cleanCode(rawCode);
+    const targetName = cleanName(rawCode);
 
+    // 1. Direct exact full match on barcode, serial number, ID, or full name
+    let found = products.find(p => {
+      const pBarcode = cleanCode(p.barcode);
+      const pSerial = cleanCode(p.serialNumber);
+      const pId = cleanCode(p.id);
+      const pName = cleanName(p.name);
+
+      if (pBarcode && pBarcode === targetCode) return true;
+      if (pSerial && pSerial === targetCode) return true;
+      if (pId && pId === targetCode) return true;
+      if (pName && pName === targetName) return true;
+      return false;
+    });
+
+    // 2. Fallback for leading-zero variations in standard barcode formats (e.g. UPC/EAN)
     if (!found) {
-      // Try partial match if no exact match
-      found = products.find(
-        p => p.name.trim().toLowerCase().includes(trimmed) ||
-             (p.barcode && p.barcode.trim().toLowerCase().includes(trimmed)) ||
-             (p.serialNumber && p.serialNumber.trim().toLowerCase().includes(trimmed))
-      );
+      const targetDigitsNoZero = targetCode.replace(/^0+/, '');
+      if (targetDigitsNoZero.length >= 3) {
+        found = products.find(p => {
+          const pBarcodeDigits = cleanCode(p.barcode).replace(/^0+/, '');
+          const pSerialDigits = cleanCode(p.serialNumber).replace(/^0+/, '');
+          return (pBarcodeDigits && pBarcodeDigits === targetDigitsNoZero) ||
+                 (pSerialDigits && pSerialDigits === targetDigitsNoZero);
+        });
+      }
     }
 
     if (!found) {
       playScanErrorBeep();
-      showNotification('error', `No product found matching "${targetBarcodeOrSerial}". Please check code or register it.`);
+      showNotification('error', `No product matches barcode "${rawCode}". Barcode must match completely.`);
       setBarcodeInput('');
       return;
     }
@@ -114,12 +140,18 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     if (found.stockQuantity <= 0) {
       playScanErrorBeep();
       showNotification('error', `"${found.name}" is OUT OF STOCK! (0 units available).`);
+      if (voiceEnabled) {
+        speakMessage(`${found.name} is out of stock`);
+      }
       setBarcodeInput('');
       return;
     }
 
     // Success sound feedback
     playScanSuccessBeep();
+    if (voiceEnabled) {
+      speakMessage(`Added ${found.name}`);
+    }
 
     // Add or increment in cart
     setCart((prevCart) => {
@@ -139,10 +171,10 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           quantity: newQty,
           totalPrice: newQty * found!.price
         };
-        showNotification('success', `Incremented "${found!.name}" (Qty: ${newQty})`);
+        showNotification('success', `Incremented "${found!.name}" in list (Qty: ${newQty})`);
         return updated;
       } else {
-        showNotification('success', `Added "${found!.name}" to cart (Rs. ${found!.price.toFixed(2)})`);
+        showNotification('success', `Matched & added "${found!.name}" to list (Rs. ${found!.price.toFixed(2)})`);
         return [
           ...prevCart,
           {
@@ -155,24 +187,30 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     });
 
     setBarcodeInput('');
-  }, [products]);
+  }, [products, voiceEnabled]);
 
   // Auto focus barcode input for fast hardware USB barcode scanner support
   useEffect(() => {
-    if (!isScannerOpen && !isReceiptOpen && barcodeInputRef.current) {
+    const isAnyModalOpen = isScannerOpen || isReceiptOpen || isReturnModalOpen || isReturnSlipOpen || isCashModalOpen;
+    if (!isAnyModalOpen && barcodeInputRef.current) {
       barcodeInputRef.current.focus();
     }
-  }, [isScannerOpen, isReceiptOpen, cart.length]);
+  }, [isScannerOpen, isReceiptOpen, isReturnModalOpen, isReturnSlipOpen, isCashModalOpen, cart.length]);
 
   // External Hardware Barcode Scanner Listener (Hands-free continuous scanning without clicking any button)
   useEffect(() => {
+    const isAnyModalOpen = isScannerOpen || isReceiptOpen || isReturnModalOpen || isReturnSlipOpen || isCashModalOpen;
+    if (isAnyModalOpen) {
+      return;
+    }
+
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       const activeEl = document.activeElement;
-      const isSearchActive = activeEl && activeEl.getAttribute('id') === 'product-search-input';
-      const isDiscountInput = activeEl && activeEl.getAttribute('id') === 'discount-input-value';
+      const tagName = activeEl?.tagName?.toUpperCase();
+      const isInputActive = tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT';
       
-      // If user is actively typing in the search box, discount input, or modals, skip auto-scanner buffer
-      if (isSearchActive || isDiscountInput || isCashModalOpen || isReceiptOpen) {
+      // If user is actively typing in ANY input field or modal, skip auto-scanner buffer
+      if (isInputActive && activeEl !== barcodeInputRef.current) {
         return;
       }
 
@@ -182,29 +220,34 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
 
       // When Enter is received from external scanner or keyboard
       if (e.key === 'Enter') {
-        const scannedText = scannerBufferRef.current.trim() || (activeEl === barcodeInputRef.current ? barcodeInput.trim() : '');
+        const isFocusedOnBarcodeInput = activeEl === barcodeInputRef.current;
+        const scannedText = isFocusedOnBarcodeInput
+          ? (barcodeInputRef.current?.value || barcodeInput || '').trim()
+          : scannerBufferRef.current.trim();
+
         if (scannedText) {
           e.preventDefault();
           handleAddByBarcode(scannedText, true);
           scannerBufferRef.current = '';
           setBarcodeInput('');
           if (barcodeInputRef.current) {
+            barcodeInputRef.current.value = '';
             barcodeInputRef.current.focus();
           }
         }
         return;
       }
 
-      // If key is printable character
-      if (e.key.length === 1) {
+      // If key is printable character and user is NOT typing in an active input field
+      if (!isInputActive && e.key.length === 1) {
         if (timeDiff > 250) {
           scannerBufferRef.current = e.key;
         } else {
           scannerBufferRef.current += e.key;
         }
 
-        // Always keep focus inside barcode input if not inside another form field
-        if (activeEl !== barcodeInputRef.current && barcodeInputRef.current) {
+        // Always keep focus inside barcode input
+        if (barcodeInputRef.current) {
           barcodeInputRef.current.focus();
         }
       }
@@ -212,18 +255,19 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
 
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [isCashModalOpen, isReceiptOpen, barcodeInput, handleAddByBarcode]);
+  }, [isCashModalOpen, isReceiptOpen, isReturnModalOpen, isReturnSlipOpen, isScannerOpen, barcodeInput, handleAddByBarcode]);
 
-  // Subscribe to products in real-time for this store
+  // Subscribe to products, sales, and returns in real-time for this store
   useEffect(() => {
     if (!store?.id) return;
 
-    const q = query(
+    // 1. Products
+    const qProducts = query(
       collection(db, 'products'),
       where('storeId', '==', store.id)
     );
 
-    const unsub = onSnapshot(q, (snapshot) => {
+    const unsubProducts = onSnapshot(qProducts, (snapshot) => {
       const list: Product[] = [];
       snapshot.forEach((docSnap) => {
         list.push({ id: docSnap.id, ...docSnap.data() } as Product);
@@ -233,7 +277,45 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
       handleFirestoreError(err, OperationType.GET, 'products');
     });
 
-    return () => unsub();
+    // 2. Sales
+    const qSales = query(
+      collection(db, 'sales'),
+      where('storeId', '==', store.id)
+    );
+
+    const unsubSales = onSnapshot(qSales, (snapshot) => {
+      const list: Sale[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() } as Sale);
+      });
+      list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      setRecentSales(list);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, 'sales');
+    });
+
+    // 3. Returns
+    const qReturns = query(
+      collection(db, 'returns'),
+      where('storeId', '==', store.id)
+    );
+
+    const unsubReturns = onSnapshot(qReturns, (snapshot) => {
+      const list: ProductReturn[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() } as ProductReturn);
+      });
+      list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      setRecentReturns(list);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, 'returns');
+    });
+
+    return () => {
+      unsubProducts();
+      unsubSales();
+      unsubReturns();
+    };
   }, [store?.id]);
 
   // Add product from click
@@ -498,6 +580,16 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
 
           {/* Top Bar Actions & Camera Scanner Visibility Check */}
           <div className="flex flex-wrap items-center gap-2.5 z-10">
+            {/* RETURN / REFUND PRODUCT BUTTON */}
+            <button
+              id="btn-return-product-modal"
+              onClick={() => setIsReturnModalOpen(true)}
+              className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-extrabold text-xs rounded-xl border border-rose-200 shadow-xs transition-all flex items-center gap-2 cursor-pointer"
+              title="Process product return, restock item to inventory, and issue customer refund"
+            >
+              <RotateCcw className="w-4 h-4 text-rose-600" /> Return / Refund Item
+            </button>
+
             {isCameraScannerAllowed ? (
               <button
                 id="btn-scan-camera-barcode"
@@ -515,6 +607,38 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
             )}
           </div>
         </div>
+
+        {/* Recent Returns Shift Banner (if returns processed today) */}
+        {recentReturns.length > 0 && (
+          <div className="bg-rose-50/80 border border-rose-200/80 rounded-2xl p-3 sm:px-4 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2.5 text-rose-900 font-medium">
+              <div className="p-1.5 bg-rose-600 text-white rounded-lg shadow-xs">
+                <RotateCcw className="w-3.5 h-3.5" />
+              </div>
+              <span>
+                <strong>{recentReturns.length} Return(s) Processed</strong> &bull; Total Refunded:{' '}
+                <strong className="text-rose-700 font-bold">
+                  Rs. {recentReturns.reduce((sum, r) => sum + (r.refundAmount || 0), 0).toFixed(2)}
+                </strong>{' '}
+                &bull; Restocked to Inventory:{' '}
+                <strong className="text-emerald-700 font-bold">
+                  +{recentReturns.reduce((sum, r) => sum + (r.quantity || 0), 0)} units
+                </strong>
+              </span>
+            </div>
+            <button
+              onClick={() => {
+                if (recentReturns.length > 0) {
+                  setCompletedReturn(recentReturns[0]);
+                  setIsReturnSlipOpen(true);
+                }
+              }}
+              className="px-3 py-1 bg-white hover:bg-rose-100/60 text-rose-700 font-bold rounded-lg border border-rose-200 text-[11px] transition-colors cursor-pointer flex items-center gap-1.5"
+            >
+              <Receipt className="w-3 h-3 text-rose-600" /> View Latest Return Slip
+            </button>
+          </div>
+        )}
 
         {/* Hardware Permissions, Scanner Status & Audio Controls Bar */}
         <HardwarePermissionsBar 
@@ -554,8 +678,13 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  handleAddByBarcode(barcodeInput);
+                  const val = (barcodeInput || barcodeInputRef.current?.value || '').trim();
+                  if (val) {
+                    handleAddByBarcode(val);
+                  }
+                  setBarcodeInput('');
                   if (barcodeInputRef.current) {
+                    barcodeInputRef.current.value = '';
                     barcodeInputRef.current.focus();
                   }
                 }}
@@ -1006,6 +1135,31 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           isOpen={isReceiptOpen}
           onClose={() => setIsReceiptOpen(false)}
           voiceEnabled={voiceEnabled}
+        />
+
+        {/* Process Product Return & Restock Modal */}
+        <ReturnProductModal
+          isOpen={isReturnModalOpen}
+          onClose={() => setIsReturnModalOpen(false)}
+          products={products}
+          store={store}
+          currentUser={currentUser}
+          recentSales={recentSales}
+          voiceEnabled={voiceEnabled}
+          isCameraScannerAllowed={isCameraScannerAllowed}
+          onReturnProcessed={(returnRec) => {
+            setCompletedReturn(returnRec);
+            setIsReturnSlipOpen(true);
+            showNotification('success', `Returned "${returnRec.productName}". Restocked +${returnRec.quantity} units to inventory.`);
+          }}
+        />
+
+        {/* Official Return & Refund Voucher Slip Modal */}
+        <ReturnSlipModal
+          returnRecord={completedReturn}
+          store={store}
+          isOpen={isReturnSlipOpen}
+          onClose={() => setIsReturnSlipOpen(false)}
         />
 
       </div>

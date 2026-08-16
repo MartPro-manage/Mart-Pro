@@ -56,8 +56,9 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
   const [recentReturns, setRecentReturns] = useState<ProductReturn[]>([]);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
 
-  // Inbuilt Camera Scanner is controlled exclusively by Super Admin per store
+  // Inbuilt Camera Scanner and Voice Announcements are controlled by Super Admin per store
   const isCameraScannerAllowed = store?.cameraScannerEnabled !== false;
+  const isVoiceAllowed = store?.voiceAnnouncementEnabled !== false;
 
   // POS State
   const [barcodeInput, setBarcodeInput] = useState('');
@@ -140,7 +141,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     if (found.stockQuantity <= 0) {
       playScanErrorBeep();
       showNotification('error', `"${found.name}" is OUT OF STOCK! (0 units available).`);
-      if (voiceEnabled) {
+      if (isVoiceAllowed && voiceEnabled) {
         speakMessage(`${found.name} is out of stock`);
       }
       setBarcodeInput('');
@@ -149,7 +150,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
 
     // Success sound feedback
     playScanSuccessBeep();
-    if (voiceEnabled) {
+    if (isVoiceAllowed && voiceEnabled) {
       speakMessage(`Added ${found.name}`);
     }
 
@@ -187,7 +188,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     });
 
     setBarcodeInput('');
-  }, [products, voiceEnabled]);
+  }, [products, isVoiceAllowed, voiceEnabled]);
 
   // Auto focus barcode input for fast hardware USB barcode scanner support
   useEffect(() => {
@@ -530,12 +531,13 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
       setCart([]);
       setDiscountValue(0);
       
-      // Voice & Text Thank You greeting for purchase according to store name
+      // Voice & Text Thank You greeting with Total Bill Amount for purchase according to store name
       const storeName = store.name || 'our store';
-      if (voiceEnabled) {
-        speakMessage(`Thank you for shopping at ${storeName}!`);
+      const formattedTotal = cartTotal % 1 === 0 ? cartTotal.toFixed(0) : cartTotal.toFixed(2);
+      if (isVoiceAllowed && voiceEnabled) {
+        speakMessage(`Total bill is ${formattedTotal} rupees. Thank you for shopping at ${storeName}!`);
       }
-      showNotification('success', `🎉 Thank you for shopping at ${storeName}! Transaction #${receiptNum} completed.`);
+      showNotification('success', `🎉 Thank you for shopping at ${storeName}! Total: Rs. ${formattedTotal}. Transaction #${receiptNum} completed.`);
 
     } catch (err: any) {
       console.error('Checkout error:', err);
@@ -644,6 +646,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
         <HardwarePermissionsBar 
           voiceEnabled={voiceEnabled} 
           onToggleVoice={setVoiceEnabled}
+          voiceAllowed={isVoiceAllowed}
           cameraScannerEnabled={isCameraScannerAllowed}
         />
 
@@ -1134,7 +1137,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           store={store}
           isOpen={isReceiptOpen}
           onClose={() => setIsReceiptOpen(false)}
-          voiceEnabled={voiceEnabled}
+          voiceEnabled={isVoiceAllowed && voiceEnabled}
         />
 
         {/* Process Product Return & Restock Modal */}
@@ -1145,7 +1148,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           store={store}
           currentUser={currentUser}
           recentSales={recentSales}
-          voiceEnabled={voiceEnabled}
+          voiceEnabled={isVoiceAllowed && voiceEnabled}
           isCameraScannerAllowed={isCameraScannerAllowed}
           onReturnProcessed={(returnRec) => {
             setCompletedReturn(returnRec);

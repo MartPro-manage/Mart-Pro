@@ -12,13 +12,15 @@ import {
   XCircle, 
   Sparkles, 
   Play,
-  Settings
+  Settings,
+  Lock
 } from 'lucide-react';
 import { speakMessage } from '../lib/speech';
 
 interface HardwarePermissionsBarProps {
   voiceEnabled: boolean;
   onToggleVoice: (enabled: boolean) => void;
+  voiceAllowed?: boolean;
   cameraScannerEnabled?: boolean;
   onToggleCameraScanner?: (enabled: boolean) => void;
 }
@@ -26,6 +28,7 @@ interface HardwarePermissionsBarProps {
 export const HardwarePermissionsBar: React.FC<HardwarePermissionsBarProps> = ({
   voiceEnabled,
   onToggleVoice,
+  voiceAllowed = true,
   cameraScannerEnabled = true,
   onToggleCameraScanner
 }) => {
@@ -103,8 +106,13 @@ export const HardwarePermissionsBar: React.FC<HardwarePermissionsBarProps> = ({
   };
 
   const handleTestVoice = () => {
-    speakMessage('Thank you for your purchase!');
-    setPermissionMsg('🔊 Speaking: "Thank you for your purchase!"');
+    if (!voiceAllowed) {
+      setPermissionMsg('⚠️ Voice generation is DISALLOWED by Super Admin policy for this store.');
+      setTimeout(() => setPermissionMsg(null), 4000);
+      return;
+    }
+    speakMessage('Total bill is 450 rupees. Thank you for shopping with us!');
+    setPermissionMsg('🔊 Speaking: "Total bill is 450 rupees. Thank you for shopping with us!"');
     setTimeout(() => setPermissionMsg(null), 4000);
   };
 
@@ -146,23 +154,41 @@ export const HardwarePermissionsBar: React.FC<HardwarePermissionsBarProps> = ({
           <button
             type="button"
             onClick={handleTestVoice}
-            className="px-3 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
-            title="Test voice greeting"
+            disabled={!voiceAllowed}
+            className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm ${
+              voiceAllowed
+                ? 'bg-orange-600 hover:bg-orange-500 text-white cursor-pointer'
+                : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
+            }`}
+            title={voiceAllowed ? "Test voice greeting & bill total audio" : "Voice generation disallowed by Super Admin"}
           >
-            <Volume2 className="w-3.5 h-3.5 animate-pulse" /> Test Voice
+            <Volume2 className={`w-3.5 h-3.5 ${voiceAllowed ? 'animate-pulse' : ''}`} /> Test Voice
           </button>
 
           <button
             type="button"
-            onClick={() => onToggleVoice(!voiceEnabled)}
-            className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer border ${
-              voiceEnabled 
-                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30' 
-                : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'
+            onClick={() => voiceAllowed && onToggleVoice(!voiceEnabled)}
+            disabled={!voiceAllowed}
+            className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all border ${
+              !voiceAllowed
+                ? 'bg-slate-800/80 text-rose-400/80 border-rose-900/40 cursor-not-allowed'
+                : voiceEnabled 
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30 cursor-pointer' 
+                  : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700 cursor-pointer'
             }`}
+            title={!voiceAllowed ? "Voice generation disallowed by Super Admin" : "Toggle voice announcements"}
           >
-            {voiceEnabled ? <Volume2 className="w-3.5 h-3.5 text-emerald-400" /> : <VolumeX className="w-3.5 h-3.5" />}
-            <span>Voice Greeting: {voiceEnabled ? 'ON' : 'OFF'}</span>
+            {!voiceAllowed ? (
+              <>
+                <Lock className="w-3.5 h-3.5 text-rose-400" />
+                <span>Voice: DISALLOWED</span>
+              </>
+            ) : (
+              <>
+                {voiceEnabled ? <Volume2 className="w-3.5 h-3.5 text-emerald-400" /> : <VolumeX className="w-3.5 h-3.5" />}
+                <span>Voice: {voiceEnabled ? 'ON' : 'OFF'}</span>
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -231,36 +257,49 @@ export const HardwarePermissionsBar: React.FC<HardwarePermissionsBarProps> = ({
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" title="External Scanner Listener Active" />
         </div>
 
-        {/* Microphone Permission Control */}
+        {/* Microphone & Voice Audio Status */}
         <div className="bg-slate-950/70 p-3 rounded-xl border border-slate-800 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <div className={`p-2 rounded-lg ${micState === 'granted' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-400'}`}>
-              <Mic className="w-4 h-4" />
+            <div className={`p-2 rounded-lg ${
+              !voiceAllowed 
+                ? 'bg-rose-500/20 text-rose-400' 
+                : voiceEnabled 
+                  ? 'bg-emerald-500/20 text-emerald-400' 
+                  : 'bg-slate-800 text-slate-400'
+            }`}>
+              {!voiceAllowed ? <Lock className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
             </div>
             <div>
               <div className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
                 Voice Audio
-                {voiceEnabled ? (
+                {!voiceAllowed ? (
+                  <span className="text-[10px] bg-rose-500/20 text-rose-400 px-1.5 py-0.2 rounded font-mono font-bold">SUPERADMIN BLOCKED</span>
+                ) : voiceEnabled ? (
                   <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.2 rounded font-mono font-bold">READY</span>
                 ) : (
                   <span className="text-[10px] bg-slate-700 text-slate-400 px-1.5 py-0.2 rounded font-mono font-bold">MUTED</span>
                 )}
               </div>
-              <div className="text-[10px] text-slate-400 font-medium">Thank you voice greeting</div>
+              <div className="text-[10px] text-slate-400 font-medium">
+                {!voiceAllowed ? 'Disallowed by Super Admin' : 'Bill total & thank you speech'}
+              </div>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5">
             <button
               type="button"
-              onClick={() => onToggleVoice(!voiceEnabled)}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-                voiceEnabled
-                  ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
-                  : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm'
+              onClick={() => voiceAllowed && onToggleVoice(!voiceEnabled)}
+              disabled={!voiceAllowed}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                !voiceAllowed
+                  ? 'bg-slate-800 text-slate-600 border border-slate-700 cursor-not-allowed'
+                  : voiceEnabled
+                    ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer'
+                    : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm cursor-pointer'
               }`}
             >
-              {voiceEnabled ? 'Mute' : 'Unmute'}
+              {!voiceAllowed ? 'Locked' : voiceEnabled ? 'Mute' : 'Unmute'}
             </button>
           </div>
         </div>

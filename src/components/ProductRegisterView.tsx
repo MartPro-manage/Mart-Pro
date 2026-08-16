@@ -542,6 +542,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
         <HardwarePermissionsBar 
           voiceEnabled={voiceEnabled} 
           onToggleVoice={setVoiceEnabled} 
+          voiceAllowed={store?.voiceAnnouncementEnabled !== false}
         />
 
         {/* Global Notifications */}

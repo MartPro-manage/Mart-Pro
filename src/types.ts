@@ -7,6 +7,7 @@ export interface Store {
   adminPassword?: string;
   status?: 'active' | 'disabled';
   cameraScannerEnabled?: boolean; // Super admin can enable/disable inbuilt barcode camera for each store
+  voiceAnnouncementEnabled?: boolean; // Super admin can allow/disallow audio voice generation for each store
   createdAt: string;
 }
 

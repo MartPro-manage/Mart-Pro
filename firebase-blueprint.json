@@ -6,6 +6,9 @@
         "name": { "type": "string", "description": "Store name" },
         "adminUsername": { "type": "string", "description": "Store admin login username" },
         "adminPassword": { "type": "string", "description": "Store admin login password" },
+        "status": { "type": "string", "description": "Store status: active or disabled" },
+        "cameraScannerEnabled": { "type": "boolean", "description": "Super admin permission to enable/disable inbuilt camera barcode scanner for store" },
+        "voiceAnnouncementEnabled": { "type": "boolean", "description": "Super admin permission to allow/disallow audio voice generation for store" },
         "createdAt": { "type": "string", "description": "Creation ISO date string" }
       }
     },

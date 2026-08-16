@@ -39,6 +39,8 @@ import {
   User,
   Shield,
   Camera,
+  Volume2,
+  VolumeX,
   ToggleLeft,
   ToggleRight
 } from 'lucide-react';
@@ -57,6 +59,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
   const [newStoreAdminUsername, setNewStoreAdminUsername] = useState('');
   const [newStoreAdminPassword, setNewStoreAdminPassword] = useState('');
   const [newStoreCameraScannerEnabled, setNewStoreCameraScannerEnabled] = useState(true);
+  const [newStoreVoiceAnnouncementEnabled, setNewStoreVoiceAnnouncementEnabled] = useState(true);
 
   // Form states - Create Cash Counter
   const [selectedStoreIdForCounter, setSelectedStoreIdForCounter] = useState('');
@@ -169,6 +172,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
         adminPassword: adminPassword,
         status: 'active',
         cameraScannerEnabled: newStoreCameraScannerEnabled,
+        voiceAnnouncementEnabled: newStoreVoiceAnnouncementEnabled,
         createdAt: new Date().toISOString()
       };
       await setDoc(storeDocRef, newStoreData);
@@ -191,6 +195,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
       setNewStoreAdminUsername('');
       setNewStoreAdminPassword('');
       setNewStoreCameraScannerEnabled(true);
+      setNewStoreVoiceAnnouncementEnabled(true);
     } catch (err: any) {
       console.error(err);
       showNotification('error', 'Failed to create store: ' + err.message);
@@ -220,6 +225,32 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
     } catch (err: any) {
       console.error(err);
       showNotification('error', 'Failed to toggle camera scanner setting: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Toggle Checkout Voice Announcement & Audio Generation per Store (Super Admin Exclusive)
+  const handleToggleVoiceAnnouncement = async (store: Store) => {
+    setLoading(true);
+    try {
+      const currentVal = store.voiceAnnouncementEnabled !== false;
+      const nextVal = !currentVal;
+      const storeRef = doc(db, 'stores', store.id);
+      await updateDoc(storeRef, { voiceAnnouncementEnabled: nextVal });
+
+      showNotification(
+        'success',
+        `Voice Generation & Audio Announcements ${nextVal ? 'ALLOWED & ENABLED' : 'DISALLOWED & MUTED'} for store "${store.name}".`
+      );
+
+      // Also update local modal state if open
+      if (furtherDetailsStore && furtherDetailsStore.id === store.id) {
+        setFurtherDetailsStore({ ...furtherDetailsStore, voiceAnnouncementEnabled: nextVal });
+      }
+    } catch (err: any) {
+      console.error(err);
+      showNotification('error', 'Failed to toggle voice generation permission: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -617,19 +648,51 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                     onClick={() => setNewStoreCameraScannerEnabled(!newStoreCameraScannerEnabled)}
                     className={`px-3 py-1.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 border transition-all cursor-pointer ${
                       newStoreCameraScannerEnabled
-                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100'
+                        ? 'bg-purple-50 border-purple-300 text-purple-800 hover:bg-purple-100'
                         : 'bg-slate-200 border-slate-300 text-slate-600 hover:bg-slate-300'
                     }`}
                   >
                     {newStoreCameraScannerEnabled ? (
                       <>
-                        <ToggleRight className="w-4 h-4 text-emerald-600" />
+                        <ToggleRight className="w-4 h-4 text-purple-600" />
                         <span>Enabled</span>
                       </>
                     ) : (
                       <>
                         <ToggleLeft className="w-4 h-4 text-slate-400" />
                         <span>Disabled</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Voice Generation & Audio Announcements Super Admin Setting */}
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <Volume2 className="w-4 h-4 text-orange-600 shrink-0" />
+                    <div>
+                      <div className="text-xs font-bold text-slate-800">Voice Generation & Speech</div>
+                      <div className="text-[11px] text-slate-500 font-medium">Allow speech checkout bill amounts & greetings</div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setNewStoreVoiceAnnouncementEnabled(!newStoreVoiceAnnouncementEnabled)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 border transition-all cursor-pointer ${
+                      newStoreVoiceAnnouncementEnabled
+                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100'
+                        : 'bg-slate-200 border-slate-300 text-slate-600 hover:bg-slate-300'
+                    }`}
+                  >
+                    {newStoreVoiceAnnouncementEnabled ? (
+                      <>
+                        <ToggleRight className="w-4 h-4 text-emerald-600" />
+                        <span>Allowed</span>
+                      </>
+                    ) : (
+                      <>
+                        <ToggleLeft className="w-4 h-4 text-slate-400" />
+                        <span>Disallowed</span>
                       </>
                     )}
                   </button>
@@ -663,6 +726,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                 ) : (
                   stores.map(s => {
                     const isDisabled = s.status === 'disabled';
+                    const isVoiceAllowed = s.voiceAnnouncementEnabled !== false;
                     const cashierCount = users.filter(u => u.storeId === s.id && u.role === 'cash_counter').length;
                     const registrarCount = users.filter(u => u.storeId === s.id && u.role === 'product_register').length;
 
@@ -688,11 +752,20 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                               )}
                               {s.cameraScannerEnabled !== false ? (
                                 <span className="text-[11px] font-bold bg-purple-50 text-purple-700 px-2.5 py-0.5 rounded-full border border-purple-200 flex items-center gap-1">
-                                  <Camera className="w-3 h-3 text-purple-600" /> Camera Scanner: ON
+                                  <Camera className="w-3 h-3 text-purple-600" /> Camera: ON
                                 </span>
                               ) : (
                                 <span className="text-[11px] font-bold bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full border border-slate-200 flex items-center gap-1">
-                                  <Camera className="w-3 h-3 text-slate-400" /> Camera Scanner: OFF
+                                  <Camera className="w-3 h-3 text-slate-400" /> Camera: OFF
+                                </span>
+                              )}
+                              {isVoiceAllowed ? (
+                                <span className="text-[11px] font-bold bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                                  <Volume2 className="w-3 h-3 text-emerald-600" /> Voice: ALLOWED
+                                </span>
+                              ) : (
+                                <span className="text-[11px] font-bold bg-rose-50 text-rose-700 px-2.5 py-0.5 rounded-full border border-rose-200 flex items-center gap-1">
+                                  <VolumeX className="w-3 h-3 text-rose-500" /> Voice: DISALLOWED
                                 </span>
                               )}
                             </div>
@@ -701,7 +774,22 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                             </p>
                           </div>
 
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                            {/* Super Admin Voice Toggle */}
+                            <button
+                              onClick={() => handleToggleVoiceAnnouncement(s)}
+                              disabled={loading}
+                              className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
+                                isVoiceAllowed
+                                  ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
+                                  : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                              }`}
+                              title={isVoiceAllowed ? "Disallow & Mute voice generation for this store" : "Allow voice generation for this store"}
+                            >
+                              {isVoiceAllowed ? <Volume2 className="w-3.5 h-3.5 text-emerald-600" /> : <VolumeX className="w-3.5 h-3.5 text-rose-600" />}
+                              <span>{isVoiceAllowed ? 'Voice: ALLOWED' : 'Voice: BLOCKED'}</span>
+                            </button>
+
                             {/* Super Admin Camera Scanner Toggle */}
                             <button
                               onClick={() => handleToggleCameraScanner(s)}
@@ -1188,6 +1276,19 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                               Registers: <strong className="text-blue-700">{storeRegistrars.length}</strong>
                             </span>
                             <button
+                              onClick={() => handleToggleVoiceAnnouncement(s)}
+                              disabled={loading}
+                              className={`px-2.5 py-1 rounded-lg border font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                                s.voiceAnnouncementEnabled !== false
+                                  ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                                  : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                              }`}
+                              title="Click to toggle audio voice generation for this store"
+                            >
+                              {s.voiceAnnouncementEnabled !== false ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+                              <span>Voice: {s.voiceAnnouncementEnabled !== false ? 'Allowed' : 'Disallowed'}</span>
+                            </button>
+                            <button
                               onClick={() => handleToggleCameraScanner(s)}
                               disabled={loading}
                               className={`px-2.5 py-1 rounded-lg border font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
@@ -1270,43 +1371,86 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
             </div>
 
             {/* SUPER ADMIN HARDWARE & CAMERA SCANNER CONFIGURATION */}
-            <div className="p-4 bg-purple-50/50 border border-purple-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-purple-100 text-purple-700 rounded-xl">
-                  <Camera className="w-5 h-5" />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Inbuilt Camera Barcode Scanner Policy */}
+              <div className="p-4 bg-purple-50/50 border border-purple-200 rounded-2xl flex flex-col justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-2.5 bg-purple-100 text-purple-700 rounded-xl shrink-0">
+                    <Camera className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-extrabold text-purple-950">Inbuilt Barcode Camera Scanner</h4>
+                    <p className="text-xs text-purple-800/80 font-medium mt-0.5">
+                      {furtherDetailsStore.cameraScannerEnabled !== false 
+                        ? 'Camera scanning is ENABLED for checkout cashiers in this store.' 
+                        : 'Camera scanning is DISABLED for this store (External hardware scanner only).'}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="text-sm font-extrabold text-purple-950">Inbuilt Barcode Camera Scanner (Store Cashiers)</h4>
-                  <p className="text-xs text-purple-800/80 font-medium">
-                    {furtherDetailsStore.cameraScannerEnabled !== false 
-                      ? 'Camera scanning is ENABLED for checkout cashiers in this store.' 
-                      : 'Camera scanning is DISABLED for this store (Cashiers use external hardware scanner).'}
-                  </p>
-                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleToggleCameraScanner(furtherDetailsStore)}
+                  disabled={loading}
+                  className={`w-full py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border transition-all cursor-pointer ${
+                    furtherDetailsStore.cameraScannerEnabled !== false
+                      ? 'bg-purple-600 text-white border-purple-600 hover:bg-purple-500 shadow-sm'
+                      : 'bg-white text-purple-800 border-purple-300 hover:bg-purple-50'
+                  }`}
+                >
+                  {furtherDetailsStore.cameraScannerEnabled !== false ? (
+                    <>
+                      <ToggleRight className="w-4 h-4 text-white" />
+                      <span>Camera: Enabled (Click to Disable)</span>
+                    </>
+                  ) : (
+                    <>
+                      <ToggleLeft className="w-4 h-4 text-purple-400" />
+                      <span>Camera: Disabled (Click to Enable)</span>
+                    </>
+                  )}
+                </button>
               </div>
 
-              <button
-                type="button"
-                onClick={() => handleToggleCameraScanner(furtherDetailsStore)}
-                disabled={loading}
-                className={`px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 border transition-all cursor-pointer shrink-0 ${
-                  furtherDetailsStore.cameraScannerEnabled !== false
-                    ? 'bg-purple-600 text-white border-purple-600 hover:bg-purple-500 shadow-sm'
-                    : 'bg-white text-purple-800 border-purple-300 hover:bg-purple-50'
-                }`}
-              >
-                {furtherDetailsStore.cameraScannerEnabled !== false ? (
-                  <>
-                    <ToggleRight className="w-4 h-4 text-white" />
-                    <span>Camera: Enabled (Click to Disable)</span>
-                  </>
-                ) : (
-                  <>
-                    <ToggleLeft className="w-4 h-4 text-purple-400" />
-                    <span>Camera: Disabled (Click to Enable)</span>
-                  </>
-                )}
-              </button>
+              {/* Super Admin Voice Generation Policy */}
+              <div className="p-4 bg-emerald-50/50 border border-emerald-200 rounded-2xl flex flex-col justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-2.5 bg-emerald-100 text-emerald-700 rounded-xl shrink-0">
+                    <Volume2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-extrabold text-emerald-950">Audio Voice Generation Policy</h4>
+                    <p className="text-xs text-emerald-800/80 font-medium mt-0.5">
+                      {furtherDetailsStore.voiceAnnouncementEnabled !== false 
+                        ? 'Speech announcements for checkout bill amounts & greetings are ALLOWED.' 
+                        : 'Voice generation is DISALLOWED & MUTED for all terminals in this store.'}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleToggleVoiceAnnouncement(furtherDetailsStore)}
+                  disabled={loading}
+                  className={`w-full py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border transition-all cursor-pointer ${
+                    furtherDetailsStore.voiceAnnouncementEnabled !== false
+                      ? 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-500 shadow-sm'
+                      : 'bg-white text-rose-800 border-rose-300 hover:bg-rose-50'
+                  }`}
+                >
+                  {furtherDetailsStore.voiceAnnouncementEnabled !== false ? (
+                    <>
+                      <ToggleRight className="w-4 h-4 text-white" />
+                      <span>Voice: Allowed (Click to Disallow)</span>
+                    </>
+                  ) : (
+                    <>
+                      <ToggleLeft className="w-4 h-4 text-rose-400" />
+                      <span>Voice: Disallowed (Click to Allow)</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
 
             {/* SECTION A: ALL PRODUCT REGISTERS */}

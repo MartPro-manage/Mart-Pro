@@ -34,17 +34,22 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   const [copied, setCopied] = useState(false);
   const [printStatus, setPrintStatus] = useState<string | null>(null);
 
-  // Trigger audio voice greeting when checkout completes and receipt opens
+  const isVoiceAllowed = store?.voiceAnnouncementEnabled !== false;
+
+  // Trigger audio voice greeting with bill total when checkout completes and receipt opens
   useEffect(() => {
-    if (isOpen && sale && voiceEnabled) {
+    if (isOpen && sale && voiceEnabled && isVoiceAllowed) {
       const storeName = store?.name || sale?.storeName || 'our store';
-      speakMessage(`Thank you for shopping at ${storeName}!`);
+      const formattedTotal = sale.totalAmount % 1 === 0 ? sale.totalAmount.toFixed(0) : sale.totalAmount.toFixed(2);
+      speakMessage(`Total bill is ${formattedTotal} rupees. Thank you for shopping at ${storeName}!`);
     }
-  }, [isOpen, sale, voiceEnabled, store?.name]);
+  }, [isOpen, sale, voiceEnabled, isVoiceAllowed, store?.name]);
 
   const handleReplayVoice = () => {
+    if (!sale || !isVoiceAllowed) return;
     const storeName = store?.name || sale?.storeName || 'our store';
-    speakMessage(`Thank you for shopping at ${storeName}!`);
+    const formattedTotal = sale.totalAmount % 1 === 0 ? sale.totalAmount.toFixed(0) : sale.totalAmount.toFixed(2);
+    speakMessage(`Total bill is ${formattedTotal} rupees. Thank you for shopping at ${storeName}!`);
   };
 
   if (!isOpen || !sale) return null;
@@ -326,19 +331,23 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 Thank You For Shopping at {store?.name || sale?.storeName || 'Our Store'}!
               </h4>
               <p className="text-[11px] text-emerald-100 font-medium">
-                Official Receipt Generated & Voice Greeting Announced
+                {isVoiceAllowed
+                  ? 'Official Receipt Generated & Voice Greeting Announced'
+                  : 'Official Receipt Generated (Audio Voice Announcement Muted by Super Admin Policy)'}
               </p>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={handleReplayVoice}
-            className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer border border-white/30 shrink-0"
-            title="Play voice thank you greeting again"
-          >
-            <Volume2 className="w-4 h-4 text-amber-300" /> Speak Voice 🔊
-          </button>
+          {isVoiceAllowed && (
+            <button
+              type="button"
+              onClick={handleReplayVoice}
+              className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer border border-white/30 shrink-0"
+              title="Play voice thank you greeting again"
+            >
+              <Volume2 className="w-4 h-4 text-amber-300" /> Speak Voice 🔊
+            </button>
+          )}
         </div>
 
         {/* Print Status Feedback */}

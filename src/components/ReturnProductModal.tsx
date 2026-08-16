@@ -146,7 +146,7 @@ export const ReturnProductModal: React.FC<ReturnProductModalProps> = ({
 
     if (found) {
       playScanSuccessBeep();
-      if (voiceEnabled) {
+      if (voiceEnabled && store?.voiceAnnouncementEnabled !== false) {
         speakMessage(`Item scanned: ${found.name}`);
       }
       setSelectedProduct(found);
@@ -182,7 +182,7 @@ export const ReturnProductModal: React.FC<ReturnProductModalProps> = ({
           createdAt: new Date().toISOString()
         };
         playScanSuccessBeep();
-        if (voiceEnabled) {
+        if (voiceEnabled && store?.voiceAnnouncementEnabled !== false) {
           speakMessage(`Item scanned from receipt: ${item.name}`);
         }
         setSelectedProduct(constructedProduct);
@@ -337,7 +337,7 @@ export const ReturnProductModal: React.FC<ReturnProductModalProps> = ({
       });
 
       playScanSuccessBeep();
-      if (voiceEnabled) {
+      if (voiceEnabled && store?.voiceAnnouncementEnabled !== false) {
         speakMessage(`Product returned. Refund of rupees ${refundTotal.toFixed(0)} processed. Stock restocked.`);
       }
 

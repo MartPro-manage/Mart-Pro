@@ -8,6 +8,15 @@ export interface Store {
   status?: 'active' | 'disabled';
   cameraScannerEnabled?: boolean; // Super admin can enable/disable inbuilt barcode camera for each store
   voiceAnnouncementEnabled?: boolean; // Super admin can allow/disallow audio voice generation for each store
+  phone?: string;
+  address?: string;
+  receiptHeader?: string;
+  receiptFooter?: string;
+  taxRegistrationNumber?: string;
+  lowStockAlertThreshold?: number;
+  currencySymbol?: string;
+  returnPolicyDays?: number;
+  soundEffectsEnabled?: boolean;
   createdAt: string;
 }
 
@@ -30,18 +39,24 @@ export interface Product {
   serialNumber?: string;
   name: string;
   category: string;
-  price: number;
-  stockQuantity: number;
+  price: number; // Price per piece or price per kg
+  stockQuantity: number; // Total stock pieces or total weight in kg
   minStockLevel?: number;
-  weight?: string; // e.g. 1 kg, 500 g, 250 ml
+  weight?: string; // Text description e.g. "1 kg", "500 g", "Loose"
+  sellBy?: 'unit' | 'weight'; // 'unit' (per piece/pack) or 'weight' (per kg/grams)
+  unitType?: 'piece' | 'kg' | 'g' | 'liter' | 'dozen';
+  pricePerKg?: number; // Rate per kg
+  weightPerUnit?: number; // Weight in kg per single pack/piece (e.g. 0.5 for 500g pack)
   updatedAt: string;
   createdAt: string;
 }
 
 export interface CartItem {
   product: Product;
-  quantity: number;
+  quantity: number; // Quantity in units or total weight in kg (can be decimal)
   totalPrice: number;
+  enteredWeight?: number;
+  weightMultiplier?: number;
 }
 
 export interface SaleItem {
@@ -49,9 +64,12 @@ export interface SaleItem {
   barcode: string;
   serialNumber?: string;
   name: string;
-  price: number;
-  quantity: number;
+  price: number; // Unit price or per kg rate
+  quantity: number; // Quantity or weight (decimal supported)
   total: number;
+  sellBy?: 'unit' | 'weight';
+  unitType?: string;
+  weightInfo?: string;
 }
 
 export interface Sale {
@@ -87,6 +105,8 @@ export interface ProductReturn {
   serialNumber?: string;
   price: number;
   quantity: number;
+  sellBy?: 'unit' | 'weight';
+  unitType?: string;
   refundAmount: number;
   refundMethod: 'cash' | 'online';
   reason?: string;

@@ -42,7 +42,14 @@ import {
   Volume2,
   VolumeX,
   ToggleLeft,
-  ToggleRight
+  ToggleRight,
+  Settings,
+  Sliders,
+  Sparkles,
+  Database,
+  Activity,
+  Save,
+  Check
 } from 'lucide-react';
 
 interface SuperAdminProps {
@@ -52,7 +59,11 @@ interface SuperAdminProps {
 export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreToManage }) => {
   const [stores, setStores] = useState<Store[]>([]);
   const [users, setUsers] = useState<UserAccount[]>([]);
-  const [activeTab, setActiveTab] = useState<'stores' | 'cash_counters' | 'product_registers' | 'all_accounts'>('stores');
+  const [activeTab, setActiveTab] = useState<'stores' | 'cash_counters' | 'product_registers' | 'all_accounts' | 'settings'>('stores');
+
+  // Master SuperAdmin Account Settings
+  const [masterAdminPassword, setMasterAdminPassword] = useState('');
+  const [showMasterPassword, setShowMasterPassword] = useState(false);
 
   // Form states - Create Store
   const [newStoreName, setNewStoreName] = useState('');
@@ -483,6 +494,78 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
     }
   };
 
+  // Batch toggle voice announcements for all stores
+  const handleBatchVoiceToggle = async (enabled: boolean) => {
+    if (stores.length === 0) {
+      showNotification('error', 'No stores registered yet to update.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const promises = stores.map((s) => updateDoc(doc(db, 'stores', s.id), { voiceAnnouncementEnabled: enabled }));
+      await Promise.all(promises);
+      showNotification('success', `Voice generation has been ${enabled ? 'ALLOWED' : 'DISALLOWED'} across all ${stores.length} store(s)!`);
+    } catch (err: any) {
+      console.error(err);
+      showNotification('error', 'Failed to update voice policy: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Batch toggle camera barcode scanning for all stores
+  const handleBatchCameraToggle = async (enabled: boolean) => {
+    if (stores.length === 0) {
+      showNotification('error', 'No stores registered yet to update.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const promises = stores.map((s) => updateDoc(doc(db, 'stores', s.id), { cameraScannerEnabled: enabled }));
+      await Promise.all(promises);
+      showNotification('success', `Camera barcode scanner has been ${enabled ? 'ENABLED' : 'DISABLED'} across all ${stores.length} store(s)!`);
+    } catch (err: any) {
+      console.error(err);
+      showNotification('error', 'Failed to update camera scanner policy: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Master SuperAdmin password update
+  const handleUpdateMasterAdminPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const pass = masterAdminPassword.trim();
+    if (!pass) {
+      showNotification('error', 'Password cannot be empty.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const superAdminUser = users.find(u => u.role === 'super_admin' || u.username === 'supermarketmanage@gmail.com');
+      if (superAdminUser) {
+        await updateDoc(doc(db, 'users', superAdminUser.id), { password: pass });
+      } else {
+        const newRef = doc(collection(db, 'users'));
+        await setDoc(newRef, {
+          id: newRef.id,
+          username: 'supermarketmanage@gmail.com',
+          name: 'Central Super Admin',
+          role: 'super_admin',
+          password: pass,
+          createdAt: new Date().toISOString()
+        });
+      }
+      showNotification('success', 'Master Super Admin password updated successfully!');
+      setMasterAdminPassword('');
+    } catch (err: any) {
+      console.error(err);
+      showNotification('error', 'Failed to update password: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 p-4 sm:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto space-y-8">
@@ -573,7 +656,18 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                 : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
             }`}
           >
-            <UserCheck className="w-4 h-4" /> All System Accounts & Security Matrix
+            <UserCheck className="w-4 h-4" /> 4. Security Matrix & Accounts
+          </button>
+
+          <button
+            onClick={() => setActiveTab('settings')}
+            className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm cursor-pointer transition-all ${
+              activeTab === 'settings'
+                ? 'bg-orange-600 text-white shadow-md shadow-orange-600/20'
+                : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            <Settings className="w-4 h-4" /> 5. Global Settings & Master Policies
           </button>
         </div>
 
@@ -1338,6 +1432,404 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* TAB 5: GLOBAL SETTINGS & MASTER POLICIES */}
+        {activeTab === 'settings' && (
+          <div className="space-y-8 animate-fade-in">
+            {/* Top Overview Banner */}
+            <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white rounded-3xl p-6 sm:p-8 shadow-xl border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="space-y-2">
+                <span className="px-3 py-1 rounded-full text-xs font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30 flex items-center gap-1.5 w-fit">
+                  <Sliders className="w-3.5 h-3.5" /> Super Admin Central Settings
+                </span>
+                <h2 className="text-2xl font-black tracking-tight text-white">
+                  Master Policies & Global Platform Settings
+                </h2>
+                <p className="text-xs text-slate-300 max-w-2xl font-medium leading-relaxed">
+                  Enforce global store audio speech policies, manage master administrator credentials, toggle barcode hardware permissions, and view cloud database diagnostic statuses.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-3 shrink-0">
+                <div className="p-3.5 bg-white/10 rounded-2xl border border-white/10 text-center min-w-[110px] backdrop-blur-sm">
+                  <div className="text-xl font-black text-amber-400">
+                    {stores.filter(s => s.voiceAnnouncementEnabled !== false).length} / {stores.length}
+                  </div>
+                  <div className="text-[10px] font-bold text-slate-300 uppercase tracking-wider mt-0.5">Voice Enabled</div>
+                </div>
+                <div className="p-3.5 bg-white/10 rounded-2xl border border-white/10 text-center min-w-[110px] backdrop-blur-sm">
+                  <div className="text-xl font-black text-purple-400">
+                    {stores.filter(s => s.cameraScannerEnabled !== false).length} / {stores.length}
+                  </div>
+                  <div className="text-[10px] font-bold text-slate-300 uppercase tracking-wider mt-0.5">Camera Active</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Grid for Master Account & Batch Policies */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              
+              {/* Card 1: Master Super Admin Security (5 cols) */}
+              <div className="lg:col-span-5 bg-white rounded-3xl border border-slate-200 p-6 sm:p-7 shadow-sm space-y-6 flex flex-col justify-between">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 bg-orange-100 text-orange-700 rounded-2xl">
+                      <Lock className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-extrabold text-slate-900">Master Super Admin Security</h3>
+                      <p className="text-xs text-slate-500 font-medium">Update master root administrator credentials</p>
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 text-xs">
+                    <div className="flex justify-between items-center text-slate-600">
+                      <span className="font-semibold">Master Admin Username:</span>
+                      <span className="font-mono font-bold text-orange-600">supermarketmanage@gmail.com</span>
+                    </div>
+                    <div className="flex justify-between items-center text-slate-600">
+                      <span className="font-semibold">Role Tier:</span>
+                      <span className="font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md text-[10px]">
+                        GLOBAL SUPER_ADMIN
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-slate-600">
+                      <span className="font-semibold">System Privileges:</span>
+                      <span className="font-bold text-slate-800">Unrestricted Master Control</span>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleUpdateMasterAdminPassword} className="space-y-3.5 pt-2">
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      Set New Master Password
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showMasterPassword ? 'text' : 'password'}
+                        placeholder="Enter new master password"
+                        value={masterAdminPassword}
+                        onChange={(e) => setMasterAdminPassword(e.target.value)}
+                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs focus:outline-none focus:bg-white focus:border-orange-500 font-medium pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowMasterPassword(!showMasterPassword)}
+                        className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-700"
+                        title="Toggle password"
+                      >
+                        {showMasterPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={loading || !masterAdminPassword.trim()}
+                      className="w-full py-2.5 px-4 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm cursor-pointer transition-all"
+                    >
+                      <Save className="w-4 h-4" /> Update Master Admin Password
+                    </button>
+                  </form>
+                </div>
+
+                <div className="pt-4 border-t border-slate-100 text-[11px] text-slate-400 font-medium">
+                  Note: Updating this password immediately updates the root Super Admin credentials stored in Firestore.
+                </div>
+              </div>
+
+              {/* Card 2: Batch Global Store Policies (7 cols) */}
+              <div className="lg:col-span-7 bg-white rounded-3xl border border-slate-200 p-6 sm:p-7 shadow-sm space-y-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-amber-100 text-amber-800 rounded-2xl">
+                    <Sliders className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-slate-900">Master Policy Controller</h3>
+                    <p className="text-xs text-slate-500 font-medium">Apply batch settings to all registered supermarket stores simultaneously</p>
+                  </div>
+                </div>
+
+                {/* Batch Voice Announcements Policy */}
+                <div className="p-5 bg-gradient-to-br from-amber-50/70 to-orange-50/40 border border-amber-200/80 rounded-2xl space-y-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2.5 bg-amber-200/60 text-amber-900 rounded-xl shrink-0 mt-0.5">
+                        <Volume2 className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-extrabold text-amber-950 flex items-center gap-2">
+                          Global Voice Announcement Policy
+                          <span className="text-[10px] font-bold bg-amber-200/80 text-amber-900 px-2 py-0.5 rounded-full">
+                            {stores.filter(s => s.voiceAnnouncementEnabled !== false).length} / {stores.length} Allowed
+                          </span>
+                        </h4>
+                        <p className="text-xs text-amber-900/80 font-medium mt-1 leading-relaxed">
+                          Controls whether customer voice thank you messages are announced when cashier checkout completes. As Super Admin, you can allow or disallow voice generation for all stores in one click.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleBatchVoiceToggle(true)}
+                      disabled={loading || stores.length === 0}
+                      className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <Volume2 className="w-4 h-4" /> Allow Voice in ALL Stores
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleBatchVoiceToggle(false)}
+                      disabled={loading || stores.length === 0}
+                      className="py-2.5 px-4 bg-rose-600 hover:bg-rose-500 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <VolumeX className="w-4 h-4" /> Disallow Voice in ALL Stores
+                    </button>
+                  </div>
+                </div>
+
+                {/* Batch Barcode Camera Scanner Policy */}
+                <div className="p-5 bg-gradient-to-br from-purple-50/70 to-indigo-50/40 border border-purple-200/80 rounded-2xl space-y-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2.5 bg-purple-200/60 text-purple-900 rounded-xl shrink-0 mt-0.5">
+                        <Camera className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-extrabold text-purple-950 flex items-center gap-2">
+                          Global Camera Barcode Scanner Policy
+                          <span className="text-[10px] font-bold bg-purple-200/80 text-purple-900 px-2 py-0.5 rounded-full">
+                            {stores.filter(s => s.cameraScannerEnabled !== false).length} / {stores.length} Enabled
+                          </span>
+                        </h4>
+                        <p className="text-xs text-purple-900/80 font-medium mt-1 leading-relaxed">
+                          Controls whether the cashier POS terminals can use the live video camera barcode reader or must rely purely on physical USB/Bluetooth handheld barcode scanners.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleBatchCameraToggle(true)}
+                      disabled={loading || stores.length === 0}
+                      className="py-2.5 px-4 bg-purple-600 hover:bg-purple-500 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <Camera className="w-4 h-4" /> Enable Camera on ALL Stores
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleBatchCameraToggle(false)}
+                      disabled={loading || stores.length === 0}
+                      className="py-2.5 px-4 bg-slate-700 hover:bg-slate-600 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <Ban className="w-4 h-4" /> Disable Camera on ALL Stores
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+
+            {/* Per-Store Policy Quick Matrix Table */}
+            <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-7 shadow-sm space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-blue-100 text-blue-700 rounded-2xl">
+                    <Building2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-slate-900">Per-Store Policy Matrix</h3>
+                    <p className="text-xs text-slate-500 font-medium">Quick live switches for individual store voice and camera policies</p>
+                  </div>
+                </div>
+
+                <span className="text-xs font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 w-fit">
+                  {stores.length} Registered Stores
+                </span>
+              </div>
+
+              {stores.length === 0 ? (
+                <div className="p-8 text-center bg-slate-50 border border-dashed border-slate-300 rounded-2xl text-xs text-slate-500 font-medium">
+                  No stores created yet. Use Tab 1 to create your first supermarket store.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-slate-500 font-extrabold uppercase text-[10px] tracking-wider">
+                        <th className="py-3 px-4">Store Name</th>
+                        <th className="py-3 px-4">Store Admin</th>
+                        <th className="py-3 px-4 text-center">Voice Generation</th>
+                        <th className="py-3 px-4 text-center">Camera Scanner</th>
+                        <th className="py-3 px-4 text-center">Store Status</th>
+                        <th className="py-3 px-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium">
+                      {stores.map((s) => {
+                        const voiceAllowed = s.voiceAnnouncementEnabled !== false;
+                        const cameraActive = s.cameraScannerEnabled !== false;
+                        const isActive = s.status !== 'disabled';
+
+                        return (
+                          <tr key={s.id} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-3.5 px-4">
+                              <div className="font-extrabold text-slate-900 text-sm">{s.name}</div>
+                              <div className="text-[10px] text-slate-400 font-mono">ID: {s.id.slice(0, 8)}...</div>
+                            </td>
+
+                            <td className="py-3.5 px-4">
+                              <div className="font-mono text-orange-600 font-bold">{s.adminUsername}</div>
+                              <div className="text-[10px] text-slate-500">Store Manager</div>
+                            </td>
+
+                            <td className="py-3.5 px-4 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleVoiceAnnouncement(s)}
+                                disabled={loading}
+                                className={`px-3 py-1 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer border ${
+                                  voiceAllowed
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                                    : 'bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100'
+                                }`}
+                              >
+                                {voiceAllowed ? (
+                                  <>
+                                    <Volume2 className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span>Allowed</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <VolumeX className="w-3.5 h-3.5 text-rose-600" />
+                                    <span>Disallowed</span>
+                                  </>
+                                )}
+                              </button>
+                            </td>
+
+                            <td className="py-3.5 px-4 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleCameraScanner(s)}
+                                disabled={loading}
+                                className={`px-3 py-1 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer border ${
+                                  cameraActive
+                                    ? 'bg-purple-50 text-purple-800 border-purple-300 hover:bg-purple-100'
+                                    : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
+                                }`}
+                              >
+                                {cameraActive ? (
+                                  <>
+                                    <Camera className="w-3.5 h-3.5 text-purple-600" />
+                                    <span>Enabled</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Ban className="w-3.5 h-3.5 text-slate-500" />
+                                    <span>Disabled</span>
+                                  </>
+                                )}
+                              </button>
+                            </td>
+
+                            <td className="py-3.5 px-4 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleStoreStatus(s)}
+                                disabled={loading}
+                                className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold inline-flex items-center gap-1 border cursor-pointer ${
+                                  isActive
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                    : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                                }`}
+                              >
+                                <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+                                {isActive ? 'ACTIVE' : 'DISABLED'}
+                              </button>
+                            </td>
+
+                            <td className="py-3.5 px-4 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setFurtherDetailsStore(s)}
+                                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                                >
+                                  Details
+                                </button>
+                                {onSelectStoreToManage && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onSelectStoreToManage(s)}
+                                    className="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl text-xs shadow-sm transition-all cursor-pointer"
+                                  >
+                                    Manage
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Cloud Database & System Diagnostics */}
+            <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-7 shadow-sm space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-emerald-100 text-emerald-800 rounded-2xl">
+                  <Database className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900">Cloud Database & Infrastructure Diagnostics</h3>
+                  <p className="text-xs text-slate-500 font-medium">Real-time health status of Firestore sync and browser capabilities</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-1">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Firestore Connection</div>
+                  <div className="text-sm font-extrabold text-emerald-700 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                    Auto Long-Polling Active
+                  </div>
+                </div>
+
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-1">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Web Speech Synthesis</div>
+                  <div className="text-sm font-extrabold text-slate-900">
+                    {typeof window !== 'undefined' && 'speechSynthesis' in window ? 'Supported (Ready)' : 'Not Supported'}
+                  </div>
+                </div>
+
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-1">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Camera MediaDevices</div>
+                  <div className="text-sm font-extrabold text-slate-900">
+                    {typeof navigator !== 'undefined' && navigator.mediaDevices ? 'Supported (Ready)' : 'Manual Fallback'}
+                  </div>
+                </div>
+
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-1">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Managed Records</div>
+                  <div className="text-sm font-extrabold text-orange-600">
+                    {stores.length} Stores • {users.length} Users
+                  </div>
+                </div>
+              </div>
+            </div>
+
           </div>
         )}
 

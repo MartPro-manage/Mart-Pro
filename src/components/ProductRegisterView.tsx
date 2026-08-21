@@ -50,10 +50,13 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   const [productForGenerator, setProductForGenerator] = useState<Partial<Product> | null>(null);
 
   // Form states
+  const [sellBy, setSellBy] = useState<'unit' | 'weight'>('unit');
+  const [unitType, setUnitType] = useState<'piece' | 'kg' | 'g' | 'liter' | 'dozen'>('piece');
   const [barcode, setBarcode] = useState('');
   const [serialNumber, setSerialNumber] = useState('');
   const [name, setName] = useState('');
   const [weight, setWeight] = useState('');
+  const [weightPerUnit, setWeightPerUnit] = useState<number | ''>('');
   const [category, setCategory] = useState('General');
   const [price, setPrice] = useState<number | ''>('');
   const [stockQuantityToAdd, setStockQuantityToAdd] = useState<number | ''>('');
@@ -61,6 +64,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
 
   const [existingProduct, setExistingProduct] = useState<Product | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [catalogFilter, setCatalogFilter] = useState<'all' | 'weight' | 'unit'>('all');
 
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -139,6 +143,9 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
       setCategory(found.category || 'General');
       setPrice(found.price);
       setMinStockLevel(found.minStockLevel || 5);
+      setSellBy(found.sellBy || (found.unitType === 'kg' ? 'weight' : 'unit'));
+      setUnitType((found.unitType as any) || (found.sellBy === 'weight' ? 'kg' : 'piece'));
+      setWeightPerUnit(found.weightPerUnit !== undefined ? found.weightPerUnit : '');
     } else {
       setExistingProduct(null);
     }
@@ -158,6 +165,9 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     setCategory(p.category || 'General');
     setPrice(p.price);
     setMinStockLevel(p.minStockLevel || 5);
+    setSellBy(p.sellBy || (p.unitType === 'kg' ? 'weight' : 'unit'));
+    setUnitType((p.unitType as any) || (p.sellBy === 'weight' ? 'kg' : 'piece'));
+    setWeightPerUnit(p.weightPerUnit !== undefined ? p.weightPerUnit : '');
     setStockQuantityToAdd('');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -170,10 +180,14 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
         name: name || '',
         barcode: barcode || '',
         serialNumber: serialNumber || '',
-        weight: weight || '500g',
+        weight: weight || (sellBy === 'weight' ? '1 kg' : '500g'),
         price: typeof price === 'number' ? price : 0,
         category: category || 'General',
-        stockQuantity: typeof stockQuantityToAdd === 'number' ? stockQuantityToAdd : 50
+        stockQuantity: typeof stockQuantityToAdd === 'number' ? stockQuantityToAdd : 50,
+        sellBy: sellBy,
+        unitType: unitType,
+        pricePerKg: sellBy === 'weight' && typeof price === 'number' ? price : undefined,
+        weightPerUnit: typeof weightPerUnit === 'number' ? weightPerUnit : undefined
       });
     }
     setIsGeneratorOpen(true);
@@ -205,7 +219,8 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     const trimmedName = name.trim();
     const trimmedWeight = weight.trim();
     const numericPrice = typeof price === 'number' ? price : parseFloat(price as any);
-    const addedQuantity = typeof stockQuantityToAdd === 'number' ? stockQuantityToAdd : parseInt(stockQuantityToAdd as string, 10);
+    const addedQuantity = typeof stockQuantityToAdd === 'number' ? stockQuantityToAdd : parseFloat(stockQuantityToAdd as string);
+    const numericWeightPerUnit = typeof weightPerUnit === 'number' ? weightPerUnit : (weightPerUnit ? parseFloat(weightPerUnit as string) : undefined);
 
     if (!trimmedName) {
       showNotification('error', 'Product Name is required.');
@@ -213,12 +228,12 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     }
 
     if (isNaN(numericPrice) || numericPrice < 0) {
-      showNotification('error', 'Please enter a valid price in Pakistani Rupees (Rs.).');
+      showNotification('error', sellBy === 'weight' ? 'Please enter a valid price per kg in Pakistani Rupees (Rs.).' : 'Please enter a valid price in Pakistani Rupees (Rs.).');
       return;
     }
 
     if (isNaN(addedQuantity) || addedQuantity <= 0) {
-      showNotification('error', 'Quantity is compulsory! Please enter stock quantity to add.');
+      showNotification('error', sellBy === 'weight' ? 'Total weight is compulsory! Please enter stock weight in kg to add.' : 'Quantity is compulsory! Please enter stock quantity to add.');
       return;
     }
 
@@ -275,29 +290,37 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
       const codeInfo = [
         trimmedSerial ? `S/N: ${trimmedSerial}` : null,
         trimmedBarcode ? `BC: ${trimmedBarcode}` : null,
-        trimmedWeight ? `Wt: ${trimmedWeight}` : null
+        trimmedWeight ? `Wt: ${trimmedWeight}` : null,
+        sellBy === 'weight' ? 'Sell By Weight (kg)' : null
       ].filter(Boolean).join(', ');
+
+      const roundedAddedQty = Math.round(addedQuantity * 1000) / 1000;
 
       if (targetProduct) {
         // UPDATE EXISTING PRODUCT
-        const newTotalStock = targetProduct.stockQuantity + addedQuantity;
+        const newTotalStock = Math.round((targetProduct.stockQuantity + roundedAddedQty) * 1000) / 1000;
         const productDocRef = doc(db, 'products', targetProduct.id);
 
         await updateDoc(productDocRef, cleanFirestoreData({
           barcode: trimmedBarcode || '',
           serialNumber: trimmedSerial || '',
           name: trimmedName,
-          weight: trimmedWeight || '',
+          weight: trimmedWeight || (sellBy === 'weight' ? `${newTotalStock} kg` : ''),
           category: category.trim() || 'General',
           price: numericPrice,
+          pricePerKg: sellBy === 'weight' ? numericPrice : undefined,
+          sellBy: sellBy,
+          unitType: sellBy === 'weight' ? (unitType || 'kg') : (unitType || 'piece'),
+          weightPerUnit: numericWeightPerUnit || undefined,
           stockQuantity: newTotalStock,
           minStockLevel: minStockLevel || 5,
           updatedAt: new Date().toISOString()
         }));
 
+        const unitLabel = sellBy === 'weight' ? 'kg' : 'units';
         showNotification(
           'success',
-          `Updated "${trimmedName}"${codeInfo ? ` (${codeInfo})` : ''}! Added +${addedQuantity} units (Total Stock: ${newTotalStock}). Price: Rs. ${numericPrice.toFixed(2)}`
+          `Updated "${trimmedName}"${codeInfo ? ` (${codeInfo})` : ''}! Added +${roundedAddedQty} ${unitLabel} (Total Stock: ${newTotalStock} ${unitLabel}). Price: Rs. ${numericPrice.toFixed(2)}${sellBy === 'weight' ? '/kg' : ''}`
         );
       } else {
         // REGISTER NEW PRODUCT
@@ -308,10 +331,14 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
           barcode: trimmedBarcode || '',
           serialNumber: trimmedSerial || '',
           name: trimmedName,
-          weight: trimmedWeight || '',
+          weight: trimmedWeight || (sellBy === 'weight' ? `${roundedAddedQty} kg` : ''),
           category: category.trim() || 'General',
           price: numericPrice,
-          stockQuantity: addedQuantity,
+          pricePerKg: sellBy === 'weight' ? numericPrice : undefined,
+          sellBy: sellBy,
+          unitType: sellBy === 'weight' ? (unitType || 'kg') : (unitType || 'piece'),
+          weightPerUnit: numericWeightPerUnit || undefined,
+          stockQuantity: roundedAddedQty,
           minStockLevel: minStockLevel || 5,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
@@ -319,9 +346,10 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
 
         await setDoc(productDocRef, cleanFirestoreData(newProduct));
 
+        const unitLabel = sellBy === 'weight' ? 'kg' : 'units';
         showNotification(
           'success',
-          `Registered new product "${trimmedName}"${codeInfo ? ` (${codeInfo})` : ''} with initial stock of ${addedQuantity} units at Rs. ${numericPrice.toFixed(2)}.`
+          `Registered new product "${trimmedName}"${codeInfo ? ` (${codeInfo})` : ''} with initial stock of ${roundedAddedQty} ${unitLabel} at Rs. ${numericPrice.toFixed(2)}${sellBy === 'weight' ? '/kg' : ''}.`
         );
       }
 
@@ -330,6 +358,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
       setSerialNumber('');
       setName('');
       setWeight('');
+      setWeightPerUnit('');
       setCategory('General');
       setPrice('');
       setStockQuantityToAdd('');
@@ -482,6 +511,9 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   };
 
   const filteredCatalog = products.filter(p => {
+    if (catalogFilter === 'weight' && !(p.sellBy === 'weight' || p.unitType === 'kg' || p.pricePerKg)) return false;
+    if (catalogFilter === 'unit' && (p.sellBy === 'weight' || p.unitType === 'kg' || p.pricePerKg)) return false;
+
     if (!searchTerm.trim()) return true;
     const term = searchTerm.toLowerCase();
     return (
@@ -593,11 +625,51 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
 
             <form onSubmit={handleSubmitProductStock} className="space-y-4">
               
+              {/* Selling Method Mode: Piece vs Weight */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  Selling Method *
+                </label>
+                <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSellBy('unit');
+                      if (unitType === 'kg' || unitType === 'g') setUnitType('piece');
+                    }}
+                    className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      sellBy === 'unit'
+                        ? 'bg-white text-slate-900 shadow-sm border border-slate-200'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <PackagePlus className="w-4 h-4 text-blue-600" />
+                    <span>📦 By Piece / Unit</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSellBy('weight');
+                      setUnitType('kg');
+                    }}
+                    className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      sellBy === 'weight'
+                        ? 'bg-orange-600 text-white shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Scale className="w-4 h-4 text-amber-300" />
+                    <span>⚖️ By Weight (per kg)</span>
+                  </button>
+                </div>
+              </div>
+
               {/* Product Barcode Field with Scan Trigger & Auto-Gen */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                    Product Barcode
+                    Product Barcode / Code
                   </label>
                   <button
                     type="button"
@@ -650,19 +722,21 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                 <div className="p-3 bg-amber-50/90 rounded-2xl border border-amber-200 text-xs space-y-1">
                   <div className="font-bold text-amber-900 flex items-center justify-between">
                     <span>Currently Available Stock:</span>
-                    <span className="text-slate-900 text-sm font-extrabold">{existingProduct.stockQuantity} units</span>
+                    <span className="text-slate-900 text-sm font-extrabold">
+                      {existingProduct.stockQuantity} {existingProduct.sellBy === 'weight' || existingProduct.unitType === 'kg' ? 'kg' : 'units'}
+                    </span>
                   </div>
                   <p className="text-slate-600 font-medium">
-                    Entering quantity below will <span className="text-emerald-700 font-bold">ADD</span> to the store stock.
+                    Entering quantity below will <span className="text-emerald-700 font-bold">ADD</span> to the store inventory.
                   </p>
                 </div>
               )}
 
-              {/* Serial Number (S/N) */}
+              {/* Serial Number (S/N) / Item Code */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                  <span>Serial Number (S/N)</span>
-                  <span className="text-[10px] text-slate-500 font-medium">Optional</span>
+                  <span>Serial Number (S/N) / Short Code</span>
+                  <span className="text-[10px] text-slate-500 font-medium">Optional (e.g. 101, 1004)</span>
                 </label>
                 <input
                   ref={serialNumberInputRef}
@@ -682,7 +756,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Basmati Rice, Milk Pack, Shampoo"
+                  placeholder={sellBy === 'weight' ? 'e.g. Basmati Rice, Fresh Apples, Sugar' : 'e.g. Milk Pack, Shampoo, Cooking Oil'}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-medium transition-all"
@@ -693,18 +767,30 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Weight / Volume
+                    {sellBy === 'weight' ? 'Unit Type' : 'Weight / Volume'}
                   </label>
-                  <div className="relative">
-                    <Scale className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="text"
-                      placeholder="e.g. 500g, 1kg, 250ml"
-                      value={weight}
-                      onChange={(e) => setWeight(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-medium transition-all"
-                    />
-                  </div>
+                  {sellBy === 'weight' ? (
+                    <select
+                      value={unitType}
+                      onChange={(e) => setUnitType(e.target.value as any)}
+                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-orange-500 focus:bg-white transition-all cursor-pointer"
+                    >
+                      <option value="kg">kg (Kilogram)</option>
+                      <option value="g">g (Grams)</option>
+                      <option value="liter">liter (Liters)</option>
+                    </select>
+                  ) : (
+                    <div className="relative">
+                      <Scale className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="e.g. 500g, 1kg, 250ml"
+                        value={weight}
+                        onChange={(e) => setWeight(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-medium transition-all"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -713,7 +799,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. Grocery, Dairy"
+                    placeholder={sellBy === 'weight' ? 'e.g. Grocery, Fruits, Vegetables' : 'e.g. Grocery, Dairy'}
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}
                     className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-medium transition-all"
@@ -721,27 +807,57 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                 </div>
               </div>
 
+              {/* Optional Pre-packaged pack weight when selling by weight */}
+              {sellBy === 'weight' && (
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                      <span>Pre-packed Weight per Bag/Unit</span>
+                      <span className="text-[10px] text-slate-500 font-normal">(Optional)</span>
+                    </label>
+                    <span className="text-[10px] text-orange-600 font-bold">Auto-multiply helper</span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="0.001"
+                      min="0"
+                      placeholder="e.g. 0.5 (kg per packet) or leave blank for loose"
+                      value={weightPerUnit}
+                      onChange={(e) => setWeightPerUnit(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-orange-500 font-mono"
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-500">
+                    If this item is sold in fixed-weight bags (e.g. 0.5 kg bag), entering quantity at checkout will automatically multiply: <em>Quantity × Weight</em>.
+                  </p>
+                </div>
+              )}
+
               {/* Quantity to Add & Latest Price (Rs.) */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    {existingProduct ? 'Add Stock (+Qty) *' : 'Initial Stock Qty *'}
+                    {sellBy === 'weight' 
+                      ? (existingProduct ? 'Add Weight (kg) *' : 'Total Stock (kg) *')
+                      : (existingProduct ? 'Add Stock (+Qty) *' : 'Initial Stock Qty *')}
                   </label>
                   <input
                     ref={quantityInputRef}
                     type="number"
-                    min="1"
+                    step={sellBy === 'weight' ? '0.001' : '1'}
+                    min="0.001"
                     required
-                    placeholder="e.g. 50"
+                    placeholder={sellBy === 'weight' ? 'e.g. 50.000' : 'e.g. 50'}
                     value={stockQuantityToAdd}
-                    onChange={(e) => setStockQuantityToAdd(e.target.value === '' ? '' : parseInt(e.target.value, 10))}
+                    onChange={(e) => setStockQuantityToAdd(e.target.value === '' ? '' : (sellBy === 'weight' ? parseFloat(e.target.value) : parseInt(e.target.value, 10)))}
                     className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-bold text-emerald-700 transition-all font-mono"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Price (Rs.) *
+                    {sellBy === 'weight' ? 'Price Per KG (Rs.) *' : 'Unit Price (Rs.) *'}
                   </label>
                   <div className="relative">
                     <span className="text-xs font-black text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2">
@@ -752,7 +868,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                       step="0.01"
                       min="0"
                       required
-                      placeholder="250.00"
+                      placeholder={sellBy === 'weight' ? '300.00 / kg' : '250.00'}
                       value={price}
                       onChange={(e) => setPrice(e.target.value === '' ? '' : parseFloat(e.target.value))}
                       className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-black text-orange-600 transition-all font-mono"
@@ -833,6 +949,43 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
               </div>
             </div>
 
+            {/* Filter Tabs: All, By Weight, By Unit */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              <button
+                type="button"
+                onClick={() => setCatalogFilter('all')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  catalogFilter === 'all'
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                All Products ({products.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setCatalogFilter('weight')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  catalogFilter === 'weight'
+                    ? 'bg-orange-600 text-white shadow-sm'
+                    : 'bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-100'
+                }`}
+              >
+                <Scale className="w-3 h-3" /> Sold by Weight ({products.filter(p => p.sellBy === 'weight' || p.unitType === 'kg' || p.pricePerKg).length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setCatalogFilter('unit')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  catalogFilter === 'unit'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100'
+                }`}
+              >
+                <PackagePlus className="w-3 h-3" /> Sold by Unit ({products.filter(p => !(p.sellBy === 'weight' || p.unitType === 'kg' || p.pricePerKg)).length})
+              </button>
+            </div>
+
             {filteredCatalog.length === 0 ? (
               <div className="text-sm text-slate-500 p-12 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50 space-y-2">
                 <PackagePlus className="w-8 h-8 text-slate-400 mx-auto" />
@@ -853,9 +1006,9 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                           title="Select / Deselect all"
                         />
                       </th>
-                      <th className="p-3.5">Product & Weight</th>
+                      <th className="p-3.5">Product & Method</th>
                       <th className="p-3.5">S/N & Barcode</th>
-                      <th className="p-3.5 text-center">Price</th>
+                      <th className="p-3.5 text-center">Price Rate</th>
                       <th className="p-3.5 text-center">Available Stock</th>
                       <th className="p-3.5 text-right">Actions</th>
                     </tr>
@@ -863,6 +1016,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                   <tbody className="divide-y divide-slate-100 bg-white">
                     {filteredCatalog.map((p) => {
                       const isSelected = selectedProductIds.includes(p.id);
+                      const isWeighted = p.sellBy === 'weight' || p.unitType === 'kg' || !!p.pricePerKg;
                       return (
                         <tr key={p.id} className={`${isSelected ? 'bg-orange-50/60' : 'hover:bg-slate-50'} transition-colors`}>
                           <td className="p-3.5">
@@ -874,11 +1028,27 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                             />
                           </td>
                           <td className="p-3.5">
-                            <div className="font-bold text-slate-900">{p.name}</div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-900">{p.name}</span>
+                              {isWeighted ? (
+                                <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-orange-100 text-orange-800 border border-orange-200 flex items-center gap-0.5">
+                                  <Scale className="w-2.5 h-2.5" /> By Weight
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-slate-100 text-slate-700 border border-slate-200">
+                                  By Unit
+                                </span>
+                              )}
+                            </div>
                             <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium mt-0.5">
                               {p.weight && (
                                 <span className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-mono font-bold">
                                   {p.weight}
+                                </span>
+                              )}
+                              {p.weightPerUnit && (
+                                <span className="text-orange-700 font-semibold">
+                                  ({p.weightPerUnit} kg/pack)
                                 </span>
                               )}
                               <span>{p.category || 'General'}</span>
@@ -893,11 +1063,11 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                             <div className="text-[11px] text-slate-500">BC: {p.barcode || 'N/A'}</div>
                           </td>
                           <td className="p-3.5 text-center font-black text-orange-600 font-mono">
-                            Rs. {p.price.toFixed(2)}
+                            Rs. {p.price.toFixed(2)}{isWeighted ? '/kg' : ''}
                           </td>
                           <td className="p-3.5 text-center font-black text-sm">
                             <span className={p.stockQuantity <= 0 ? 'text-red-600 font-black' : p.stockQuantity <= 5 ? 'text-amber-600 font-bold' : 'text-emerald-600 font-black'}>
-                              {p.stockQuantity}
+                              {p.stockQuantity % 1 === 0 ? p.stockQuantity : p.stockQuantity.toFixed(3)} {isWeighted ? 'kg' : 'units'}
                             </span>
                           </td>
                           <td className="p-3.5 text-right">

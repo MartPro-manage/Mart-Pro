@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   db, 
   collection, 
+  doc,
   onSnapshot, 
   query, 
   where, 
@@ -10,6 +11,7 @@ import {
 } from '../lib/firebase';
 import { Product, Sale, Store, UserAccount, ProductReturn } from '../types';
 import { ReturnSlipModal } from './ReturnSlipModal';
+import { StoreSettingsView } from './StoreSettingsView';
 import { 
   TrendingUp, 
   Package, 
@@ -35,7 +37,8 @@ import {
   ChevronRight,
   ArrowDownRight,
   Tag,
-  Undo2
+  Undo2,
+  Settings
 } from 'lucide-react';
 
 interface StoreAdminDashboardProps {
@@ -80,13 +83,14 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
   onNavigateToInventory,
   onViewReceipt
 }) => {
+  const [liveStore, setLiveStore] = useState<Store>(store);
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [returns, setReturns] = useState<ProductReturn[]>([]);
   const [storeUsers, setStoreUsers] = useState<UserAccount[]>([]);
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'sales_by_date' | 'returns' | 'sold_products' | 'stock_remaining' | 'sales_history' | 'staff'>('sales_by_date');
+  const [activeTab, setActiveTab] = useState<'sales_by_date' | 'returns' | 'sold_products' | 'stock_remaining' | 'sales_history' | 'staff' | 'settings'>('sales_by_date');
 
   // Return Voucher Modal State
   const [viewingReturnSlip, setViewingReturnSlip] = useState<ProductReturn | null>(null);
@@ -102,9 +106,23 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
   // Selected date for deep inspection in Sales by Date tab
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
 
-  // Real-time synchronization of Products, Sales, Returns, and Staff for this store
+  // Real-time synchronization of Store, Products, Sales, Returns, and Staff for this store
+  useEffect(() => {
+    setLiveStore(store);
+  }, [store]);
+
   useEffect(() => {
     if (!store?.id) return;
+
+    // 0. Subscribe to Store Details
+    const storeRef = doc(db, 'stores', store.id);
+    const unsubStore = onSnapshot(storeRef, (snapshot) => {
+      if (snapshot.exists()) {
+        setLiveStore({ id: snapshot.id, ...snapshot.data() } as Store);
+      }
+    }, (err) => {
+      console.warn('Store snapshot sync warning:', err);
+    });
 
     // 1. Subscribe to Products
     const productsQuery = query(
@@ -174,6 +192,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
     });
 
     return () => {
+      unsubStore();
       unsubProducts();
       unsubSales();
       unsubReturns();
@@ -557,6 +576,17 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
 
           {/* Quick Shortcuts for Admin */}
           <div className="flex flex-wrap items-center gap-3 z-10 shrink-0">
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 cursor-pointer transition-all shadow-sm ${
+                activeTab === 'settings'
+                  ? 'bg-orange-600 text-white'
+                  : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
+              }`}
+            >
+              <Settings className="w-4 h-4 text-orange-600" /> Settings & Configuration
+            </button>
+
             {onNavigateToInventory && (
               <button
                 onClick={onNavigateToInventory}
@@ -884,6 +914,17 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
               }`}
             >
               Store Staff ({storeUsers.length})
+            </button>
+
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`px-4 py-2.5 rounded-xl font-bold text-xs cursor-pointer transition-all flex items-center gap-1.5 ${
+                activeTab === 'settings'
+                  ? 'bg-orange-600 text-white shadow-sm'
+                  : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+              }`}
+            >
+              <Settings className="w-4 h-4 text-orange-500" /> Settings & Configuration
             </button>
           </div>
 
@@ -1462,7 +1503,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
         {activeTab === 'staff' && (
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
             <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-              <Calculator className="w-5 h-5 text-orange-600" /> Cashiers & Product Registers for {store.name}
+              <Calculator className="w-5 h-5 text-orange-600" /> Cashiers & Product Registers for {liveStore.name}
             </h2>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1484,6 +1525,16 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
               ))}
             </div>
           </div>
+        )}
+
+        {/* TAB 6: SETTINGS & CONFIGURATION */}
+        {activeTab === 'settings' && (
+          <StoreSettingsView
+            store={liveStore}
+            currentUser={currentUser}
+            storeUsers={storeUsers}
+            onStoreUpdated={(updated) => setLiveStore(updated)}
+          />
         )}
 
         {/* RETURN SLIP MODAL */}

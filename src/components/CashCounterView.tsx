@@ -18,6 +18,7 @@ import { ReturnProductModal } from './ReturnProductModal';
 import { ReturnSlipModal } from './ReturnSlipModal';
 import { HardwarePermissionsBar } from './HardwarePermissionsBar';
 import { CashPaymentModal } from './CashPaymentModal';
+import { WeightPromptModal } from './WeightPromptModal';
 import { speakMessage } from '../lib/speech';
 import { playScanSuccessBeep, playScanErrorBeep } from '../lib/sound';
 import { 
@@ -42,7 +43,8 @@ import {
   ToggleRight,
   RotateCcw,
   Undo2,
-  Receipt
+  Receipt,
+  Scale
 } from 'lucide-react';
 
 interface CashCounterViewProps {
@@ -67,6 +69,10 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
   const [searchTerm, setSearchTerm] = useState('');
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [isCashModalOpen, setIsCashModalOpen] = useState(false);
+
+  // Weight Entry Modal State
+  const [weightPromptProduct, setWeightPromptProduct] = useState<Product | null>(null);
+  const [isWeightModalOpen, setIsWeightModalOpen] = useState(false);
 
   // Return Product State
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
@@ -95,6 +101,52 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
   // Normalization helper for accurate barcode and code matching
   const cleanCode = (v: any) => String(v ?? '').replace(/[\r\n\t\s]/g, '').trim().toLowerCase();
   const cleanName = (v: any) => String(v ?? '').trim().toLowerCase();
+
+  // Confirm Weight for a Weight-Based Product
+  const handleConfirmWeight = useCallback((product: Product, quantityInKg: number, totalPrice: number) => {
+    playScanSuccessBeep();
+    const qtyDisplay = quantityInKg % 1 === 0 ? quantityInKg.toString() : quantityInKg.toFixed(3);
+
+    if (isVoiceAllowed && voiceEnabled) {
+      speakMessage(`Added ${qtyDisplay} kg ${product.name}`);
+    }
+
+    setCart((prevCart) => {
+      const existingIdx = prevCart.findIndex(item => item.product.id === product.id);
+      if (existingIdx >= 0) {
+        const updated = [...prevCart];
+        const newQty = Math.round((updated[existingIdx].quantity + quantityInKg) * 1000) / 1000;
+        
+        if (newQty > product.stockQuantity) {
+          playScanErrorBeep();
+          showNotification('error', `Cannot add ${quantityInKg} kg. Only ${product.stockQuantity} kg available in stock!`);
+          return prevCart;
+        }
+
+        const effectiveRate = product.price || product.pricePerKg || 0;
+        updated[existingIdx] = {
+          ...updated[existingIdx],
+          product: product,
+          quantity: newQty,
+          totalPrice: Math.round(newQty * effectiveRate * 100) / 100
+        };
+        showNotification('success', `Updated "${product.name}" in bill (${newQty.toFixed(3)} kg total)`);
+        return updated;
+      } else {
+        showNotification('success', `Added "${product.name}" (${qtyDisplay} kg) for Rs. ${totalPrice.toFixed(2)}`);
+        return [
+          ...prevCart,
+          {
+            product: product,
+            quantity: quantityInKg,
+            totalPrice: Math.round(totalPrice * 100) / 100
+          }
+        ];
+      }
+    });
+
+    setBarcodeInput('');
+  }, [isVoiceAllowed, voiceEnabled]);
 
   // Add Product to Cart by Full Barcode, Serial Number, or Code (Hands-free automatic support)
   const handleAddByBarcode = useCallback((targetBarcodeOrSerial: string, isExternalScanner: boolean = false) => {
@@ -148,7 +200,17 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
       return;
     }
 
-    // Success sound feedback
+    // CHECK IF PRODUCT IS SOLD BY WEIGHT
+    const isWeightProduct = found.sellBy === 'weight' || found.unitType === 'kg' || Boolean(found.pricePerKg);
+    if (isWeightProduct) {
+      // Open weight prompt modal for cashier to enter exact scale weight or pack count
+      setWeightPromptProduct(found);
+      setIsWeightModalOpen(true);
+      setBarcodeInput('');
+      return;
+    }
+
+    // Standard piece-based product handling
     playScanSuccessBeep();
     if (isVoiceAllowed && voiceEnabled) {
       speakMessage(`Added ${found.name}`);
@@ -170,7 +232,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           ...updated[existingIdx],
           product: found!, // update latest stock/price ref
           quantity: newQty,
-          totalPrice: newQty * found!.price
+          totalPrice: Math.round(newQty * found!.price * 100) / 100
         };
         showNotification('success', `Incremented "${found!.name}" in list (Qty: ${newQty})`);
         return updated;
@@ -338,17 +400,21 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     const liveProd = products.find(p => p.id === productId) || itemInCart.product;
 
     if (newQty > liveProd.stockQuantity) {
-      showNotification('error', `Cannot set quantity to ${newQty}. Only ${liveProd.stockQuantity} units available in stock!`);
+      const unitLabel = (liveProd.sellBy === 'weight' || liveProd.unitType === 'kg') ? 'kg' : 'units';
+      showNotification('error', `Cannot set quantity to ${newQty}. Only ${liveProd.stockQuantity} ${unitLabel} available in stock!`);
       return;
     }
+
+    const roundedQty = Math.round(newQty * 1000) / 1000;
+    const effectivePrice = liveProd.price || liveProd.pricePerKg || itemInCart.product.price;
 
     setCart((prevCart) =>
       prevCart.map((item) => {
         if (item.product.id === productId) {
           return {
             ...item,
-            quantity: newQty,
-            totalPrice: newQty * item.product.price
+            quantity: roundedQty,
+            totalPrice: Math.round(roundedQty * effectivePrice * 100) / 100
           };
         }
         return item;
@@ -421,9 +487,12 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
         barcode: item.product.barcode || '',
         serialNumber: item.product.serialNumber || '',
         name: item.product.name || '',
-        price: item.product.price || 0,
+        price: item.product.price || item.product.pricePerKg || 0,
         quantity: item.quantity || 1,
-        total: item.totalPrice || 0
+        total: Math.round(item.totalPrice * 100) / 100,
+        sellBy: item.product.sellBy || (item.product.unitType === 'kg' ? 'weight' : 'unit'),
+        unitType: item.product.unitType || (item.product.sellBy === 'weight' ? 'kg' : 'piece'),
+        weightInfo: item.product.weight || (item.product.sellBy === 'weight' ? `${item.quantity} kg` : undefined)
       }));
 
       const numDiscountVal = typeof discountValue === 'number' ? discountValue : parseFloat(discountValue) || 0;
@@ -461,7 +530,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           readSnapshots.push({
             prodRef,
             currentStock,
-            newStock: Math.max(0, currentStock - entry.quantity),
+            newStock: Math.max(0, Math.round((currentStock - entry.quantity) * 1000) / 1000),
             name: entry.product.name
           });
         }
@@ -784,6 +853,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[460px] overflow-y-auto overscroll-contain pr-1.5 custom-scrollbar touch-pan-y">
                   {filteredQuickProducts.map((p) => {
                     const isOut = p.stockQuantity <= 0;
+                    const isWeightItem = p.sellBy === 'weight' || p.unitType === 'kg' || Boolean(p.pricePerKg);
                     return (
                       <button
                         key={p.id}
@@ -796,18 +866,31 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                         }`}
                       >
                         <div>
-                          <div className="font-bold text-slate-900 text-xs line-clamp-2">{p.name}</div>
+                          <div className="flex items-center gap-1">
+                            {isWeightItem && (
+                              <span className="p-0.5 bg-amber-100 text-amber-800 rounded font-bold text-[9px] flex items-center gap-0.5 shrink-0" title="Sold by Weight">
+                                <Scale className="w-2.5 h-2.5" /> KG
+                              </span>
+                            )}
+                            <span className="font-bold text-slate-900 text-xs line-clamp-2">{p.name}</span>
+                          </div>
                           <div className="text-[10px] text-slate-500 font-mono mt-0.5 truncate">
                             {p.barcode || p.serialNumber || 'No Barcode'}
                           </div>
                         </div>
 
                         <div className="flex items-center justify-between mt-2">
-                          <span className="font-extrabold text-orange-600 text-xs">Rs. {p.price.toFixed(2)}</span>
+                          <span className="font-extrabold text-orange-600 text-xs">
+                            Rs. {p.price.toFixed(2)}{isWeightItem ? '/kg' : ''}
+                          </span>
                           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
                             isOut ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'
                           }`}>
-                            {isOut ? 'OUT' : `${p.stockQuantity} in stock`}
+                            {isOut 
+                              ? 'OUT' 
+                              : isWeightItem 
+                                ? `${p.stockQuantity % 1 === 0 ? p.stockQuantity : p.stockQuantity.toFixed(2)} kg` 
+                                : `${p.stockQuantity} in stock`}
                           </span>
                         </div>
                       </button>
@@ -850,71 +933,95 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                 </div>
               ) : (
                 <div className="space-y-3 max-h-[340px] sm:max-h-[380px] overflow-y-auto overscroll-contain pr-1.5 custom-scrollbar touch-pan-y">
-                  {cart.map((item) => (
-                    <div key={item.product.id} className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 flex items-center justify-between gap-3">
-                      
-                      <div className="flex-1 min-w-0">
-                        <div className="font-bold text-slate-900 text-xs truncate">{item.product.name}</div>
-                        <div className="text-[10px] text-slate-500 font-mono">
-                          Rs. {item.product.price.toFixed(2)} each • <span className="text-emerald-700 font-semibold">Stock: {item.product.stockQuantity}</span>
-                        </div>
-                      </div>
+                  {cart.map((item) => {
+                    const isWeight = item.product.sellBy === 'weight' || item.product.unitType === 'kg' || Boolean(item.product.pricePerKg);
+                    const qtyStep = isWeight ? 0.25 : 1;
 
-                      {/* COMPULSORY QUANTITY CONTROLS */}
-                      <div className="flex items-center gap-1 bg-white border border-slate-300 rounded-xl p-1 shadow-xs">
-                        <button
-                          type="button"
-                          onClick={() => handleUpdateQuantity(item.product.id, item.quantity - 1)}
-                          className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-orange-100 hover:text-orange-700 text-slate-700 flex items-center justify-center cursor-pointer text-xs font-bold transition-colors"
-                          title="Reduce quantity (-1)"
-                        >
-                          <Minus className="w-3.5 h-3.5" />
-                        </button>
+                    return (
+                      <div key={item.product.id} className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 flex items-center justify-between gap-3">
                         
-                        <input
-                          type="number"
-                          min="1"
-                          max={item.product.stockQuantity}
-                          value={item.quantity}
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value, 10);
-                            if (!isNaN(val)) {
-                              handleUpdateQuantity(item.product.id, val);
-                            }
-                          }}
-                          className="w-11 text-center bg-transparent text-slate-900 font-black text-xs focus:outline-none"
-                          title="Type quantity directly"
-                        />
-
-                        <button
-                          type="button"
-                          onClick={() => handleUpdateQuantity(item.product.id, item.quantity + 1)}
-                          className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-orange-100 hover:text-orange-700 text-slate-700 flex items-center justify-center cursor-pointer text-xs font-bold transition-colors"
-                          title="Add quantity (+1)"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-
-                      {/* Line Total and Instant Delete / Remove Button */}
-                      <div className="flex items-center gap-3 shrink-0">
-                        <div className="text-right">
-                          <div className="font-extrabold text-orange-600 text-xs">Rs. {item.totalPrice.toFixed(2)}</div>
-                          <div className="text-[10px] text-slate-400 font-mono">Rs. {item.product.price.toFixed(2)} ea</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            {isWeight && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setWeightPromptProduct(item.product);
+                                  setIsWeightModalOpen(true);
+                                }}
+                                className="px-1.5 py-0.5 rounded bg-amber-100 hover:bg-amber-200 text-amber-900 font-extrabold text-[10px] flex items-center gap-1 cursor-pointer transition-colors"
+                                title="Click to adjust weight in scale calculator"
+                              >
+                                <Scale className="w-3 h-3 text-amber-700" />
+                                <span>{item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(3)} kg</span>
+                              </button>
+                            )}
+                            <span className="font-bold text-slate-900 text-xs truncate">{item.product.name}</span>
+                          </div>
+                          <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                            Rs. {item.product.price.toFixed(2)}{isWeight ? '/kg' : ' each'} • <span className="text-emerald-700 font-semibold">Stock: {item.product.stockQuantity}{isWeight ? 'kg' : ''}</span>
+                          </div>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveItem(item.product.id)}
-                          className="p-2 rounded-xl bg-red-50 hover:bg-red-600 text-red-600 hover:text-white border border-red-200 hover:border-red-600 transition-all cursor-pointer shadow-xs group"
-                          title={`Delete "${item.product.name}" from cart`}
-                        >
-                          <Trash2 className="w-4 h-4 transition-transform group-hover:scale-110" />
-                        </button>
-                      </div>
+                        {/* COMPULSORY QUANTITY CONTROLS */}
+                        <div className="flex items-center gap-1 bg-white border border-slate-300 rounded-xl p-1 shadow-xs">
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateQuantity(item.product.id, Math.max(0, item.quantity - qtyStep))}
+                            className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-orange-100 hover:text-orange-700 text-slate-700 flex items-center justify-center cursor-pointer text-xs font-bold transition-colors"
+                            title={`Reduce quantity (-${qtyStep})`}
+                          >
+                            <Minus className="w-3.5 h-3.5" />
+                          </button>
+                          
+                          <input
+                            type="number"
+                            step={isWeight ? "0.001" : "1"}
+                            min="0.001"
+                            max={item.product.stockQuantity}
+                            value={item.quantity}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value);
+                              if (!isNaN(val)) {
+                                handleUpdateQuantity(item.product.id, val);
+                              }
+                            }}
+                            className="w-14 text-center bg-transparent text-slate-900 font-black text-xs focus:outline-none font-mono"
+                            title="Type exact weight or quantity directly"
+                          />
 
-                    </div>
-                  ))}
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateQuantity(item.product.id, item.quantity + qtyStep)}
+                            className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-orange-100 hover:text-orange-700 text-slate-700 flex items-center justify-center cursor-pointer text-xs font-bold transition-colors"
+                            title={`Add quantity (+${qtyStep})`}
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Line Total and Instant Delete / Remove Button */}
+                        <div className="flex items-center gap-3 shrink-0">
+                          <div className="text-right">
+                            <div className="font-extrabold text-orange-600 text-xs font-mono">Rs. {item.totalPrice.toFixed(2)}</div>
+                            <div className="text-[10px] text-slate-400 font-mono">
+                              {isWeight ? `${item.quantity.toFixed(3)}kg` : `x${item.quantity}`}
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveItem(item.product.id)}
+                            className="p-2 rounded-xl bg-red-50 hover:bg-red-600 text-red-600 hover:text-white border border-red-200 hover:border-red-600 transition-all cursor-pointer shadow-xs group"
+                            title={`Delete "${item.product.name}" from cart`}
+                          >
+                            <Trash2 className="w-4 h-4 transition-transform group-hover:scale-110" />
+                          </button>
+                        </div>
+
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1163,6 +1270,17 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           store={store}
           isOpen={isReturnSlipOpen}
           onClose={() => setIsReturnSlipOpen(false)}
+        />
+
+        {/* Sell by Weight Scale Calculator Modal */}
+        <WeightPromptModal
+          isOpen={isWeightModalOpen}
+          onClose={() => {
+            setIsWeightModalOpen(false);
+            setWeightPromptProduct(null);
+          }}
+          product={weightPromptProduct}
+          onConfirm={handleConfirmWeight}
         />
 
       </div>

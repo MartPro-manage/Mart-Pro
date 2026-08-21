@@ -100,8 +100,9 @@ export const ReturnProductModal: React.FC<ReturnProductModalProps> = ({
   if (!isOpen) return null;
 
   // Selected unit price and total refund
-  const unitPrice = selectedProduct?.price || 0;
-  const refundTotal = unitPrice * returnQuantity;
+  const unitPrice = selectedProduct?.price || selectedProduct?.pricePerKg || 0;
+  const isWeightProduct = selectedProduct?.sellBy === 'weight' || selectedProduct?.unitType === 'kg' || Boolean(selectedProduct?.pricePerKg);
+  const refundTotal = Math.round(unitPrice * returnQuantity * 100) / 100;
   const finalReason = reason === 'Other' ? (customReason.trim() || 'Other return') : reason;
 
   // Normalization helper for accurate barcode and code matching
@@ -266,14 +267,15 @@ export const ReturnProductModal: React.FC<ReturnProductModalProps> = ({
     }
 
     if (returnQuantity <= 0) {
-      setErrorMsg('Return quantity must be at least 1.');
+      setErrorMsg(isWeightProduct ? 'Return weight must be greater than 0 kg.' : 'Return quantity must be at least 1.');
       return;
     }
 
     if (selectedSale && selectedSaleItemIndex !== null) {
       const maxAllowed = selectedSale.items[selectedSaleItemIndex]?.quantity || 1;
       if (returnQuantity > maxAllowed) {
-        setErrorMsg(`Cannot return more than the ${maxAllowed} units purchased in Receipt #${selectedSale.receiptNumber}.`);
+        const unitLbl = isWeightProduct ? 'kg' : 'units';
+        setErrorMsg(`Cannot return more than the ${maxAllowed} ${unitLbl} purchased in Receipt #${selectedSale.receiptNumber}.`);
         return;
       }
     }
@@ -317,8 +319,8 @@ export const ReturnProductModal: React.FC<ReturnProductModalProps> = ({
 
         let newStock = returnQuantity;
         if (productSnap.exists()) {
-          const currentStock = productSnap.data().stockQuantity || 0;
-          newStock = currentStock + returnQuantity;
+          const currentStock = Number(productSnap.data().stockQuantity) || 0;
+          newStock = Math.round((currentStock + returnQuantity) * 1000) / 1000;
           transaction.update(productRef, {
             stockQuantity: newStock,
             updatedAt: timestamp
@@ -625,28 +627,41 @@ export const ReturnProductModal: React.FC<ReturnProductModalProps> = ({
             {/* Quantity Selector */}
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">
-                Quantity to Return & Restock:
+                {isWeightProduct ? 'Weight to Return & Restock (in KG):' : 'Quantity to Return & Restock:'}
               </label>
               <div className="flex items-center gap-3">
                 <div className="flex items-center border border-slate-200 rounded-2xl bg-slate-50 p-1">
                   <button
                     type="button"
-                    onClick={() => setReturnQuantity(Math.max(1, returnQuantity - 1))}
-                    disabled={returnQuantity <= 1}
+                    onClick={() => {
+                      const step = isWeightProduct ? 0.25 : 1;
+                      const minVal = isWeightProduct ? 0.05 : 1;
+                      setReturnQuantity(Math.max(minVal, Math.round((returnQuantity - step) * 1000) / 1000));
+                    }}
+                    disabled={returnQuantity <= (isWeightProduct ? 0.05 : 1)}
                     className="p-2 hover:bg-white text-slate-700 disabled:text-slate-300 rounded-xl transition-colors cursor-pointer"
                   >
                     <Minus className="w-4 h-4" />
                   </button>
                   <input
                     type="number"
-                    min="1"
+                    step={isWeightProduct ? "0.001" : "1"}
+                    min={isWeightProduct ? "0.001" : "1"}
                     value={returnQuantity}
-                    onChange={(e) => setReturnQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                    className="w-16 text-center font-black text-sm bg-transparent focus:outline-none text-slate-900"
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      if (!isNaN(val)) {
+                        setReturnQuantity(Math.max(isWeightProduct ? 0.001 : 1, val));
+                      }
+                    }}
+                    className="w-20 text-center font-black text-sm bg-transparent focus:outline-none text-slate-900 font-mono"
                   />
                   <button
                     type="button"
-                    onClick={() => setReturnQuantity(returnQuantity + 1)}
+                    onClick={() => {
+                      const step = isWeightProduct ? 0.25 : 1;
+                      setReturnQuantity(Math.round((returnQuantity + step) * 1000) / 1000);
+                    }}
                     className="p-2 hover:bg-white text-slate-700 rounded-xl transition-colors cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
@@ -654,7 +669,9 @@ export const ReturnProductModal: React.FC<ReturnProductModalProps> = ({
                 </div>
 
                 <div className="text-xs text-slate-600 font-medium">
-                  Inventory Restock: <strong className="text-emerald-700 font-black">{selectedProduct.stockQuantity} ➔ {selectedProduct.stockQuantity + returnQuantity} units</strong>
+                  Inventory Restock: <strong className="text-emerald-700 font-black">
+                    {selectedProduct.stockQuantity}{isWeightProduct ? ' kg' : ''} ➔ {Math.round((selectedProduct.stockQuantity + returnQuantity) * 1000) / 1000}{isWeightProduct ? ' kg' : ' units'}
+                  </strong>
                 </div>
               </div>
             </div>

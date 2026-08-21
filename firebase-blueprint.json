@@ -9,6 +9,15 @@
         "status": { "type": "string", "description": "Store status: active or disabled" },
         "cameraScannerEnabled": { "type": "boolean", "description": "Super admin permission to enable/disable inbuilt camera barcode scanner for store" },
         "voiceAnnouncementEnabled": { "type": "boolean", "description": "Super admin permission to allow/disallow audio voice generation for store" },
+        "phone": { "type": "string", "description": "Store contact phone / WhatsApp" },
+        "address": { "type": "string", "description": "Store physical location / address" },
+        "receiptHeader": { "type": "string", "description": "Custom receipt header message or tax subtitle" },
+        "receiptFooter": { "type": "string", "description": "Custom receipt footer thank you message" },
+        "taxRegistrationNumber": { "type": "string", "description": "NTN / Tax registration number" },
+        "lowStockAlertThreshold": { "type": "number", "description": "Alert threshold for low inventory" },
+        "currencySymbol": { "type": "string", "description": "Store currency symbol (e.g. Rs., PKR, $)" },
+        "returnPolicyDays": { "type": "number", "description": "Allowed days window for returns" },
+        "soundEffectsEnabled": { "type": "boolean", "description": "Enable POS sound beeps" },
         "createdAt": { "type": "string", "description": "Creation ISO date string" }
       }
     },

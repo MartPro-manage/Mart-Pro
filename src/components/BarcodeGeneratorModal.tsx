@@ -542,7 +542,7 @@ export const BarcodeGeneratorModal: React.FC<BarcodeGeneratorModalProps> = ({
                     </span>
                     <input
                       type="number"
-                      step="0.01"
+                      step="any"
                       min="0"
                       required
                       placeholder="250.00"
@@ -562,10 +562,11 @@ export const BarcodeGeneratorModal: React.FC<BarcodeGeneratorModalProps> = ({
                   </label>
                   <input
                     type="number"
-                    min="1"
+                    step="any"
+                    min="0"
                     placeholder="50"
                     value={stockQuantity}
-                    onChange={(e) => setStockQuantity(e.target.value === '' ? '' : parseInt(e.target.value, 10))}
+                    onChange={(e) => setStockQuantity(e.target.value === '' ? '' : parseFloat(e.target.value))}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs font-bold focus:outline-none focus:border-orange-500 font-mono"
                   />
                 </div>

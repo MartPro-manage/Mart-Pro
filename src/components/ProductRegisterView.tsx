@@ -60,6 +60,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   const [category, setCategory] = useState('General');
   const [price, setPrice] = useState<number | ''>('');
   const [stockQuantityToAdd, setStockQuantityToAdd] = useState<number | ''>('');
+  const [stockAdjustmentMode, setStockAdjustmentMode] = useState<'keep' | 'add' | 'set'>('keep');
   const [minStockLevel, setMinStockLevel] = useState<number>(5);
 
   const [existingProduct, setExistingProduct] = useState<Product | null>(null);
@@ -146,6 +147,8 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
       setSellBy(found.sellBy || (found.unitType === 'kg' ? 'weight' : 'unit'));
       setUnitType((found.unitType as any) || (found.sellBy === 'weight' ? 'kg' : 'piece'));
       setWeightPerUnit(found.weightPerUnit !== undefined ? found.weightPerUnit : '');
+      setStockAdjustmentMode('keep');
+      setStockQuantityToAdd('');
     } else {
       setExistingProduct(null);
     }
@@ -154,6 +157,22 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   const showNotification = (type: 'success' | 'error', text: string) => {
     setMsg({ type, text });
     setTimeout(() => setMsg(null), 5000);
+  };
+
+  const handleResetForm = () => {
+    setBarcode('');
+    setSerialNumber('');
+    setName('');
+    setWeight('');
+    setWeightPerUnit('');
+    setCategory('General');
+    setPrice('');
+    setStockQuantityToAdd('');
+    setStockAdjustmentMode('keep');
+    setExistingProduct(null);
+    if (barcodeInputRef.current) {
+      barcodeInputRef.current.focus();
+    }
   };
 
   const handleSelectProductToEdit = (p: Product) => {
@@ -168,6 +187,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     setSellBy(p.sellBy || (p.unitType === 'kg' ? 'weight' : 'unit'));
     setUnitType((p.unitType as any) || (p.sellBy === 'weight' ? 'kg' : 'piece'));
     setWeightPerUnit(p.weightPerUnit !== undefined ? p.weightPerUnit : '');
+    setStockAdjustmentMode('keep');
     setStockQuantityToAdd('');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -219,7 +239,6 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     const trimmedName = name.trim();
     const trimmedWeight = weight.trim();
     const numericPrice = typeof price === 'number' ? price : parseFloat(price as any);
-    const addedQuantity = typeof stockQuantityToAdd === 'number' ? stockQuantityToAdd : parseFloat(stockQuantityToAdd as string);
     const numericWeightPerUnit = typeof weightPerUnit === 'number' ? weightPerUnit : (weightPerUnit ? parseFloat(weightPerUnit as string) : undefined);
 
     if (!trimmedName) {
@@ -229,11 +248,6 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
 
     if (isNaN(numericPrice) || numericPrice < 0) {
       showNotification('error', sellBy === 'weight' ? 'Please enter a valid price per kg in Pakistani Rupees (Rs.).' : 'Please enter a valid price in Pakistani Rupees (Rs.).');
-      return;
-    }
-
-    if (isNaN(addedQuantity) || addedQuantity <= 0) {
-      showNotification('error', sellBy === 'weight' ? 'Total weight is compulsory! Please enter stock weight in kg to add.' : 'Quantity is compulsory! Please enter stock quantity to add.');
       return;
     }
 
@@ -251,7 +265,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
         p => p.barcode && p.barcode.trim().toLowerCase() === trimmedBarcode.toLowerCase()
       );
 
-      if (existingBarcodeProduct && existingBarcodeProduct.name.trim().toLowerCase() !== trimmedName.toLowerCase()) {
+      if (existingBarcodeProduct && existingBarcodeProduct.id !== existingProduct?.id && existingBarcodeProduct.name.trim().toLowerCase() !== trimmedName.toLowerCase()) {
         showNotification(
           'error',
           `Cannot proceed! Barcode "${trimmedBarcode}" is already registered under product name "${existingBarcodeProduct.name}".`
@@ -266,7 +280,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
         p => p.serialNumber && p.serialNumber.trim().toLowerCase() === trimmedSerial.toLowerCase()
       );
 
-      if (existingSerialProduct && existingSerialProduct.name.trim().toLowerCase() !== trimmedName.toLowerCase()) {
+      if (existingSerialProduct && existingSerialProduct.id !== existingProduct?.id && existingSerialProduct.name.trim().toLowerCase() !== trimmedName.toLowerCase()) {
         showNotification(
           'error',
           `Cannot proceed! Serial Number "${trimmedSerial}" is already registered under product name "${existingSerialProduct.name}".`
@@ -275,18 +289,56 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
       }
     }
 
+    const existingBarcodeMatch = trimmedBarcode 
+      ? products.find(p => p.barcode && p.barcode.trim().toLowerCase() === trimmedBarcode.toLowerCase())
+      : undefined;
+    const existingSerialMatch = trimmedSerial
+      ? products.find(p => p.serialNumber && p.serialNumber.trim().toLowerCase() === trimmedSerial.toLowerCase())
+      : undefined;
+
+    const targetProduct = existingProduct || existingBarcodeMatch || existingSerialMatch;
+    const unitLabel = sellBy === 'weight' ? 'kg' : 'units';
+
+    let finalTotalStock = 0;
+    let stockSummaryText = '';
+
+    if (targetProduct) {
+      if (stockAdjustmentMode === 'keep') {
+        finalTotalStock = targetProduct.stockQuantity;
+        stockSummaryText = `Stock kept at ${finalTotalStock} ${unitLabel}`;
+      } else if (stockAdjustmentMode === 'set') {
+        const parsedVal = typeof stockQuantityToAdd === 'number' ? stockQuantityToAdd : (stockQuantityToAdd === '' ? 0 : parseFloat(stockQuantityToAdd as string));
+        if (isNaN(parsedVal) || parsedVal < 0) {
+          showNotification('error', 'Please enter a valid stock quantity (0 or greater).');
+          return;
+        }
+        finalTotalStock = Math.round(parsedVal * 1000) / 1000;
+        stockSummaryText = `Stock set to ${finalTotalStock} ${unitLabel}`;
+      } else {
+        // 'add'
+        const parsedVal = typeof stockQuantityToAdd === 'number' ? stockQuantityToAdd : (stockQuantityToAdd === '' ? 0 : parseFloat(stockQuantityToAdd as string));
+        if (isNaN(parsedVal) || parsedVal <= 0) {
+          showNotification('error', `Please enter a quantity greater than 0 to add to stock.`);
+          return;
+        }
+        const roundedAdded = Math.round(parsedVal * 1000) / 1000;
+        finalTotalStock = Math.round((targetProduct.stockQuantity + roundedAdded) * 1000) / 1000;
+        stockSummaryText = `Added +${roundedAdded} ${unitLabel} (Total Stock: ${finalTotalStock} ${unitLabel})`;
+      }
+    } else {
+      // New product
+      const parsedVal = typeof stockQuantityToAdd === 'number' ? stockQuantityToAdd : (stockQuantityToAdd === '' ? 0 : parseFloat(stockQuantityToAdd as string));
+      if (isNaN(parsedVal) || parsedVal < 0) {
+        showNotification('error', 'Please enter a valid initial stock quantity (0 or greater).');
+        return;
+      }
+      finalTotalStock = Math.round(parsedVal * 1000) / 1000;
+      stockSummaryText = `Initial stock: ${finalTotalStock} ${unitLabel}`;
+    }
+
     setLoading(true);
 
     try {
-      const existingBarcodeMatch = trimmedBarcode 
-        ? products.find(p => p.barcode && p.barcode.trim().toLowerCase() === trimmedBarcode.toLowerCase())
-        : undefined;
-      const existingSerialMatch = trimmedSerial
-        ? products.find(p => p.serialNumber && p.serialNumber.trim().toLowerCase() === trimmedSerial.toLowerCase())
-        : undefined;
-
-      const targetProduct = existingProduct || existingBarcodeMatch || existingSerialMatch;
-
       const codeInfo = [
         trimmedSerial ? `S/N: ${trimmedSerial}` : null,
         trimmedBarcode ? `BC: ${trimmedBarcode}` : null,
@@ -294,33 +346,29 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
         sellBy === 'weight' ? 'Sell By Weight (kg)' : null
       ].filter(Boolean).join(', ');
 
-      const roundedAddedQty = Math.round(addedQuantity * 1000) / 1000;
-
       if (targetProduct) {
         // UPDATE EXISTING PRODUCT
-        const newTotalStock = Math.round((targetProduct.stockQuantity + roundedAddedQty) * 1000) / 1000;
         const productDocRef = doc(db, 'products', targetProduct.id);
 
         await updateDoc(productDocRef, cleanFirestoreData({
           barcode: trimmedBarcode || '',
           serialNumber: trimmedSerial || '',
           name: trimmedName,
-          weight: trimmedWeight || (sellBy === 'weight' ? `${newTotalStock} kg` : ''),
+          weight: trimmedWeight || (sellBy === 'weight' ? `${finalTotalStock} kg` : ''),
           category: category.trim() || 'General',
           price: numericPrice,
           pricePerKg: sellBy === 'weight' ? numericPrice : undefined,
           sellBy: sellBy,
           unitType: sellBy === 'weight' ? (unitType || 'kg') : (unitType || 'piece'),
           weightPerUnit: numericWeightPerUnit || undefined,
-          stockQuantity: newTotalStock,
+          stockQuantity: finalTotalStock,
           minStockLevel: minStockLevel || 5,
           updatedAt: new Date().toISOString()
         }));
 
-        const unitLabel = sellBy === 'weight' ? 'kg' : 'units';
         showNotification(
           'success',
-          `Updated "${trimmedName}"${codeInfo ? ` (${codeInfo})` : ''}! Added +${roundedAddedQty} ${unitLabel} (Total Stock: ${newTotalStock} ${unitLabel}). Price: Rs. ${numericPrice.toFixed(2)}${sellBy === 'weight' ? '/kg' : ''}`
+          `Updated "${trimmedName}"${codeInfo ? ` (${codeInfo})` : ''}! Price: Rs. ${numericPrice.toFixed(2)}${sellBy === 'weight' ? '/kg' : ''} • ${stockSummaryText}`
         );
       } else {
         // REGISTER NEW PRODUCT
@@ -331,14 +379,14 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
           barcode: trimmedBarcode || '',
           serialNumber: trimmedSerial || '',
           name: trimmedName,
-          weight: trimmedWeight || (sellBy === 'weight' ? `${roundedAddedQty} kg` : ''),
+          weight: trimmedWeight || (sellBy === 'weight' ? `${finalTotalStock} kg` : ''),
           category: category.trim() || 'General',
           price: numericPrice,
           pricePerKg: sellBy === 'weight' ? numericPrice : undefined,
           sellBy: sellBy,
           unitType: sellBy === 'weight' ? (unitType || 'kg') : (unitType || 'piece'),
           weightPerUnit: numericWeightPerUnit || undefined,
-          stockQuantity: roundedAddedQty,
+          stockQuantity: finalTotalStock,
           minStockLevel: minStockLevel || 5,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
@@ -346,30 +394,16 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
 
         await setDoc(productDocRef, cleanFirestoreData(newProduct));
 
-        const unitLabel = sellBy === 'weight' ? 'kg' : 'units';
         showNotification(
           'success',
-          `Registered new product "${trimmedName}"${codeInfo ? ` (${codeInfo})` : ''} with initial stock of ${roundedAddedQty} ${unitLabel} at Rs. ${numericPrice.toFixed(2)}${sellBy === 'weight' ? '/kg' : ''}.`
+          `Registered new product "${trimmedName}"${codeInfo ? ` (${codeInfo})` : ''} at Rs. ${numericPrice.toFixed(2)}${sellBy === 'weight' ? '/kg' : ''} • ${stockSummaryText}`
         );
       }
 
-      // Reset form
-      setBarcode('');
-      setSerialNumber('');
-      setName('');
-      setWeight('');
-      setWeightPerUnit('');
-      setCategory('General');
-      setPrice('');
-      setStockQuantityToAdd('');
-      setExistingProduct(null);
-
-      if (barcodeInputRef.current) {
-        barcodeInputRef.current.focus();
-      }
+      handleResetForm();
     } catch (err: any) {
       console.error(err);
-      showNotification('error', 'Failed to save product stock: ' + err.message);
+      showNotification('error', 'Failed to save product: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -597,7 +631,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
               <div>
                 <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
                   <PackagePlus className="w-5 h-5 text-orange-600" /> 
-                  {existingProduct ? 'Update Stock & Price' : 'Register Product Stock'}
+                  {existingProduct ? 'Update Product & Price' : 'Register Product Stock'}
                 </h2>
                 <p className="text-xs text-slate-500 font-medium mt-0.5">
                   {existingProduct ? `Modifying "${existingProduct.name}"` : 'Enter product details or scan barcode to add stock'}
@@ -605,9 +639,19 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
               </div>
 
               {existingProduct ? (
-                <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                  Existing Item
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                    Editing Item
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleResetForm}
+                    className="text-xs font-bold text-slate-500 hover:text-slate-900 px-2 py-1 rounded-lg hover:bg-slate-100 transition-all cursor-pointer"
+                    title="Cancel edit and register a new item"
+                  >
+                    ✕ New Item
+                  </button>
+                </div>
               ) : (
                 <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
                   New Item
@@ -619,7 +663,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
             <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-600 flex items-start gap-2">
               <Info className="w-4 h-4 text-orange-600 shrink-0 mt-0.5" />
               <span>
-                <strong>Note:</strong> It is not compulsory to provide both Serial Number and Barcode. You can enter either one, or leave both empty to auto-generate a unique barcode.
+                <strong>Note:</strong> You can edit product price at any time without entering quantity. Barcode or Serial Number can also be customized.
               </span>
             </div>
 
@@ -717,21 +761,6 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                 </div>
               </div>
 
-              {/* Existing Stock Alert if found */}
-              {existingProduct && (
-                <div className="p-3 bg-amber-50/90 rounded-2xl border border-amber-200 text-xs space-y-1">
-                  <div className="font-bold text-amber-900 flex items-center justify-between">
-                    <span>Currently Available Stock:</span>
-                    <span className="text-slate-900 text-sm font-extrabold">
-                      {existingProduct.stockQuantity} {existingProduct.sellBy === 'weight' || existingProduct.unitType === 'kg' ? 'kg' : 'units'}
-                    </span>
-                  </div>
-                  <p className="text-slate-600 font-medium">
-                    Entering quantity below will <span className="text-emerald-700 font-bold">ADD</span> to the store inventory.
-                  </p>
-                </div>
-              )}
-
               {/* Serial Number (S/N) / Item Code */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
@@ -820,7 +849,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                   <div className="relative">
                     <input
                       type="number"
-                      step="0.001"
+                      step="any"
                       min="0"
                       placeholder="e.g. 0.5 (kg per packet) or leave blank for loose"
                       value={weightPerUnit}
@@ -834,27 +863,115 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                 </div>
               )}
 
-              {/* Quantity to Add & Latest Price (Rs.) */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    {sellBy === 'weight' 
-                      ? (existingProduct ? 'Add Weight (kg) *' : 'Total Stock (kg) *')
-                      : (existingProduct ? 'Add Stock (+Qty) *' : 'Initial Stock Qty *')}
-                  </label>
-                  <input
-                    ref={quantityInputRef}
-                    type="number"
-                    step={sellBy === 'weight' ? '0.001' : '1'}
-                    min="0.001"
-                    required
-                    placeholder={sellBy === 'weight' ? 'e.g. 50.000' : 'e.g. 50'}
-                    value={stockQuantityToAdd}
-                    onChange={(e) => setStockQuantityToAdd(e.target.value === '' ? '' : (sellBy === 'weight' ? parseFloat(e.target.value) : parseInt(e.target.value, 10)))}
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-bold text-emerald-700 transition-all font-mono"
-                  />
-                </div>
+              {/* Stock Management & Price Grid */}
+              <div className="space-y-3 pt-1">
+                {existingProduct ? (
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                        Inventory Stock Adjustment
+                      </label>
+                      <span className="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 font-mono">
+                        Current: {existingProduct.stockQuantity} {sellBy === 'weight' || existingProduct.sellBy === 'weight' || unitType === 'kg' ? 'kg' : 'units'}
+                      </span>
+                    </div>
 
+                    {/* Stock Mode Switcher: Keep vs Add vs Override */}
+                    <div className="grid grid-cols-3 gap-1.5 bg-slate-200/70 p-1 rounded-xl text-xs font-bold">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStockAdjustmentMode('keep');
+                          setStockQuantityToAdd('');
+                        }}
+                        className={`py-1.5 px-2 rounded-lg transition-all text-center cursor-pointer ${
+                          stockAdjustmentMode === 'keep'
+                            ? 'bg-white text-slate-900 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Keep Stock
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStockAdjustmentMode('add')}
+                        className={`py-1.5 px-2 rounded-lg transition-all text-center cursor-pointer ${
+                          stockAdjustmentMode === 'add'
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        + Add Stock
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStockAdjustmentMode('set')}
+                        className={`py-1.5 px-2 rounded-lg transition-all text-center cursor-pointer ${
+                          stockAdjustmentMode === 'set'
+                            ? 'bg-orange-600 text-white shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Set Total
+                      </button>
+                    </div>
+
+                    {stockAdjustmentMode === 'keep' ? (
+                      <p className="text-[11px] text-slate-500 font-medium">
+                        ✓ Current inventory remains at <strong>{existingProduct.stockQuantity} {sellBy === 'weight' || existingProduct.sellBy === 'weight' || unitType === 'kg' ? 'kg' : 'units'}</strong>. You can update the price or details below without entering quantity.
+                      </p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                          {stockAdjustmentMode === 'add'
+                            ? `Quantity to ADD (+${sellBy === 'weight' || unitType === 'kg' ? 'kg' : 'units'}) *`
+                            : `New Total Stock Count (${sellBy === 'weight' || unitType === 'kg' ? 'kg' : 'units'}) *`}
+                        </label>
+                        <input
+                          ref={quantityInputRef}
+                          type="number"
+                          step="any"
+                          min="0"
+                          required={stockAdjustmentMode !== 'keep'}
+                          placeholder={
+                            stockAdjustmentMode === 'add'
+                              ? (sellBy === 'weight' ? 'e.g. 10.5' : 'e.g. 10 or 40')
+                              : (sellBy === 'weight' ? 'e.g. 50.0' : 'e.g. 40')
+                          }
+                          value={stockQuantityToAdd}
+                          onChange={(e) => setStockQuantityToAdd(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                          className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-orange-500 font-bold text-emerald-700 transition-all font-mono"
+                        />
+                        <p className="text-[10px] text-slate-500">
+                          {stockAdjustmentMode === 'add' && typeof stockQuantityToAdd === 'number' && !isNaN(stockQuantityToAdd)
+                            ? `New Total will be: ${Math.round((existingProduct.stockQuantity + stockQuantityToAdd) * 1000) / 1000} ${sellBy === 'weight' || unitType === 'kg' ? 'kg' : 'units'}`
+                            : stockAdjustmentMode === 'set'
+                            ? 'Will replace current stock count in inventory.'
+                            : 'Enter quantity to update inventory.'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      {sellBy === 'weight' ? 'Initial Stock Weight (kg)' : 'Initial Stock Quantity'}
+                    </label>
+                    <input
+                      ref={quantityInputRef}
+                      type="number"
+                      step="any"
+                      min="0"
+                      placeholder={sellBy === 'weight' ? 'e.g. 50.000 (Optional, default 0)' : 'e.g. 50 or 40 (Optional, default 0)'}
+                      value={stockQuantityToAdd}
+                      onChange={(e) => setStockQuantityToAdd(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-bold text-emerald-700 transition-all font-mono"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1">Optional. Defaults to 0 if left blank.</p>
+                  </div>
+                )}
+
+                {/* Latest Price (Rs.) */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                     {sellBy === 'weight' ? 'Price Per KG (Rs.) *' : 'Unit Price (Rs.) *'}
@@ -865,7 +982,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                     </span>
                     <input
                       type="number"
-                      step="0.01"
+                      step="any"
                       min="0"
                       required
                       placeholder={sellBy === 'weight' ? '300.00 / kg' : '250.00'}
@@ -874,6 +991,9 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                       className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-black text-orange-600 transition-all font-mono"
                     />
                   </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    {existingProduct ? 'Update price independently at any time.' : 'Selling price at checkout.'}
+                  </p>
                 </div>
               </div>
 

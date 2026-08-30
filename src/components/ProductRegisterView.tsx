@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   db, 
   collection, 
@@ -7,7 +7,7 @@ import {
   where, 
   doc, 
   setDoc, 
-  updateDoc,
+  updateDoc, 
   deleteDoc,
   handleFirestoreError,
   OperationType,
@@ -35,7 +35,12 @@ import {
   Scale,
   Sparkles,
   Info,
-  Download
+  Download,
+  TrendingUp,
+  Percent,
+  Coins,
+  DollarSign,
+  ArrowUpRight
 } from 'lucide-react';
 
 interface ProductRegisterViewProps {
@@ -58,6 +63,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   const [weight, setWeight] = useState('');
   const [weightPerUnit, setWeightPerUnit] = useState<number | ''>('');
   const [category, setCategory] = useState('General');
+  const [costPrice, setCostPrice] = useState<number | ''>('');
   const [price, setPrice] = useState<number | ''>('');
   const [stockQuantityToAdd, setStockQuantityToAdd] = useState<number | ''>('');
   const [stockAdjustmentMode, setStockAdjustmentMode] = useState<'keep' | 'add' | 'set'>('keep');
@@ -142,6 +148,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
       setName(found.name);
       setWeight(found.weight || '');
       setCategory(found.category || 'General');
+      setCostPrice(found.costPrice !== undefined ? found.costPrice : '');
       setPrice(found.price);
       setMinStockLevel(found.minStockLevel || 5);
       setSellBy(found.sellBy || (found.unitType === 'kg' ? 'weight' : 'unit'));
@@ -166,6 +173,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     setWeight('');
     setWeightPerUnit('');
     setCategory('General');
+    setCostPrice('');
     setPrice('');
     setStockQuantityToAdd('');
     setStockAdjustmentMode('keep');
@@ -182,6 +190,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     setName(p.name);
     setWeight(p.weight || '');
     setCategory(p.category || 'General');
+    setCostPrice(p.costPrice !== undefined ? p.costPrice : '');
     setPrice(p.price);
     setMinStockLevel(p.minStockLevel || 5);
     setSellBy(p.sellBy || (p.unitType === 'kg' ? 'weight' : 'unit'));
@@ -201,6 +210,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
         barcode: barcode || '',
         serialNumber: serialNumber || '',
         weight: weight || (sellBy === 'weight' ? '1 kg' : '500g'),
+        costPrice: typeof costPrice === 'number' ? costPrice : (costPrice !== '' ? parseFloat(costPrice as any) : undefined),
         price: typeof price === 'number' ? price : 0,
         category: category || 'General',
         stockQuantity: typeof stockQuantityToAdd === 'number' ? stockQuantityToAdd : 50,
@@ -239,6 +249,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     const trimmedName = name.trim();
     const trimmedWeight = weight.trim();
     const numericPrice = typeof price === 'number' ? price : parseFloat(price as any);
+    const numericCostPrice = typeof costPrice === 'number' ? costPrice : (costPrice !== '' ? parseFloat(costPrice as any) : undefined);
     const numericWeightPerUnit = typeof weightPerUnit === 'number' ? weightPerUnit : (weightPerUnit ? parseFloat(weightPerUnit as string) : undefined);
 
     if (!trimmedName) {
@@ -356,6 +367,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
           name: trimmedName,
           weight: trimmedWeight || (sellBy === 'weight' ? `${finalTotalStock} kg` : ''),
           category: category.trim() || 'General',
+          costPrice: numericCostPrice !== undefined && !isNaN(numericCostPrice) ? numericCostPrice : 0,
           price: numericPrice,
           pricePerKg: sellBy === 'weight' ? numericPrice : undefined,
           sellBy: sellBy,
@@ -381,6 +393,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
           name: trimmedName,
           weight: trimmedWeight || (sellBy === 'weight' ? `${finalTotalStock} kg` : ''),
           category: category.trim() || 'General',
+          costPrice: numericCostPrice !== undefined && !isNaN(numericCostPrice) ? numericCostPrice : 0,
           price: numericPrice,
           pricePerKg: sellBy === 'weight' ? numericPrice : undefined,
           sellBy: sellBy,
@@ -414,6 +427,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     name: string;
     uniqueNumber: string;
     weight: string;
+    costPrice?: number;
     price: number;
     category?: string;
     stockQuantity?: number;
@@ -429,6 +443,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
         barcode: productData.uniqueNumber || '',
         name: productData.name,
         weight: productData.weight || '',
+        costPrice: productData.costPrice !== undefined ? productData.costPrice : (existing.costPrice || 0),
         price: productData.price,
         category: productData.category || 'General',
         stockQuantity: newStock,
@@ -444,6 +459,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
         name: productData.name,
         weight: productData.weight || '',
         category: productData.category || 'General',
+        costPrice: productData.costPrice || 0,
         price: productData.price,
         stockQuantity: productData.stockQuantity || 50,
         minStockLevel: 5,
@@ -454,6 +470,34 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
       showNotification('success', `Created & registered barcode for "${productData.name}" with ${productData.stockQuantity || 50} units at Rs. ${productData.price.toFixed(2)}`);
     }
   };
+
+  // Calculate store inventory and financial valuation
+  const inventoryStats = useMemo(() => {
+    let totalCostValue = 0;
+    let totalRetailValue = 0;
+    let totalItemsCount = 0;
+
+    products.forEach((p) => {
+      const qty = p.stockQuantity || 0;
+      const effectiveSellPrice = p.price || p.pricePerKg || 0;
+      const effectiveCostPrice = p.costPrice || 0;
+
+      totalItemsCount += qty;
+      totalCostValue += effectiveCostPrice * qty;
+      totalRetailValue += effectiveSellPrice * qty;
+    });
+
+    const projectedProfit = totalRetailValue - totalCostValue;
+    const overallMargin = totalRetailValue > 0 ? (projectedProfit / totalRetailValue) * 100 : 0;
+
+    return {
+      totalItemsCount,
+      totalCostValue,
+      totalRetailValue,
+      projectedProfit,
+      overallMargin
+    };
+  }, [products]);
 
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
@@ -971,30 +1015,113 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                   </div>
                 )}
 
-                {/* Latest Price (Rs.) */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    {sellBy === 'weight' ? 'Price Per KG (Rs.) *' : 'Unit Price (Rs.) *'}
-                  </label>
-                  <div className="relative">
-                    <span className="text-xs font-black text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2">
-                      Rs.
-                    </span>
-                    <input
-                      type="number"
-                      step="any"
-                      min="0"
-                      required
-                      placeholder={sellBy === 'weight' ? '300.00 / kg' : '250.00'}
-                      value={price}
-                      onChange={(e) => setPrice(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                      className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-black text-orange-600 transition-all font-mono"
-                    />
+                {/* Pricing & Cost Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Cost / Purchase Price (Rs.) */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                      <span>{sellBy === 'weight' ? 'Cost Price / KG' : 'Cost Price (Buy)'}</span>
+                      <span className="text-[10px] text-slate-500 font-medium">Wholesale Rate</span>
+                    </label>
+                    <div className="relative">
+                      <span className="text-xs font-black text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2">
+                        Rs.
+                      </span>
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        placeholder={sellBy === 'weight' ? 'e.g. 220.00' : 'e.g. 180.00'}
+                        value={costPrice}
+                        onChange={(e) => setCostPrice(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                        className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-bold text-slate-800 transition-all font-mono"
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Purchase rate (used to track profit).
+                    </p>
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-1">
-                    {existingProduct ? 'Update price independently at any time.' : 'Selling price at checkout.'}
-                  </p>
+
+                  {/* Selling Price (Rs.) */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                      <span>{sellBy === 'weight' ? 'Sell Price / KG *' : 'Selling Price *'}</span>
+                      <span className="text-[10px] text-orange-600 font-bold">Checkout Rate</span>
+                    </label>
+                    <div className="relative">
+                      <span className="text-xs font-black text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2">
+                        Rs.
+                      </span>
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        required
+                        placeholder={sellBy === 'weight' ? '300.00 / kg' : '250.00'}
+                        value={price}
+                        onChange={(e) => setPrice(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                        className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-black text-orange-600 transition-all font-mono"
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      {existingProduct ? 'Update selling price.' : 'Customer billing rate.'}
+                    </p>
+                  </div>
                 </div>
+
+                {/* Live Profit & Margin Indicator */}
+                {(() => {
+                  const numSellingPrice = typeof price === 'number' ? price : (price !== '' ? parseFloat(price as any) : 0);
+                  const numCostPrice = typeof costPrice === 'number' ? costPrice : (costPrice !== '' ? parseFloat(costPrice as any) : 0);
+                  
+                  if (numSellingPrice <= 0 && numCostPrice <= 0) return null;
+
+                  const unitProfit = numSellingPrice - numCostPrice;
+                  const marginPercent = numSellingPrice > 0 ? (unitProfit / numSellingPrice) * 100 : 0;
+                  const markupPercent = numCostPrice > 0 ? (unitProfit / numCostPrice) * 100 : 0;
+                  const isProfit = unitProfit >= 0;
+
+                  return (
+                    <div className={`p-3.5 rounded-2xl border transition-all ${
+                      isProfit ? 'bg-emerald-50/70 border-emerald-200' : 'bg-red-50/70 border-red-200'
+                    }`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                          <TrendingUp className={`w-4 h-4 ${isProfit ? 'text-emerald-600' : 'text-red-600'}`} />
+                          Profit Preview ({sellBy === 'weight' ? 'per kg' : 'per item'})
+                        </span>
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                          isProfit ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+                        }`}>
+                          {isProfit ? '✓ Profitable' : '⚠ Low / Negative Margin'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="bg-white p-2 rounded-xl border border-slate-200/80 shadow-xs">
+                          <div className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">Est. Profit</div>
+                          <div className={`text-xs sm:text-sm font-black font-mono mt-0.5 ${isProfit ? 'text-emerald-700' : 'text-red-700'}`}>
+                            Rs. {unitProfit.toFixed(2)}
+                          </div>
+                        </div>
+
+                        <div className="bg-white p-2 rounded-xl border border-slate-200/80 shadow-xs">
+                          <div className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">Margin</div>
+                          <div className={`text-xs sm:text-sm font-black font-mono mt-0.5 ${isProfit ? 'text-emerald-700' : 'text-red-700'}`}>
+                            {marginPercent.toFixed(1)}%
+                          </div>
+                        </div>
+
+                        <div className="bg-white p-2 rounded-xl border border-slate-200/80 shadow-xs">
+                          <div className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">Markup</div>
+                          <div className={`text-xs sm:text-sm font-black font-mono mt-0.5 ${isProfit ? 'text-emerald-700' : 'text-red-700'}`}>
+                            {numCostPrice > 0 ? `${markupPercent.toFixed(1)}%` : 'N/A'}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Action Buttons */}
@@ -1069,6 +1196,49 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
               </div>
             </div>
 
+            {/* Store Inventory Financial Valuation Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+              <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs">
+                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider flex items-center gap-1">
+                  <Coins className="w-3 h-3 text-slate-400" /> Stock Cost (Buy)
+                </div>
+                <div className="text-sm font-black text-slate-800 font-mono mt-1">
+                  Rs. {inventoryStats.totalCostValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5 font-medium">Total Wholesale Value</div>
+              </div>
+
+              <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs">
+                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider flex items-center gap-1">
+                  <Tag className="w-3 h-3 text-orange-500" /> Retail Value
+                </div>
+                <div className="text-sm font-black text-orange-600 font-mono mt-1">
+                  Rs. {inventoryStats.totalRetailValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5 font-medium">Expected Gross Sales</div>
+              </div>
+
+              <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs">
+                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider flex items-center gap-1">
+                  <TrendingUp className="w-3 h-3 text-emerald-600" /> Projected Profit
+                </div>
+                <div className={`text-sm font-black font-mono mt-1 ${inventoryStats.projectedProfit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                  Rs. {inventoryStats.projectedProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5 font-medium">Gross Inventory Profit</div>
+              </div>
+
+              <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs">
+                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider flex items-center gap-1">
+                  <Percent className="w-3 h-3 text-blue-600" /> Profit Margin
+                </div>
+                <div className="text-sm font-black text-blue-700 font-mono mt-1">
+                  {inventoryStats.overallMargin.toFixed(1)}%
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5 font-medium">Overall Store Markup</div>
+              </div>
+            </div>
+
             {/* Filter Tabs: All, By Weight, By Unit */}
             <div className="flex items-center gap-2 overflow-x-auto pb-1">
               <button
@@ -1128,7 +1298,8 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                       </th>
                       <th className="p-3.5">Product & Method</th>
                       <th className="p-3.5">S/N & Barcode</th>
-                      <th className="p-3.5 text-center">Price Rate</th>
+                      <th className="p-3.5 text-center">Cost & Price</th>
+                      <th className="p-3.5 text-center">Profit / Unit</th>
                       <th className="p-3.5 text-center">Available Stock</th>
                       <th className="p-3.5 text-right">Actions</th>
                     </tr>
@@ -1137,6 +1308,10 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                     {filteredCatalog.map((p) => {
                       const isSelected = selectedProductIds.includes(p.id);
                       const isWeighted = p.sellBy === 'weight' || p.unitType === 'kg' || !!p.pricePerKg;
+                      const cost = p.costPrice || 0;
+                      const sell = p.price;
+                      const itemProfit = sell - cost;
+                      const itemMargin = sell > 0 ? (itemProfit / sell) * 100 : 0;
                       return (
                         <tr key={p.id} className={`${isSelected ? 'bg-orange-50/60' : 'hover:bg-slate-50'} transition-colors`}>
                           <td className="p-3.5">
@@ -1182,8 +1357,21 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                             )}
                             <div className="text-[11px] text-slate-500">BC: {p.barcode || 'N/A'}</div>
                           </td>
-                          <td className="p-3.5 text-center font-black text-orange-600 font-mono">
-                            Rs. {p.price.toFixed(2)}{isWeighted ? '/kg' : ''}
+                          <td className="p-3.5 text-center font-mono">
+                            <div className="font-black text-orange-600">
+                              Rs. {p.price.toFixed(2)}{isWeighted ? '/kg' : ''}
+                            </div>
+                            <div className="text-[11px] text-slate-500 font-semibold">
+                              Cost: Rs. {cost.toFixed(2)}
+                            </div>
+                          </td>
+                          <td className="p-3.5 text-center font-mono">
+                            <div className={`text-xs font-bold ${itemProfit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                              +Rs. {itemProfit.toFixed(2)}
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-medium">
+                              ({itemMargin.toFixed(0)}% margin)
+                            </div>
                           </td>
                           <td className="p-3.5 text-center font-black text-sm">
                             <span className={p.stockQuantity <= 0 ? 'text-red-600 font-black' : p.stockQuantity <= 5 ? 'text-amber-600 font-bold' : 'text-emerald-600 font-black'}>

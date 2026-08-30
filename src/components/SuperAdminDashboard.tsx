@@ -14,6 +14,7 @@ import {
   OperationType
 } from '../lib/firebase';
 import { Store, UserAccount } from '../types';
+import { cleanupExpiredReceipts } from '../lib/salesCleanup';
 import { 
   Store as StoreIcon, 
   Plus, 
@@ -49,7 +50,8 @@ import {
   Database,
   Activity,
   Save,
-  Check
+  Check,
+  ScanLine
 } from 'lucide-react';
 
 interface SuperAdminProps {
@@ -59,7 +61,7 @@ interface SuperAdminProps {
 export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreToManage }) => {
   const [stores, setStores] = useState<Store[]>([]);
   const [users, setUsers] = useState<UserAccount[]>([]);
-  const [activeTab, setActiveTab] = useState<'stores' | 'cash_counters' | 'product_registers' | 'all_accounts' | 'settings'>('stores');
+  const [activeTab, setActiveTab] = useState<'stores' | 'cash_counters' | 'product_registers' | 'price_checkers' | 'all_accounts' | 'settings'>('stores');
 
   // Master SuperAdmin Account Settings
   const [masterAdminPassword, setMasterAdminPassword] = useState('');
@@ -84,6 +86,12 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
   const [registrarName, setRegistrarName] = useState('');
   const [registrarUsername, setRegistrarUsername] = useState('');
   const [registrarPassword, setRegistrarPassword] = useState('');
+
+  // Form states - Create Customer Price Checker Terminal
+  const [selectedStoreIdForPriceChecker, setSelectedStoreIdForPriceChecker] = useState('');
+  const [priceCheckerName, setPriceCheckerName] = useState('');
+  const [priceCheckerUsername, setPriceCheckerUsername] = useState('');
+  const [priceCheckerPassword, setPriceCheckerPassword] = useState('');
 
   // Store Management Modals / Actions
   const [storeToDelete, setStoreToDelete] = useState<Store | null>(null);
@@ -113,6 +121,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
       if (storeList.length > 0) {
         if (!selectedStoreIdForCounter) setSelectedStoreIdForCounter(storeList[0].id);
         if (!selectedStoreIdForReg) setSelectedStoreIdForReg(storeList[0].id);
+        if (!selectedStoreIdForPriceChecker) setSelectedStoreIdForPriceChecker(storeList[0].id);
       }
     }, (err) => {
       handleFirestoreError(err, OperationType.GET, 'stores');
@@ -125,6 +134,9 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
     }, (err) => {
       handleFirestoreError(err, OperationType.GET, 'users');
     });
+
+    // Purge expired receipts older than 7 days across all stores
+    cleanupExpiredReceipts();
 
     return () => {
       unsubStores();
@@ -453,6 +465,59 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
     }
   };
 
+  // Handle Create Customer Price Checker Terminal
+  const handleCreatePriceChecker = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMsg(null);
+
+    if (!selectedStoreIdForPriceChecker) {
+      showNotification('error', 'Please create or select a store first.');
+      return;
+    }
+
+    const tName = priceCheckerName.trim() || 'Store Customer Price Checker';
+    const uName = priceCheckerUsername.trim();
+    const pWord = priceCheckerPassword.trim();
+
+    if (!uName || !pWord) {
+      showNotification('error', 'Username and password are required to create a price checker account.');
+      return;
+    }
+
+    if (isUsernameTaken(uName)) {
+      showNotification('error', `Username "${uName}" is already taken.`);
+      return;
+    }
+
+    const targetStore = stores.find(s => s.id === selectedStoreIdForPriceChecker);
+
+    setLoading(true);
+    try {
+      const userDocRef = doc(collection(db, 'users'));
+      const priceCheckerAccount: UserAccount = {
+        id: userDocRef.id,
+        storeId: selectedStoreIdForPriceChecker,
+        storeName: targetStore?.name || 'Store',
+        role: 'customer_price_checker',
+        name: tName,
+        username: uName,
+        password: pWord,
+        createdAt: new Date().toISOString()
+      };
+
+      await setDoc(userDocRef, priceCheckerAccount);
+      showNotification('success', `Customer Price Checker Terminal "${tName}" created successfully!`);
+      setPriceCheckerName('');
+      setPriceCheckerUsername('');
+      setPriceCheckerPassword('');
+    } catch (err: any) {
+      console.error(err);
+      showNotification('error', 'Failed to add customer price checker: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Delete Sub-user Account (Cashier / Registrar)
   const handleDeleteUserAccount = async () => {
     if (!userToDelete) return;
@@ -649,6 +714,17 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
           </button>
 
           <button
+            onClick={() => setActiveTab('price_checkers')}
+            className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm cursor-pointer transition-all ${
+              activeTab === 'price_checkers'
+                ? 'bg-orange-600 text-white shadow-md shadow-orange-600/20'
+                : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            <ScanLine className="w-4 h-4" /> 4. Customer Price Checkers
+          </button>
+
+          <button
             onClick={() => setActiveTab('all_accounts')}
             className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm cursor-pointer transition-all ${
               activeTab === 'all_accounts'
@@ -656,7 +732,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                 : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
             }`}
           >
-            <UserCheck className="w-4 h-4" /> 4. Security Matrix & Accounts
+            <UserCheck className="w-4 h-4" /> 5. Security Matrix & Accounts
           </button>
 
           <button
@@ -667,7 +743,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                 : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
             }`}
           >
-            <Settings className="w-4 h-4" /> 5. Global Settings & Master Policies
+            <Settings className="w-4 h-4" /> 6. Global Settings & Master Policies
           </button>
         </div>
 
@@ -1229,7 +1305,136 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
           </div>
         )}
 
-        {/* TAB 4: ALL SYSTEM ACCOUNTS & SECURITY MATRIX */}
+        {/* TAB 4: CUSTOMER PRICE CHECKERS */}
+        {activeTab === 'price_checkers' && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <ScanLine className="w-5 h-5 text-orange-600" /> Add Customer Price Checker Kiosk
+                </h2>
+                <p className="text-xs text-slate-500 mt-1 font-medium">
+                  Create a dedicated account for in-store customer kiosk systems where shoppers scan product barcodes to check prices and stock.
+                </p>
+              </div>
+
+              <form onSubmit={handleCreatePriceChecker} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Select Supermarket Store
+                  </label>
+                  <select
+                    value={selectedStoreIdForPriceChecker}
+                    onChange={(e) => setSelectedStoreIdForPriceChecker(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:bg-white focus:border-orange-500 font-semibold"
+                  >
+                    {stores.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Terminal / Kiosk Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Aisle 1 Price Checker or Store Kiosk"
+                    value={priceCheckerName}
+                    onChange={(e) => setPriceCheckerName(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:bg-white focus:border-orange-500 font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Login Username
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. pricecheck_store1"
+                    value={priceCheckerUsername}
+                    onChange={(e) => setPriceCheckerUsername(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:bg-white focus:border-orange-500 font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Login Password
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="••••••••••••"
+                    value={priceCheckerPassword}
+                    onChange={(e) => setPriceCheckerPassword(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:bg-white focus:border-orange-500 font-medium"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl shadow-md shadow-orange-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer text-sm"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  {loading ? 'Creating Terminal...' : 'Create Customer Price Checker Account'}
+                </button>
+              </form>
+            </div>
+
+            <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
+                <ScanLine className="w-5 h-5 text-orange-600" /> Active Customer Price Checker Terminals
+              </h2>
+
+              <div className="space-y-3">
+                {users.filter(u => u.role === 'customer_price_checker').length === 0 ? (
+                  <p className="text-sm text-slate-500 p-6 text-center border border-dashed border-slate-300 rounded-xl font-medium">
+                    No customer price checkers created yet. Create an account on the left to set up price checking screens in your store!
+                  </p>
+                ) : (
+                  users.filter(u => u.role === 'customer_price_checker').map(pc => (
+                    <div key={pc.id} className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-extrabold text-slate-900 text-sm">{pc.name}</span>
+                          <span className="text-xs bg-purple-100 text-purple-800 px-2.5 py-0.5 rounded-full font-bold border border-purple-200">
+                            Customer Kiosk
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-600 mt-1 font-medium">
+                          Store: <span className="text-slate-900 font-bold">{pc.storeName}</span> | Username: <span className="text-orange-600 font-bold font-mono">{pc.username}</span>
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setResetUserModal(pc)}
+                          className="px-2.5 py-1 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100"
+                        >
+                          Reset Pass
+                        </button>
+                        <button
+                          onClick={() => setUserToDelete(pc)}
+                          className="p-1 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"
+                          title="Delete Account"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 5: ALL SYSTEM ACCOUNTS & SECURITY MATRIX */}
         {activeTab === 'all_accounts' && (
           <div className="space-y-6">
             

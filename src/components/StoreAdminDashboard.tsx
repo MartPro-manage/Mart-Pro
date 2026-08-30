@@ -10,6 +10,7 @@ import {
   OperationType 
 } from '../lib/firebase';
 import { Product, Sale, Store, UserAccount, ProductReturn } from '../types';
+import { cleanupExpiredReceipts, isSaleExpired } from '../lib/salesCleanup';
 import { ReturnSlipModal } from './ReturnSlipModal';
 import { StoreSettingsView } from './StoreSettingsView';
 import { 
@@ -38,7 +39,9 @@ import {
   ArrowDownRight,
   Tag,
   Undo2,
-  Settings
+  Settings,
+  Coins,
+  Percent
 } from 'lucide-react';
 
 interface StoreAdminDashboardProps {
@@ -140,7 +143,9 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       handleFirestoreError(err, OperationType.GET, 'products');
     });
 
-    // 2. Subscribe to Sales
+    // 2. Subscribe to Sales (Run 7-day auto-purge and filter out expired receipts)
+    cleanupExpiredReceipts(store.id);
+
     const salesQuery = query(
       collection(db, 'sales'),
       where('storeId', '==', store.id)
@@ -149,7 +154,10 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
     const unsubSales = onSnapshot(salesQuery, (snapshot) => {
       const saleList: Sale[] = [];
       snapshot.forEach((doc) => {
-        saleList.push({ id: doc.id, ...doc.data() } as Sale);
+        const saleData = { id: doc.id, ...doc.data() } as Sale;
+        if (!isSaleExpired(saleData)) {
+          saleList.push(saleData);
+        }
       });
       // Sort sales by timestamp descending (newest first)
       saleList.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -302,8 +310,13 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
         date: string;
         formattedDate: string;
         grossRevenue: number;
+        grossCost: number;
         totalRefunds: number;
+        returnedCost: number;
+        netRevenue: number;
+        netCost: number;
         netProfit: number;
+        profitMargin: number;
         totalInvoices: number;
         totalReturnsCount: number;
         grossUnitsSold: number;
@@ -323,8 +336,13 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
           date: dateKey,
           formattedDate: formatDisplayDate(dateKey),
           grossRevenue: 0,
+          grossCost: 0,
           totalRefunds: 0,
+          returnedCost: 0,
+          netRevenue: 0,
+          netCost: 0,
           netProfit: 0,
+          profitMargin: 0,
           totalInvoices: 0,
           totalReturnsCount: 0,
           grossUnitsSold: 0,
@@ -354,8 +372,22 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
         d.cashRevenue += (sale.totalAmount || 0);
       }
 
-      const unitsInSale = sale.items?.reduce((u, item) => u + (item.quantity || 0), 0) || 0;
-      d.grossUnitsSold += unitsInSale;
+      let saleCost = 0;
+      sale.items?.forEach((item) => {
+        const qty = item.quantity || 0;
+        d.grossUnitsSold += qty;
+        
+        let unitCost = 0;
+        if (typeof item.costPrice === 'number' && item.costPrice >= 0) {
+          unitCost = item.costPrice;
+        } else {
+          const matching = products.find(p => (item.productId && p.id === item.productId) || (item.barcode && p.barcode === item.barcode));
+          unitCost = matching?.costPrice || 0;
+        }
+        saleCost += unitCost * qty;
+      });
+
+      d.grossCost += saleCost;
       d.sales.push(sale);
     });
 
@@ -365,19 +397,28 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
 
       d.totalReturnsCount += 1;
       d.totalRefunds += (ret.refundAmount || 0);
-      d.unitsReturned += (ret.quantity || 0);
+      const retQty = ret.quantity || 0;
+      d.unitsReturned += retQty;
+
+      const matching = products.find(p => (ret.productId && p.id === ret.productId) || (ret.barcode && p.barcode === ret.barcode));
+      const retCost = (matching?.costPrice || 0) * retQty;
+      d.returnedCost += retCost;
+
       d.returns.push(ret);
     });
 
-    // Compute Net Profit & Net Units for every day
+    // Compute Net Profit, Net Units, and Margins for every day
     Object.values(dateMap).forEach((d) => {
-      d.netProfit = d.grossRevenue - d.totalRefunds;
+      d.netRevenue = d.grossRevenue - d.totalRefunds;
+      d.netCost = Math.max(0, d.grossCost - d.returnedCost);
+      d.netProfit = d.netRevenue - d.netCost;
+      d.profitMargin = d.netRevenue > 0 ? (d.netProfit / d.netRevenue) * 100 : 0;
       d.netUnitsSold = d.grossUnitsSold - d.unitsReturned;
     });
 
     // Sort descending by date
     return Object.values(dateMap).sort((a, b) => b.date.localeCompare(a.date));
-  }, [sales, returns]);
+  }, [sales, returns, products]);
 
   // Compute Aggregations for Active Date Filter
   const filteredGrossRevenue = useMemo(() => {
@@ -388,9 +429,44 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
     return filteredReturnsByDate.reduce((sum, r) => sum + (r.refundAmount || 0), 0);
   }, [filteredReturnsByDate]);
 
-  const filteredNetProfit = useMemo(() => {
+  const filteredNetRevenue = useMemo(() => {
     return filteredGrossRevenue - filteredRefundsTotal;
   }, [filteredGrossRevenue, filteredRefundsTotal]);
+
+  const filteredCostOfGoods = useMemo(() => {
+    let totalCost = 0;
+    filteredSalesByDate.forEach((sale) => {
+      sale.items?.forEach((item) => {
+        const qty = item.quantity || 0;
+        let unitCost = 0;
+        if (typeof item.costPrice === 'number' && item.costPrice >= 0) {
+          unitCost = item.costPrice;
+        } else {
+          const matching = products.find(p => (item.productId && p.id === item.productId) || (item.barcode && p.barcode === item.barcode));
+          unitCost = matching?.costPrice || 0;
+        }
+        totalCost += unitCost * qty;
+      });
+    });
+
+    filteredReturnsByDate.forEach((ret) => {
+      const retQty = ret.quantity || 0;
+      const matching = products.find(p => (ret.productId && p.id === ret.productId) || (ret.barcode && p.barcode === ret.barcode));
+      const retCost = (matching?.costPrice || 0) * retQty;
+      totalCost -= retCost;
+    });
+
+    return Math.max(0, totalCost);
+  }, [filteredSalesByDate, filteredReturnsByDate, products]);
+
+  const filteredNetProfit = useMemo(() => {
+    return filteredNetRevenue - filteredCostOfGoods;
+  }, [filteredNetRevenue, filteredCostOfGoods]);
+
+  const filteredProfitMargin = useMemo(() => {
+    if (filteredNetRevenue <= 0) return 0;
+    return (filteredNetProfit / filteredNetRevenue) * 100;
+  }, [filteredNetRevenue, filteredNetProfit]);
 
   const filteredGrossUnitsSold = useMemo(() => {
     return filteredSalesByDate.reduce((sum, sale) => {
@@ -411,18 +487,22 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
     return filteredSalesByDate.reduce((sum, s) => sum + (s.discountAmount || 0), 0);
   }, [filteredSalesByDate]);
 
-  // Aggregate Sold Products for Active Date Filter with returns subtraction
+  // Aggregate Sold Products for Active Date Filter with cost and profit metrics
   const soldProductsSummary = useMemo(() => {
     const summaryMap: { 
       [barcodeOrId: string]: { 
         barcode: string; 
         name: string; 
+        costPrice: number;
         grossUnitsSold: number; 
         unitsReturned: number;
         netUnitsSold: number;
         grossRevenue: number; 
         refundedAmount: number;
         netRevenue: number;
+        totalCost: number;
+        realizedProfit: number;
+        profitMargin: number;
         lastPrice: number 
       } 
     } = {};
@@ -431,15 +511,27 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       sale.items?.forEach((item) => {
         const key = item.barcode || item.name;
         if (!summaryMap[key]) {
+          let unitCost = 0;
+          if (typeof item.costPrice === 'number' && item.costPrice >= 0) {
+            unitCost = item.costPrice;
+          } else {
+            const matching = products.find(p => (item.productId && p.id === item.productId) || (item.barcode && p.barcode === item.barcode));
+            unitCost = matching?.costPrice || 0;
+          }
+
           summaryMap[key] = {
             barcode: item.barcode,
             name: item.name,
+            costPrice: unitCost,
             grossUnitsSold: 0,
             unitsReturned: 0,
             netUnitsSold: 0,
             grossRevenue: 0,
             refundedAmount: 0,
             netRevenue: 0,
+            totalCost: 0,
+            realizedProfit: 0,
+            profitMargin: 0,
             lastPrice: item.price
           };
         }
@@ -452,15 +544,20 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
     filteredReturnsByDate.forEach((ret) => {
       const key = ret.barcode || ret.productName;
       if (!summaryMap[key]) {
+        const matching = products.find(p => (ret.productId && p.id === ret.productId) || (ret.barcode && p.barcode === ret.barcode));
         summaryMap[key] = {
           barcode: ret.barcode || '',
           name: ret.productName || '',
+          costPrice: matching?.costPrice || 0,
           grossUnitsSold: 0,
           unitsReturned: 0,
           netUnitsSold: 0,
           grossRevenue: 0,
           refundedAmount: 0,
           netRevenue: 0,
+          totalCost: 0,
+          realizedProfit: 0,
+          profitMargin: 0,
           lastPrice: ret.price ?? (ret as any).unitPrice ?? 0
         };
       }
@@ -474,12 +571,15 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
     });
 
     Object.values(summaryMap).forEach((sp) => {
-      sp.netUnitsSold = sp.grossUnitsSold - sp.unitsReturned;
+      sp.netUnitsSold = Math.max(0, sp.grossUnitsSold - sp.unitsReturned);
       sp.netRevenue = sp.grossRevenue - sp.refundedAmount;
+      sp.totalCost = sp.costPrice * sp.netUnitsSold;
+      sp.realizedProfit = sp.netRevenue - sp.totalCost;
+      sp.profitMargin = sp.netRevenue > 0 ? (sp.realizedProfit / sp.netRevenue) * 100 : 0;
     });
 
-    return Object.values(summaryMap).sort((a, b) => b.netRevenue - a.netRevenue);
-  }, [filteredSalesByDate, filteredReturnsByDate]);
+    return Object.values(summaryMap).sort((a, b) => b.realizedProfit - a.realizedProfit);
+  }, [filteredSalesByDate, filteredReturnsByDate, products]);
 
   // Low stock products count
   const lowStockCount = useMemo(() => {
@@ -772,76 +872,80 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
         {/* DYNAMIC REALTIME METRICS CARDS (Adjusts to selected Date Filter) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           
-          {/* Net Profit & Sales Revenue for Date */}
+          {/* Net Realized Profit */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                {dateFilter === 'all' ? 'Net Sales Profit' : 'Net Profit (Filtered Date)'}
+                {dateFilter === 'all' ? 'Net Realized Profit' : 'Net Profit (Filtered Date)'}
+              </span>
+              <div className={`p-2 rounded-xl border font-bold text-xs flex items-center gap-1 ${
+                filteredNetProfit >= 0 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'
+              }`}>
+                <TrendingUp className="w-4 h-4" />
+                <span>{filteredProfitMargin.toFixed(1)}%</span>
+              </div>
+            </div>
+            <div className={`mt-3 text-2xl sm:text-3xl font-black font-mono ${
+              filteredNetProfit >= 0 ? 'text-emerald-600' : 'text-red-600'
+            }`}>
+              Rs. {filteredNetProfit.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <div className="text-[11px] text-slate-500 mt-1 flex flex-wrap items-center gap-1 font-medium">
+              <span className="text-slate-700 font-bold">Revenue: Rs. {filteredNetRevenue.toFixed(0)}</span>
+              <span className="text-slate-400">•</span>
+              <span className="text-slate-600 font-semibold">Cost: Rs. {filteredCostOfGoods.toFixed(0)}</span>
+            </div>
+          </div>
+
+          {/* Net Sales Revenue */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                {dateFilter === 'all' ? 'Net Sales Revenue' : 'Revenue (Filtered Date)'}
               </span>
               <div className="p-2 rounded-xl bg-orange-50 text-orange-600 border border-orange-200 font-bold text-xs">
                 <span>PKR</span>
               </div>
             </div>
-            <div className="mt-3 text-2xl sm:text-3xl font-black text-slate-900">
-              Rs. {filteredNetProfit.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            <div className="mt-3 text-2xl sm:text-3xl font-black text-slate-900 font-mono">
+              Rs. {filteredNetRevenue.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
-            <div className="text-[11px] text-slate-500 mt-1 flex flex-wrap items-center gap-1 font-medium">
-              <span className="text-slate-700 font-bold">Gross: Rs. {filteredGrossRevenue.toFixed(0)}</span>
-              {filteredRefundsTotal > 0 && (
-                <span className="text-red-600 font-bold ml-1">(-Rs. {filteredRefundsTotal.toFixed(0)} refunds)</span>
-              )}
-            </div>
+            <p className="text-[11px] text-slate-500 mt-1 font-medium">
+              Gross: Rs. {filteredGrossRevenue.toFixed(0)} {filteredRefundsTotal > 0 ? `• -Rs. ${filteredRefundsTotal.toFixed(0)} refunds` : ''}
+            </p>
           </div>
 
-          {/* Sold Products Quantity for Date */}
+          {/* Cost of Goods Sold (Wholesale Cost) */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                {dateFilter === 'all' ? 'Net Units Sold' : 'Units Sold (Filtered Date)'}
+                Cost of Goods Sold (COGS)
               </span>
-              <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200">
+              <div className="p-2 rounded-xl bg-slate-100 text-slate-700 border border-slate-200">
+                <Coins className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-3 text-2xl sm:text-3xl font-extrabold text-slate-800 font-mono">
+              Rs. {filteredCostOfGoods.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1 font-medium flex items-center gap-1">
+              Purchase rate for {filteredNetUnitsSold.toLocaleString()} sold units
+            </p>
+          </div>
+
+          {/* Sold Units & Realtime Stock */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Units Sold</span>
+              <div className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-200">
                 <ShoppingBag className="w-5 h-5" />
               </div>
             </div>
-            <div className="mt-3 text-2xl sm:text-3xl font-extrabold text-emerald-600">
-              {filteredNetUnitsSold.toLocaleString()} <span className="text-xs text-slate-500 font-normal">items</span>
-            </div>
-            <p className="text-[11px] text-slate-500 mt-1 font-medium">
-              {filteredGrossUnitsSold} gross sold {filteredUnitsReturned > 0 ? `• ${filteredUnitsReturned} restocked returned` : ''}
-            </p>
-          </div>
-
-          {/* Product Returns & Total Refunds */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                {dateFilter === 'all' ? 'Total Returns & Refunds' : 'Refunds (Filtered Date)'}
-              </span>
-              <div className="p-2 rounded-xl bg-red-50 text-red-600 border border-red-200">
-                <Undo2 className="w-5 h-5" />
-              </div>
-            </div>
-            <div className="mt-3 text-2xl sm:text-3xl font-extrabold text-red-600">
-              Rs. {filteredRefundsTotal.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </div>
-            <p className="text-[11px] text-slate-500 mt-1 font-medium flex items-center gap-1">
-              <RotateCcw className="w-3.5 h-3.5 text-red-500" /> {filteredReturnsByDate.length} return slips ({filteredUnitsReturned} units returned)
-            </p>
-          </div>
-
-          {/* Remaining Inventory Stock */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Remaining Stock</span>
-              <div className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-200">
-                <Package className="w-5 h-5" />
-              </div>
-            </div>
             <div className="mt-3 text-2xl sm:text-3xl font-extrabold text-blue-600">
-              {products.reduce((acc, p) => acc + (p.stockQuantity || 0), 0).toLocaleString()} <span className="text-xs text-slate-500 font-normal">units</span>
+              {filteredNetUnitsSold.toLocaleString()} <span className="text-xs text-slate-500 font-normal">units</span>
             </div>
             <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1 font-medium">
-              <RefreshCw className="w-3 h-3 text-orange-600 animate-spin" /> Real-time Stock Updated
+              <Package className="w-3.5 h-3.5 text-slate-400" /> {products.reduce((acc, p) => acc + (p.stockQuantity || 0), 0).toLocaleString()} units in inventory
             </p>
           </div>
 
@@ -973,9 +1077,9 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                         <th className="p-3.5">Date</th>
                         <th className="p-3.5 text-center">Invoices & Returns</th>
                         <th className="p-3.5 text-center">Net Units Sold</th>
-                        <th className="p-3.5 text-right">Gross Sales</th>
-                        <th className="p-3.5 text-right">Refunds Deducted</th>
-                        <th className="p-3.5 text-right">Net Profit</th>
+                        <th className="p-3.5 text-right">Net Revenue</th>
+                        <th className="p-3.5 text-right">Wholesale Cost</th>
+                        <th className="p-3.5 text-right">Realized Net Profit</th>
                         <th className="p-3.5 text-center">Actions</th>
                       </tr>
                     </thead>
@@ -1029,22 +1133,24 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                                 )}
                               </td>
 
-                              <td className="p-3.5 text-right font-medium text-slate-700 text-xs">
-                                Rs. {daySummary.grossRevenue.toFixed(2)}
-                              </td>
-
-                              <td className="p-3.5 text-right font-bold text-xs">
-                                {daySummary.totalRefunds > 0 ? (
-                                  <span className="text-red-600">-Rs. {daySummary.totalRefunds.toFixed(2)}</span>
-                                ) : (
-                                  <span className="text-slate-400">Rs. 0.00</span>
+                              <td className="p-3.5 text-right font-medium text-slate-900 text-xs">
+                                <div className="font-bold">Rs. {daySummary.netRevenue.toFixed(2)}</div>
+                                {daySummary.totalRefunds > 0 && (
+                                  <div className="text-[10px] text-slate-400">Gross: Rs. {daySummary.grossRevenue.toFixed(0)}</div>
                                 )}
                               </td>
 
+                              <td className="p-3.5 text-right font-bold text-xs text-slate-600">
+                                Rs. {daySummary.netCost.toFixed(2)}
+                              </td>
+
                               <td className="p-3.5 text-right">
-                                <span className="text-base font-black text-slate-900">
+                                <div className={`text-base font-black font-mono ${daySummary.netProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                                   Rs. {daySummary.netProfit.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </span>
+                                </div>
+                                <div className="text-[10px] font-bold text-slate-500 flex items-center justify-end gap-1">
+                                  <span>Margin: {daySummary.profitMargin.toFixed(1)}%</span>
+                                </div>
                               </td>
 
                               <td className="p-3.5 text-center">
@@ -1088,9 +1194,14 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                                         <Receipt className="w-4 h-4 text-orange-600" />
                                         Invoices Issued on {daySummary.formattedDate} ({daySummary.sales.length} transactions)
                                       </h4>
-                                      <span className="text-xs font-black text-orange-600">
-                                        Net Day Profit: Rs. {daySummary.netProfit.toFixed(2)}
-                                      </span>
+                                      <div className="flex items-center gap-3">
+                                        <span className="text-xs font-semibold text-slate-500">
+                                          COGS: Rs. {daySummary.netCost.toFixed(2)}
+                                        </span>
+                                        <span className="text-xs font-black text-emerald-600">
+                                          Net Day Profit: Rs. {daySummary.netProfit.toFixed(2)} ({daySummary.profitMargin.toFixed(1)}%)
+                                        </span>
+                                      </div>
                                     </div>
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[380px] overflow-y-auto overscroll-contain pr-1 custom-scrollbar">
@@ -1275,10 +1386,10 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
               <div>
                 <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <ShoppingBag className="w-5 h-5 text-orange-600" /> Products Sold Velocity & Net Revenue
+                  <ShoppingBag className="w-5 h-5 text-orange-600" /> Products Sold Velocity, Cost & Realized Profit
                 </h2>
                 <p className="text-xs text-slate-600 font-medium">
-                  Showing sold items for: <strong className="text-orange-700">{activeDateFilterLabel}</strong> (returns automatically deducted)
+                  Showing sold items for: <strong className="text-orange-700">{activeDateFilterLabel}</strong> (returns deducted, ranked by realized profit)
                 </p>
               </div>
 
@@ -1298,50 +1409,74 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                     <tr>
                       <th className="p-3.5">Product Name</th>
                       <th className="p-3.5">Barcode</th>
-                      <th className="p-3.5 text-center">Unit Price</th>
-                      <th className="p-3.5 text-center">Gross Sold</th>
-                      <th className="p-3.5 text-center">Restocked Returns</th>
+                      <th className="p-3.5 text-center">Cost & Price</th>
                       <th className="p-3.5 text-center">Net Units Sold</th>
-                      <th className="p-3.5 text-right">Net Profit / Revenue</th>
+                      <th className="p-3.5 text-right">Net Revenue</th>
+                      <th className="p-3.5 text-right">Total Cost (COGS)</th>
+                      <th className="p-3.5 text-right">Realized Profit</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
-                    {filteredSoldProducts.map((sp, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                        <td className="p-3.5 font-bold text-slate-900 flex items-center gap-2">
-                          <span className="w-6 h-6 rounded-lg bg-orange-50 text-orange-600 text-xs flex items-center justify-center font-bold border border-orange-200">
-                            #{idx + 1}
-                          </span>
-                          {sp.name}
-                        </td>
-                        <td className="p-3.5 text-slate-500 font-mono text-xs">
-                          {sp.barcode}
-                        </td>
-                        <td className="p-3.5 text-center font-semibold text-slate-700">
-                          Rs. {(sp.lastPrice || 0).toFixed(2)}
-                        </td>
-                        <td className="p-3.5 text-center text-slate-700 font-medium">
-                          {sp.grossUnitsSold} units
-                        </td>
-                        <td className="p-3.5 text-center">
-                          {sp.unitsReturned > 0 ? (
-                            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-red-50 text-red-700 border border-red-200">
-                              -{sp.unitsReturned} returned
+                    {filteredSoldProducts.map((sp, idx) => {
+                      const unitProfit = sp.lastPrice - (sp.costPrice || 0);
+                      const isProfitable = sp.realizedProfit >= 0;
+
+                      return (
+                        <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                          <td className="p-3.5 font-bold text-slate-900 flex items-center gap-2">
+                            <span className="w-6 h-6 rounded-lg bg-orange-50 text-orange-600 text-xs flex items-center justify-center font-bold border border-orange-200 shrink-0">
+                              #{idx + 1}
                             </span>
-                          ) : (
-                            <span className="text-slate-400">-</span>
-                          )}
-                        </td>
-                        <td className="p-3.5 text-center">
-                          <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            {sp.netUnitsSold} units
-                          </span>
-                        </td>
-                        <td className="p-3.5 text-right font-extrabold text-orange-600">
-                          Rs. {(sp.netRevenue || 0).toFixed(2)}
-                        </td>
-                      </tr>
-                    ))}
+                            <div>
+                              <div className="font-bold text-slate-900">{sp.name}</div>
+                              {sp.unitsReturned > 0 && (
+                                <span className="text-[10px] font-bold text-red-600">
+                                  ({sp.unitsReturned} returned & refunded)
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="p-3.5 text-slate-500 font-mono text-xs">
+                            {sp.barcode}
+                          </td>
+                          <td className="p-3.5 text-center text-xs">
+                            <div className="font-bold text-slate-900">
+                              Sell: Rs. {(sp.lastPrice || 0).toFixed(2)}
+                            </div>
+                            <div className="text-[11px] text-slate-500 font-medium">
+                              Cost: Rs. {(sp.costPrice || 0).toFixed(2)}
+                            </div>
+                            <div className={`text-[10px] font-bold mt-0.5 ${unitProfit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                              +{unitProfit >= 0 ? '' : ''}Rs. {unitProfit.toFixed(2)}/u
+                            </div>
+                          </td>
+                          <td className="p-3.5 text-center">
+                            <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              {sp.netUnitsSold} units
+                            </span>
+                            {sp.grossUnitsSold !== sp.netUnitsSold && (
+                              <div className="text-[10px] text-slate-400 mt-0.5">
+                                {sp.grossUnitsSold} gross
+                              </div>
+                            )}
+                          </td>
+                          <td className="p-3.5 text-right font-medium text-slate-900 font-mono text-xs">
+                            Rs. {(sp.netRevenue || 0).toFixed(2)}
+                          </td>
+                          <td className="p-3.5 text-right font-semibold text-slate-600 font-mono text-xs">
+                            Rs. {(sp.totalCost || 0).toFixed(2)}
+                          </td>
+                          <td className="p-3.5 text-right">
+                            <div className={`text-sm font-black font-mono ${isProfitable ? 'text-emerald-600' : 'text-red-600'}`}>
+                              Rs. {(sp.realizedProfit || 0).toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </div>
+                            <div className="text-[10px] font-bold text-slate-500">
+                              {sp.profitMargin.toFixed(1)}% margin
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1455,45 +1590,71 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
               </p>
             ) : (
               <div className="space-y-3 max-h-[580px] overflow-y-auto overscroll-contain pr-1.5 custom-scrollbar">
-                {filteredReceipts.map((sale) => (
-                  <div key={sale.id} className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-slate-300 transition-colors">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-extrabold text-slate-900 text-sm">Receipt #{sale.receiptNumber}</span>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
-                          sale.paymentMethod === 'cash' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-blue-50 text-blue-700 border border-blue-200'
-                        }`}>
-                          {sale.paymentMethod}
-                        </span>
-                        {sale.discountAmount && sale.discountAmount > 0 ? (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                            Discount -Rs. {sale.discountAmount.toFixed(2)}
-                          </span>
-                        ) : null}
-                      </div>
-                      <p className="text-xs text-slate-600 mt-1 font-medium">
-                        Counter: <span className="text-slate-900 font-semibold">{sale.counterName}</span> ({sale.cashierUsername}) • <span className="text-orange-700 font-bold">{new Date(sale.timestamp).toLocaleString()}</span>
-                      </p>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Items ({sale.items?.reduce((s, i) => s + i.quantity, 0)}): {sale.items?.map(i => `${i.name} (x${i.quantity})`).join(', ')}
-                      </p>
-                    </div>
+                {filteredReceipts.map((sale) => {
+                  let saleCost = 0;
+                  sale.items?.forEach((item) => {
+                    let uCost = 0;
+                    if (typeof item.costPrice === 'number' && item.costPrice >= 0) {
+                      uCost = item.costPrice;
+                    } else {
+                      const matching = products.find(p => (item.productId && p.id === item.productId) || (item.barcode && p.barcode === item.barcode));
+                      uCost = matching?.costPrice || 0;
+                    }
+                    saleCost += uCost * (item.quantity || 0);
+                  });
+                  const saleProfit = (sale.totalAmount || 0) - saleCost;
+                  const saleMargin = sale.totalAmount > 0 ? (saleProfit / sale.totalAmount) * 100 : 0;
 
-                    <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0">
-                      <span className="text-lg font-extrabold text-orange-600">
-                        Rs. {sale.totalAmount.toFixed(2)}
-                      </span>
-                      {onViewReceipt && (
-                        <button
-                          onClick={() => onViewReceipt(sale)}
-                          className="px-3 py-1.5 rounded-lg bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-600 hover:text-white transition-all text-xs font-bold flex items-center gap-1 cursor-pointer shadow-sm"
-                        >
-                          <Eye className="w-3.5 h-3.5" /> View Receipt
-                        </button>
-                      )}
+                  return (
+                    <div key={sale.id} className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-slate-300 transition-colors">
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-extrabold text-slate-900 text-sm">Receipt #{sale.receiptNumber}</span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                            sale.paymentMethod === 'cash' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-blue-50 text-blue-700 border border-blue-200'
+                          }`}>
+                            {sale.paymentMethod}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold ${
+                            saleProfit >= 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+                          }`}>
+                            Profit: +Rs. {saleProfit.toFixed(2)} ({saleMargin.toFixed(0)}%)
+                          </span>
+                          {sale.discountAmount && sale.discountAmount > 0 ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                              Discount -Rs. {sale.discountAmount.toFixed(2)}
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="text-xs text-slate-600 mt-1 font-medium">
+                          Counter: <span className="text-slate-900 font-semibold">{sale.counterName}</span> ({sale.cashierUsername}) • <span className="text-orange-700 font-bold">{new Date(sale.timestamp).toLocaleString()}</span>
+                        </p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Items ({sale.items?.reduce((s, i) => s + i.quantity, 0)}): {sale.items?.map(i => `${i.name} (x${i.quantity})`).join(', ')}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0">
+                        <div className="text-right">
+                          <div className="text-lg font-extrabold text-orange-600 font-mono">
+                            Rs. {sale.totalAmount.toFixed(2)}
+                          </div>
+                          <div className="text-[10px] text-slate-500 font-semibold">
+                            Cost: Rs. {saleCost.toFixed(2)}
+                          </div>
+                        </div>
+                        {onViewReceipt && (
+                          <button
+                            onClick={() => onViewReceipt(sale)}
+                            className="px-3 py-1.5 rounded-lg bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-600 hover:text-white transition-all text-xs font-bold flex items-center gap-1 cursor-pointer shadow-sm"
+                          >
+                            <Eye className="w-3.5 h-3.5" /> View Receipt
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1513,9 +1674,12 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                     <span className="font-extrabold text-slate-900 text-sm">{usr.name}</span>
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                       usr.role === 'admin' ? 'bg-orange-100 text-orange-800' :
-                      usr.role === 'cash_counter' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
+                      usr.role === 'cash_counter' ? 'bg-emerald-100 text-emerald-800' :
+                      usr.role === 'customer_price_checker' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
                     }`}>
-                      {usr.role === 'admin' ? 'Store Admin' : usr.role === 'cash_counter' ? `Cash Counter #${usr.counterNumber}` : 'Product Register'}
+                      {usr.role === 'admin' ? 'Store Admin' :
+                       usr.role === 'cash_counter' ? `Cash Counter #${usr.counterNumber}` :
+                       usr.role === 'customer_price_checker' ? 'Price Checker Kiosk' : 'Product Register'}
                     </span>
                   </div>
                   <p className="text-xs text-slate-600 font-medium">

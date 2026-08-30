@@ -1,4 +1,4 @@
-export type UserRole = 'super_admin' | 'admin' | 'cash_counter' | 'product_register';
+export type UserRole = 'super_admin' | 'admin' | 'cash_counter' | 'product_register' | 'customer_price_checker';
 
 export interface Store {
   id: string;
@@ -39,7 +39,8 @@ export interface Product {
   serialNumber?: string;
   name: string;
   category: string;
-  price: number; // Price per piece or price per kg
+  costPrice?: number; // Purchase/Cost price per unit or per kg
+  price: number; // Selling price per piece or price per kg
   stockQuantity: number; // Total stock pieces or total weight in kg
   minStockLevel?: number;
   weight?: string; // Text description e.g. "1 kg", "500 g", "Loose"
@@ -64,6 +65,7 @@ export interface SaleItem {
   barcode: string;
   serialNumber?: string;
   name: string;
+  costPrice?: number; // Purchase/Cost price at time of sale
   price: number; // Unit price or per kg rate
   quantity: number; // Quantity or weight (decimal supported)
   total: number;
@@ -90,6 +92,7 @@ export interface Sale {
   changeReturned?: number;
   receiptNumber: string;
   timestamp: string;
+  expiresAt?: string;
 }
 
 export interface ProductReturn {

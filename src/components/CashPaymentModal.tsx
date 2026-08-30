@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Banknote, Calculator, CheckCircle2, X, ArrowRight, Coins, AlertCircle } from 'lucide-react';
+import { Banknote, Calculator, CheckCircle2, X, ArrowRight, Coins, AlertCircle, Printer, QrCode as QrCodeIcon } from 'lucide-react';
 
 interface CashPaymentModalProps {
   isOpen: boolean;
@@ -9,7 +9,7 @@ interface CashPaymentModalProps {
   discountType?: 'percentage' | 'fixed';
   discountValue?: number;
   totalAmount: number;
-  onConfirmPayment: (cashReceived: number, changeReturned: number) => void;
+  onConfirmPayment: (cashReceived: number, changeReturned: number, receiptType: 'print' | 'ereceipt') => void;
   loading: boolean;
 }
 
@@ -25,11 +25,13 @@ export const CashPaymentModal: React.FC<CashPaymentModalProps> = ({
   loading
 }) => {
   const [receivedInput, setReceivedInput] = useState<string>('');
+  const [receiptType, setReceiptType] = useState<'print' | 'ereceipt'>('print');
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setReceivedInput(totalAmount.toString());
+      setReceiptType('print');
       setTimeout(() => {
         if (inputRef.current) {
           inputRef.current.focus();
@@ -58,7 +60,6 @@ export const CashPaymentModal: React.FC<CashPaymentModalProps> = ({
     if (val === totalAmount) {
       setReceivedInput(totalAmount.toString());
     } else {
-      // If val is less than total, add to current or set to val if current is 0
       setReceivedInput(val.toString());
     }
     if (inputRef.current) {
@@ -69,26 +70,26 @@ export const CashPaymentModal: React.FC<CashPaymentModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (isSufficient && !loading) {
-      onConfirmPayment(numReceived, Math.max(0, changeToReturn));
+      onConfirmPayment(numReceived, Math.max(0, changeToReturn), receiptType);
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl space-y-6 relative border border-slate-200 animate-fade-in my-auto max-h-[92vh] overflow-y-auto overscroll-contain custom-scrollbar">
+      <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl space-y-5 relative border border-slate-200 animate-fade-in my-auto max-h-[92vh] overflow-y-auto overscroll-contain custom-scrollbar">
         
         {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 pb-4 sticky top-0 bg-white z-10">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3 sticky top-0 bg-white z-10">
           <div className="flex items-center gap-3">
-            <div className="p-3 bg-emerald-50 text-emerald-700 rounded-2xl border border-emerald-200">
+            <div className="p-2.5 bg-emerald-50 text-emerald-700 rounded-2xl border border-emerald-200">
               <Banknote className="w-6 h-6 text-emerald-600" />
             </div>
             <div>
               <h3 className="text-lg font-black text-slate-900 tracking-tight">
-                Cash Payment Calculator
+                Cash Payment & Receipt Options
               </h3>
               <p className="text-xs text-slate-500 font-medium">
-                Enter customer cash received & calculate change return (Pakistani Rupees)
+                Calculate change & choose customer receipt delivery mode
               </p>
             </div>
           </div>
@@ -102,17 +103,17 @@ export const CashPaymentModal: React.FC<CashPaymentModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-4">
           
           {/* Section 1: Total Customer Bill */}
-          <div className="bg-slate-900 text-white p-5 rounded-2xl shadow-inner space-y-2">
+          <div className="bg-slate-900 text-white p-4 rounded-2xl shadow-inner space-y-1.5">
             <div className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
               <span>Total Bill of Customer</span>
               <span className="text-[10px] bg-slate-800 text-amber-400 px-2 py-0.5 rounded-full font-mono font-bold">POS SALE</span>
             </div>
 
             {discountAmount > 0 ? (
-              <div className="space-y-1.5 pt-1 border-t border-slate-800">
+              <div className="space-y-1 pt-1 border-t border-slate-800">
                 <div className="flex justify-between text-xs text-slate-300">
                   <span>Cart Subtotal:</span>
                   <span className="font-mono font-semibold">Rs. {(subtotalAmount ?? (totalAmount + discountAmount)).toFixed(2)}</span>
@@ -123,20 +124,20 @@ export const CashPaymentModal: React.FC<CashPaymentModalProps> = ({
                 </div>
                 <div className="flex justify-between items-baseline pt-1 border-t border-slate-800">
                   <span className="text-xs text-amber-300 font-bold uppercase">Payable Total:</span>
-                  <div className="text-3xl sm:text-4xl font-black text-amber-400 tracking-tight">
+                  <div className="text-2xl sm:text-3xl font-black text-amber-400 tracking-tight">
                     Rs. {totalAmount.toFixed(2)}
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="text-3xl sm:text-4xl font-black text-amber-400 tracking-tight">
+              <div className="text-3xl font-black text-amber-400 tracking-tight">
                 Rs. {totalAmount.toFixed(2)}
               </div>
             )}
           </div>
 
           {/* Section 2: Cash Received Input */}
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
               <span>Money Received From Customer (Rs.) *</span>
               <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
@@ -157,18 +158,18 @@ export const CashPaymentModal: React.FC<CashPaymentModalProps> = ({
                 placeholder="0.00"
                 value={receivedInput}
                 onChange={(e) => setReceivedInput(e.target.value)}
-                className="w-full pl-14 pr-4 py-3.5 bg-slate-50 border-2 border-slate-300 focus:border-emerald-500 focus:bg-white rounded-2xl text-slate-900 text-2xl font-black focus:outline-none transition-all shadow-inner font-mono"
+                className="w-full pl-14 pr-4 py-3 bg-slate-50 border-2 border-slate-300 focus:border-emerald-500 focus:bg-white rounded-2xl text-slate-900 text-xl font-black focus:outline-none transition-all shadow-inner font-mono"
               />
             </div>
 
             {/* Quick Currency Note Buttons */}
-            <div className="flex flex-wrap gap-2 pt-1">
+            <div className="flex flex-wrap gap-1.5 pt-0.5">
               {quickNotes.map((note) => (
                 <button
                   key={note.label}
                   type="button"
                   onClick={() => handleQuickAdd(note.value)}
-                  className="px-3 py-1.5 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-300 border border-slate-200 rounded-xl text-xs font-extrabold text-slate-700 transition-all cursor-pointer"
+                  className="px-2.5 py-1 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-300 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 transition-all cursor-pointer"
                 >
                   {note.label}
                 </button>
@@ -177,42 +178,42 @@ export const CashPaymentModal: React.FC<CashPaymentModalProps> = ({
           </div>
 
           {/* Section 3: Money Return (Change Calculation) */}
-          <div className="space-y-2">
+          <div className="space-y-1">
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
               Money Return (Change to Return to Customer)
             </label>
 
             {isSufficient ? (
-              <div className="p-4 bg-emerald-50 border-2 border-emerald-500 rounded-2xl flex items-center justify-between gap-3 shadow-sm">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-emerald-500 text-white rounded-xl shrink-0">
-                    <Coins className="w-6 h-6 animate-bounce" />
+              <div className="p-3 bg-emerald-50 border-2 border-emerald-500 rounded-2xl flex items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-emerald-500 text-white rounded-xl shrink-0">
+                    <Coins className="w-5 h-5 animate-bounce" />
                   </div>
                   <div>
-                    <div className="text-xs font-bold text-emerald-800 uppercase tracking-wider">
+                    <div className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">
                       Return Change
                     </div>
-                    <div className="text-2xl sm:text-3xl font-black text-emerald-700 font-mono">
+                    <div className="text-xl sm:text-2xl font-black text-emerald-700 font-mono">
                       Rs. {changeToReturn.toFixed(2)}
                     </div>
                   </div>
                 </div>
 
-                <div className="text-right text-[11px] font-bold text-emerald-700 bg-emerald-100 px-3 py-1.5 rounded-xl">
-                  ✓ Cash Received Ready
+                <div className="text-right text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-lg">
+                  ✓ Cash Ready
                 </div>
               </div>
             ) : (
-              <div className="p-4 bg-amber-50 border-2 border-amber-400 rounded-2xl flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-amber-500 text-white rounded-xl shrink-0">
-                    <AlertCircle className="w-6 h-6" />
+              <div className="p-3 bg-amber-50 border-2 border-amber-400 rounded-2xl flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-amber-500 text-white rounded-xl shrink-0">
+                    <AlertCircle className="w-5 h-5" />
                   </div>
                   <div>
-                    <div className="text-xs font-bold text-amber-900 uppercase tracking-wider">
+                    <div className="text-[10px] font-bold text-amber-900 uppercase tracking-wider">
                       Short Cash Received
                     </div>
-                    <div className="text-xl font-bold text-amber-800 font-mono">
+                    <div className="text-lg font-bold text-amber-800 font-mono">
                       Need Rs. {(totalAmount - numReceived).toFixed(2)} more
                     </div>
                   </div>
@@ -221,13 +222,58 @@ export const CashPaymentModal: React.FC<CashPaymentModalProps> = ({
             )}
           </div>
 
+          {/* Section 4: RECEIPT MODE SELECTION (PRINT RECEIPT OR GET E-RECEIPT) */}
+          <div className="space-y-1.5 pt-1">
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+              Customer Receipt Preference *
+            </label>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => setReceiptType('print')}
+                className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
+                  receiptType === 'print'
+                    ? 'bg-orange-50 border-orange-500 text-orange-950 shadow-xs ring-2 ring-orange-500/20'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <div className={`p-2 rounded-xl shrink-0 ${receiptType === 'print' ? 'bg-orange-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                  <Printer className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="font-extrabold text-xs block text-slate-900">Print Receipt</span>
+                  <span className="text-[10px] text-slate-500 block">Thermal paper receipt</span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setReceiptType('ereceipt')}
+                className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
+                  receiptType === 'ereceipt'
+                    ? 'bg-emerald-50 border-emerald-500 text-emerald-950 shadow-xs ring-2 ring-emerald-500/20'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <div className={`p-2 rounded-xl shrink-0 ${receiptType === 'ereceipt' ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                  <QrCodeIcon className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="font-extrabold text-xs block text-slate-900">Get E-Receipt</span>
+                  <span className="text-[10px] text-slate-500 block">Mobile QR Code download</span>
+                </div>
+              </button>
+            </div>
+          </div>
+
           {/* Modal Action Buttons */}
           <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
             <button
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="px-5 py-3 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold hover:bg-slate-200 transition-colors cursor-pointer"
+              className="px-4 py-3 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold hover:bg-slate-200 transition-colors cursor-pointer"
             >
               Cancel
             </button>
@@ -235,7 +281,7 @@ export const CashPaymentModal: React.FC<CashPaymentModalProps> = ({
             <button
               type="submit"
               disabled={!isSufficient || loading}
-              className="px-6 py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <>
@@ -244,7 +290,7 @@ export const CashPaymentModal: React.FC<CashPaymentModalProps> = ({
                 </>
               ) : (
                 <>
-                  <CheckCircle2 className="w-4 h-4" /> Confirm Cash Sale & Issue Receipt
+                  <CheckCircle2 className="w-4 h-4" /> Complete Sale ({receiptType === 'print' ? 'Print Slip' : 'Generate E-Receipt QR'})
                 </>
               )}
             </button>

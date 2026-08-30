@@ -37,6 +37,7 @@ interface BarcodeGeneratorModalProps {
     name: string;
     uniqueNumber: string;
     weight: string;
+    costPrice?: number;
     price: number;
     category?: string;
     stockQuantity?: number;
@@ -53,6 +54,7 @@ export const BarcodeGeneratorModal: React.FC<BarcodeGeneratorModalProps> = ({
   const [productName, setProductName] = useState('');
   const [uniqueNumber, setUniqueNumber] = useState('');
   const [weight, setWeight] = useState('');
+  const [costPrice, setCostPrice] = useState<number | ''>('');
   const [price, setPrice] = useState<number | ''>('');
   const [category, setCategory] = useState('General');
   const [stockQuantity, setStockQuantity] = useState<number | ''>(50);
@@ -84,6 +86,7 @@ export const BarcodeGeneratorModal: React.FC<BarcodeGeneratorModalProps> = ({
         setProductName(initialProduct.name || '');
         setUniqueNumber(initialProduct.barcode || initialProduct.serialNumber || generateUniqueId());
         setWeight(initialProduct.weight || '');
+        setCostPrice(initialProduct.costPrice ?? '');
         setPrice(initialProduct.price ?? '');
         setCategory(initialProduct.category || 'General');
         setStockQuantity(initialProduct.stockQuantity || 50);
@@ -91,6 +94,7 @@ export const BarcodeGeneratorModal: React.FC<BarcodeGeneratorModalProps> = ({
         setProductName('');
         setUniqueNumber(generateUniqueId());
         setWeight('500g');
+        setCostPrice('');
         setPrice('');
         setCategory('General');
         setStockQuantity(50);
@@ -375,6 +379,7 @@ export const BarcodeGeneratorModal: React.FC<BarcodeGeneratorModalProps> = ({
       setBarcodeError('Please enter a valid price.');
       return;
     }
+    const numCostPrice = typeof costPrice === 'number' ? costPrice : (costPrice !== '' ? parseFloat(costPrice as any) : undefined);
 
     if (onSaveToInventory) {
       setIsSaving(true);
@@ -383,6 +388,7 @@ export const BarcodeGeneratorModal: React.FC<BarcodeGeneratorModalProps> = ({
           name: productName.trim(),
           uniqueNumber: uniqueNumber.trim(),
           weight: weight.trim() || 'Standard',
+          costPrice: numCostPrice !== undefined && !isNaN(numCostPrice) ? numCostPrice : undefined,
           price: numPrice,
           category: category.trim() || 'General',
           stockQuantity: typeof stockQuantity === 'number' ? stockQuantity : parseInt(stockQuantity as string, 10) || 50
@@ -513,8 +519,8 @@ export const BarcodeGeneratorModal: React.FC<BarcodeGeneratorModalProps> = ({
                 </div>
               </div>
 
-              {/* Weight & Price (PKR) Grid */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* Weight, Cost Price & Selling Price (PKR) Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                     Weight / Volume *
@@ -533,8 +539,30 @@ export const BarcodeGeneratorModal: React.FC<BarcodeGeneratorModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Price (Rs.) *
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center justify-between">
+                    <span>Cost Price (Rs.)</span>
+                    <span className="text-[10px] text-slate-400 font-normal">Buy rate</span>
+                  </label>
+                  <div className="relative">
+                    <span className="text-[11px] font-black text-slate-500 absolute left-3 top-1/2 -translate-y-1/2">
+                      Rs.
+                    </span>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      placeholder="e.g. 180.00"
+                      value={costPrice}
+                      onChange={(e) => setCostPrice(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                      className="w-full pl-10 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs font-bold focus:outline-none focus:border-orange-500 focus:bg-white transition-all text-slate-800 font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center justify-between">
+                    <span>Selling Price (Rs.) *</span>
+                    <span className="text-[10px] text-orange-600 font-bold">Retail rate</span>
                   </label>
                   <div className="relative">
                     <span className="text-[11px] font-black text-slate-500 absolute left-3 top-1/2 -translate-y-1/2">
@@ -553,6 +581,27 @@ export const BarcodeGeneratorModal: React.FC<BarcodeGeneratorModalProps> = ({
                   </div>
                 </div>
               </div>
+
+              {/* Dynamic Estimated Profit Indicator in Barcode Generator */}
+              {typeof price === 'number' && price > 0 && typeof costPrice === 'number' && costPrice >= 0 && (
+                <div className="p-2.5 rounded-xl bg-orange-50/70 border border-orange-200 flex items-center justify-between text-xs">
+                  <span className="text-slate-600 font-medium">Estimated Gross Profit:</span>
+                  <div className="flex items-center gap-2">
+                    <span className={`font-black ${price >= costPrice ? 'text-emerald-700' : 'text-red-600'}`}>
+                      Rs. {(price - costPrice).toFixed(2)} / unit
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                      price > costPrice 
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
+                        : price === costPrice 
+                          ? 'bg-slate-100 text-slate-700' 
+                          : 'bg-red-100 text-red-800 border border-red-300'
+                    }`}>
+                      {price > 0 ? `${(((price - costPrice) / price) * 100).toFixed(1)}% margin` : '0%'}
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {/* Initial Stock & Category (For quick inventory save) */}
               <div className="grid grid-cols-2 gap-3 pt-1">

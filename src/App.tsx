@@ -7,12 +7,36 @@ import { SuperAdminDashboard } from './components/SuperAdminDashboard';
 import { StoreAdminDashboard } from './components/StoreAdminDashboard';
 import { ProductRegisterView } from './components/ProductRegisterView';
 import { CashCounterView } from './components/CashCounterView';
+import { CustomerPriceCheckerView } from './components/CustomerPriceCheckerView';
 import { ReceiptModal } from './components/ReceiptModal';
+import { PublicReceiptView } from './components/PublicReceiptView';
 
 export default function App() {
   const [auth, setAuth] = useState<AuthState>({
     user: null,
     store: null
+  });
+
+  // URL query params & hash detection for scanned QR codes (e.g. ?receiptId=... or ?no=... or #data=...)
+  const [publicReceiptTarget, setPublicReceiptTarget] = useState<{ id?: string | null; number?: string | null; encodedData?: string | null } | null>(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const rId = params.get('receiptId') || params.get('receipt') || params.get('r');
+      const rNo = params.get('no') || params.get('receiptNo');
+      let dataPayload = params.get('data') || params.get('d');
+
+      const hash = window.location.hash;
+      if (hash.includes('data=')) {
+        dataPayload = hash.split('data=')[1]?.split('&')[0];
+      }
+
+      if (rId || rNo || dataPayload) {
+        return { id: rId, number: rNo, encodedData: dataPayload };
+      }
+    } catch (e) {
+      console.warn('URL parsing error:', e);
+    }
+    return null;
   });
 
   // Admin temporary view overrides (e.g. if Store Admin or Super Admin switches view)
@@ -29,6 +53,29 @@ export default function App() {
   useEffect(() => {
     ensureSuperAdminExists();
   }, []);
+
+  const handleExitPublicReceipt = () => {
+    // Clear URL search params and hash cleanly without page reload
+    try {
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.history.pushState({}, document.title, cleanUrl);
+    } catch (e) {
+      console.warn(e);
+    }
+    setPublicReceiptTarget(null);
+  };
+
+  // If user scanned a QR code or navigated via ?receiptId=..., render Public E-Receipt View directly
+  if (publicReceiptTarget) {
+    return (
+      <PublicReceiptView
+        receiptId={publicReceiptTarget.id}
+        receiptNumber={publicReceiptTarget.number}
+        encodedData={publicReceiptTarget.encodedData}
+        onExitToLogin={handleExitPublicReceipt}
+      />
+    );
+  }
 
   const handleLoginSuccess = (newAuth: AuthState) => {
     setAuth(newAuth);
@@ -151,6 +198,11 @@ export default function App() {
         {/* 4. CASH COUNTER ROLE */}
         {userRole === 'cash_counter' && activeStore && (
           <CashCounterView store={activeStore} currentUser={auth.user} />
+        )}
+
+        {/* 5. CUSTOMER PRICE CHECKER KIOSK ROLE */}
+        {userRole === 'customer_price_checker' && activeStore && (
+          <CustomerPriceCheckerView store={activeStore} currentUser={auth.user} />
         )}
 
       </main>

@@ -21,6 +21,7 @@ import { CashPaymentModal } from './CashPaymentModal';
 import { WeightPromptModal } from './WeightPromptModal';
 import { speakMessage } from '../lib/speech';
 import { playScanSuccessBeep, playScanErrorBeep } from '../lib/sound';
+import { cleanupExpiredReceipts, isSaleExpired, getReceiptRemainingDays } from '../lib/salesCleanup';
 import { 
   Calculator, 
   Barcode as BarcodeIcon, 
@@ -86,6 +87,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
   // Notifications & Modals
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [selectedReceiptType, setSelectedReceiptType] = useState<'print' | 'ereceipt'>('print');
   const [completedSale, setCompletedSale] = useState<Sale | null>(null);
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
 
@@ -340,7 +342,9 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
       handleFirestoreError(err, OperationType.GET, 'products');
     });
 
-    // 2. Sales
+    // 2. Sales (Run 7-day auto-purge and filter out expired receipts)
+    cleanupExpiredReceipts(store.id);
+
     const qSales = query(
       collection(db, 'sales'),
       where('storeId', '==', store.id)
@@ -349,7 +353,10 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     const unsubSales = onSnapshot(qSales, (snapshot) => {
       const list: Sale[] = [];
       snapshot.forEach((docSnap) => {
-        list.push({ id: docSnap.id, ...docSnap.data() } as Sale);
+        const saleData = { id: docSnap.id, ...docSnap.data() } as Sale;
+        if (!isSaleExpired(saleData)) {
+          list.push(saleData);
+        }
       });
       list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       setRecentSales(list);
@@ -474,8 +481,9 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     }
   };
 
-  const executeCheckoutSale = async (cashReceived?: number, changeReturned?: number) => {
+  const executeCheckoutSale = async (cashReceived?: number, changeReturned?: number, receiptType: 'print' | 'ereceipt' = 'print') => {
     setCheckoutLoading(true);
+    setSelectedReceiptType(receiptType);
 
     try {
       // Execute Firestore Atomic Transaction to decrement stock and create sale record
@@ -487,6 +495,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
         barcode: item.product.barcode || '',
         serialNumber: item.product.serialNumber || '',
         name: item.product.name || '',
+        costPrice: item.product.costPrice !== undefined ? item.product.costPrice : 0,
         price: item.product.price || item.product.pricePerKg || 0,
         quantity: item.quantity || 1,
         total: Math.round(item.totalPrice * 100) / 100,
@@ -543,6 +552,8 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           });
         }
 
+        const expiresAtIso = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
         // 2. Create Sale Record with Discount Fields (cleanly populated without undefined fields)
         const saleRecordData: Record<string, any> = {
           id: newSaleDocRef.id,
@@ -556,7 +567,8 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           totalAmount: cartTotal || 0,
           paymentMethod: paymentMethod || 'cash',
           receiptNumber: receiptNum,
-          timestamp: nowIso
+          timestamp: nowIso,
+          expiresAt: expiresAtIso
         };
 
         if (discountAmount > 0) {
@@ -1232,8 +1244,8 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           discountType={discountType}
           discountValue={typeof discountValue === 'number' ? discountValue : parseFloat(discountValue) || 0}
           totalAmount={cartTotal}
-          onConfirmPayment={(cashReceived, changeReturned) => {
-            executeCheckoutSale(cashReceived, changeReturned);
+          onConfirmPayment={(cashReceived, changeReturned, receiptType) => {
+            executeCheckoutSale(cashReceived, changeReturned, receiptType);
           }}
           loading={checkoutLoading}
         />
@@ -1245,6 +1257,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           isOpen={isReceiptOpen}
           onClose={() => setIsReceiptOpen(false)}
           voiceEnabled={isVoiceAllowed && voiceEnabled}
+          initialTab={selectedReceiptType}
         />
 
         {/* Process Product Return & Restock Modal */}

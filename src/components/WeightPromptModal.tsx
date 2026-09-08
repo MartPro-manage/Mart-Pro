@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Product } from '../types';
-import { Scale, Plus, Sparkles, X, Calculator, Package } from 'lucide-react';
+import { Scale, Plus, Sparkles, X, Calculator } from 'lucide-react';
 
 interface WeightPromptModalProps {
   product: Product | null;
@@ -15,10 +15,7 @@ export const WeightPromptModal: React.FC<WeightPromptModalProps> = ({
   onClose,
   onConfirm,
 }) => {
-  const [inputMode, setInputMode] = useState<'direct_weight' | 'pack_multiplier'>('direct_weight');
   const [weightKg, setWeightKg] = useState<string>('1');
-  const [packQuantity, setPackQuantity] = useState<string>('1');
-  const [packWeightKg, setPackWeightKg] = useState<string>('0.5');
   const [error, setError] = useState<string | null>(null);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -26,15 +23,7 @@ export const WeightPromptModal: React.FC<WeightPromptModalProps> = ({
   // Initialize defaults whenever product changes or modal opens
   useEffect(() => {
     if (product && isOpen) {
-      if (product.weightPerUnit && product.weightPerUnit > 0) {
-        setInputMode('pack_multiplier');
-        setPackWeightKg(product.weightPerUnit.toString());
-        setPackQuantity('1');
-        setWeightKg((product.weightPerUnit * 1).toString());
-      } else {
-        setInputMode('direct_weight');
-        setWeightKg('1');
-      }
+      setWeightKg('1');
       setError(null);
 
       // Auto-focus input for rapid cashier workflow
@@ -50,17 +39,7 @@ export const WeightPromptModal: React.FC<WeightPromptModalProps> = ({
   if (!isOpen || !product) return null;
 
   const perKgRate = product.price || product.pricePerKg || 0;
-
-  // Calculate final effective weight in KG
-  let effectiveWeightKg = 0;
-  if (inputMode === 'direct_weight') {
-    effectiveWeightKg = parseFloat(weightKg) || 0;
-  } else {
-    const qty = parseFloat(packQuantity) || 0;
-    const unitWt = parseFloat(packWeightKg) || 0;
-    effectiveWeightKg = qty * unitWt;
-  }
-
+  const effectiveWeightKg = parseFloat(weightKg) || 0;
   const calculatedTotalPrice = effectiveWeightKg * perKgRate;
   const isOutOfStock = product.stockQuantity <= 0;
   const exceedsStock = effectiveWeightKg > product.stockQuantity;
@@ -70,7 +49,7 @@ export const WeightPromptModal: React.FC<WeightPromptModalProps> = ({
     setError(null);
 
     if (effectiveWeightKg <= 0) {
-      setError('Please enter a valid weight or quantity greater than 0.');
+      setError('Please enter a valid weight greater than 0.');
       return;
     }
 
@@ -87,7 +66,6 @@ export const WeightPromptModal: React.FC<WeightPromptModalProps> = ({
     const current = parseFloat(weightKg) || 0;
     const nextVal = Math.max(0.01, +(current + amountKg).toFixed(3));
     setWeightKg(nextVal.toString());
-    setInputMode('direct_weight');
     if (inputRef.current) inputRef.current.focus();
   };
 
@@ -140,137 +118,56 @@ export const WeightPromptModal: React.FC<WeightPromptModalProps> = ({
             </div>
           </div>
 
-          {/* Mode Switcher */}
-          <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-2xl border border-slate-200 text-xs font-bold">
-            <button
-              type="button"
-              onClick={() => {
-                setInputMode('direct_weight');
-                if (effectiveWeightKg > 0) setWeightKg(effectiveWeightKg.toFixed(3));
-              }}
-              className={`py-2 px-3 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                inputMode === 'direct_weight'
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Scale className="w-3.5 h-3.5 text-orange-600" />
-              <span>Direct Scale Weight (kg)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setInputMode('pack_multiplier');
-              }}
-              className={`py-2 px-3 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                inputMode === 'pack_multiplier'
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Package className="w-3.5 h-3.5 text-blue-600" />
-              <span>Quantity × Pack Weight</span>
-            </button>
-          </div>
-
-          {/* INPUT FIELDS ACCORDING TO MODE */}
-          {inputMode === 'direct_weight' ? (
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Enter Measured Weight (KG / Decimal) *
-                </label>
-                <div className="relative">
-                  <input
-                    ref={inputRef}
-                    type="number"
-                    step="0.001"
-                    min="0.001"
-                    max={product.stockQuantity || 9999}
-                    required
-                    placeholder="e.g. 0.750, 1.250, 2.500"
-                    value={weightKg}
-                    onChange={(e) => setWeightKg(e.target.value)}
-                    className="w-full pl-4 pr-16 py-3.5 bg-slate-50 border border-slate-300 rounded-2xl text-2xl font-black text-slate-900 text-center focus:outline-none focus:border-orange-500 focus:bg-white transition-all font-mono"
-                  />
-                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500">
-                    KG
-                  </span>
-                </div>
-              </div>
-
-              {/* Quick Weight Presets */}
-              <div className="flex flex-wrap gap-1.5 justify-center pt-1">
-                {[
-                  { label: '100g', val: 0.1 },
-                  { label: '250g', val: 0.25 },
-                  { label: '500g', val: 0.5 },
-                  { label: '750g', val: 0.75 },
-                  { label: '1 kg', val: 1.0 },
-                  { label: '2 kg', val: 2.0 },
-                  { label: '5 kg', val: 5.0 },
-                ].map((item) => (
-                  <button
-                    key={item.label}
-                    type="button"
-                    onClick={() => {
-                      setWeightKg(item.val.toString());
-                      if (inputRef.current) inputRef.current.focus();
-                    }}
-                    className="px-2.5 py-1 bg-slate-100 hover:bg-orange-100 text-slate-700 hover:text-orange-800 font-bold text-xs rounded-xl border border-slate-200 transition-all cursor-pointer"
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Quantity (Packs / Units) *
-                  </label>
-                  <input
-                    ref={inputRef}
-                    type="number"
-                    step="1"
-                    min="1"
-                    required
-                    placeholder="e.g. 3"
-                    value={packQuantity}
-                    onChange={(e) => setPackQuantity(e.target.value)}
-                    className="w-full px-3 py-3 bg-slate-50 border border-slate-300 rounded-xl text-lg font-black text-slate-900 text-center focus:outline-none focus:border-orange-500 font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Weight per Pack (KG) *
-                  </label>
-                  <input
-                    type="number"
-                    step="0.001"
-                    min="0.001"
-                    required
-                    placeholder="e.g. 0.5"
-                    value={packWeightKg}
-                    onChange={(e) => setPackWeightKg(e.target.value)}
-                    className="w-full px-3 py-3 bg-slate-50 border border-slate-300 rounded-xl text-lg font-black text-slate-900 text-center focus:outline-none focus:border-orange-500 font-mono"
-                  />
-                </div>
-              </div>
-
-              {/* Auto Multiply Display */}
-              <div className="p-2.5 bg-blue-50 rounded-xl border border-blue-200 text-xs text-blue-900 flex items-center justify-between font-semibold">
-                <span>Total Weight:</span>
-                <span className="font-extrabold font-mono text-sm">
-                  {packQuantity || '0'} × {packWeightKg || '0'} kg = {effectiveWeightKg.toFixed(3)} kg
+          {/* Measured Weight Input */}
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                Enter Measured Weight (KG / Decimal) *
+              </label>
+              <div className="relative">
+                <input
+                  ref={inputRef}
+                  type="number"
+                  step="0.001"
+                  min="0.001"
+                  max={product.stockQuantity || 9999}
+                  required
+                  placeholder="e.g. 0.750, 1.250, 2.500"
+                  value={weightKg}
+                  onChange={(e) => setWeightKg(e.target.value)}
+                  className="w-full pl-4 pr-16 py-3.5 bg-slate-50 border border-slate-300 rounded-2xl text-2xl font-black text-slate-900 text-center focus:outline-none focus:border-orange-500 focus:bg-white transition-all font-mono"
+                />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500">
+                  KG
                 </span>
               </div>
             </div>
-          )}
+
+            {/* Quick Weight Presets */}
+            <div className="flex flex-wrap gap-1.5 justify-center pt-1">
+              {[
+                { label: '100g', val: 0.1 },
+                { label: '250g', val: 0.25 },
+                { label: '500g', val: 0.5 },
+                { label: '750g', val: 0.75 },
+                { label: '1 kg', val: 1.0 },
+                { label: '2 kg', val: 2.0 },
+                { label: '5 kg', val: 5.0 },
+              ].map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => {
+                    setWeightKg(item.val.toString());
+                    if (inputRef.current) inputRef.current.focus();
+                  }}
+                  className="px-2.5 py-1 bg-slate-100 hover:bg-orange-100 text-slate-700 hover:text-orange-800 font-bold text-xs rounded-xl border border-slate-200 transition-all cursor-pointer"
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Realtime Calculated Price Box */}
           <div className="p-4 bg-orange-50 rounded-2xl border border-orange-200 text-center space-y-1">

@@ -71,8 +71,8 @@ export const Logo: React.FC<LogoProps> = ({
 
       <div className="flex flex-col justify-center leading-none">
         <div className={`font-black ${textSizes[size]} tracking-tight flex items-center`}>
-          <span className={lightMode ? "text-slate-900" : "text-slate-900"}>MART</span>
-          <span className="text-orange-600 ml-1">PRO</span>
+          <span className={lightMode ? "text-slate-900" : "text-white"}>MART</span>
+          <span className="text-orange-500 ml-1">PRO</span>
         </div>
         {showSubtitle && (
           <span className={`font-bold uppercase text-slate-500 mt-0.5 ${subTextSizes[size]}`}>

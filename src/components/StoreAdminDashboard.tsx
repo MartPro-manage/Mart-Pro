@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   db, 
   collection, 
@@ -672,6 +673,27 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             <p className="text-sm text-slate-600 max-w-2xl font-medium">
               View sales filtered by date, day-by-day revenue breakdown, product sales velocity, real-time inventory levels, and cashier checkout logs.
             </p>
+
+            {/* Quick Live Revenue and Profit Highlight Badges */}
+            <div className="flex flex-wrap items-center gap-3 pt-2">
+              <div className="px-3.5 py-1.5 rounded-xl bg-orange-50 border border-orange-200 flex items-center gap-2 shadow-2xs">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-orange-700">Total Revenue:</span>
+                <span className="font-mono font-black text-sm text-orange-950">
+                  Rs. {filteredNetRevenue.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className={`px-3.5 py-1.5 rounded-xl border flex items-center gap-2 shadow-2xs ${
+                filteredNetProfit >= 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-950' : 'bg-red-50 border-red-200 text-red-950'
+              }`}>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">Net Profit:</span>
+                <span className={`font-mono font-black text-sm ${filteredNetProfit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                  Rs. {filteredNetProfit.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+                <span className="text-[10px] font-bold bg-white px-1.5 py-0.5 rounded border border-emerald-200">
+                  {filteredProfitMargin.toFixed(1)}% margin
+                </span>
+              </div>
+            </div>
           </div>
 
           {/* Quick Shortcuts for Admin */}

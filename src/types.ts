@@ -38,6 +38,7 @@ export interface Product {
   barcode: string;
   serialNumber?: string;
   name: string;
+  imageUrl?: string; // Product picture URL or base64 data URI
   category: string;
   costPrice?: number; // Purchase/Cost price per unit or per kg
   price: number; // Selling price per piece or price per kg

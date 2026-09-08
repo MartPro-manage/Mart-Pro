@@ -609,35 +609,6 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
           </button>
         </div>
 
-        {/* PRINT RECEIPT VS GET E-RECEIPT TAB SWITCHER */}
-        <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-2xl no-print shrink-0 border border-slate-200">
-          <button
-            type="button"
-            onClick={() => setActiveReceiptMode('print')}
-            className={`py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all cursor-pointer ${
-              activeReceiptMode === 'print'
-                ? 'bg-white text-slate-900 shadow-sm border border-slate-200'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Printer className="w-4 h-4 text-orange-600" />
-            <span>Print Receipt</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveReceiptMode('ereceipt')}
-            className={`py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all cursor-pointer ${
-              activeReceiptMode === 'ereceipt'
-                ? 'bg-orange-600 text-white shadow-sm shadow-orange-600/30'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <QrCodeIcon className="w-4 h-4" />
-            <span>Get E-Receipt (QR Code)</span>
-          </button>
-        </div>
-
         {/* THANK YOU VOICE BANNER */}
         <div className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-3.5 rounded-2xl shadow-md no-print flex items-center justify-between gap-3 border border-emerald-500 shrink-0">
           <div className="flex items-center gap-2.5">
@@ -674,9 +645,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
           </div>
         )}
 
-        {/* TAB 1: STANDARD PRINTABLE RECEIPT CARD */}
-        {activeReceiptMode === 'print' && (
-          <>
+        {/* STANDARD PRINTABLE RECEIPT CARD */}
             <div 
               id="printable-receipt" 
               className="bg-slate-50 text-slate-900 p-5 sm:p-6 rounded-2xl shadow-inner font-mono text-xs space-y-4 overflow-y-auto overscroll-contain max-h-[44vh] border border-slate-200 custom-scrollbar"
@@ -806,98 +775,6 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 <Download className="w-4 h-4 text-emerald-600" /> Save TXT
               </button>
             </div>
-          </>
-        )}
-
-        {/* TAB 2: GET E-RECEIPT WITH INSTANT MOBILE QR CODE */}
-        {activeReceiptMode === 'ereceipt' && (
-          <div className="space-y-4 no-print">
-            <div className="bg-slate-900 text-white p-5 rounded-2xl border border-slate-800 text-center space-y-4 shadow-xl">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30 text-xs font-bold">
-                <Smartphone className="w-3.5 h-3.5 text-orange-400" />
-                <span>Scan with Any Smartphone Camera</span>
-              </div>
-
-              <h4 className="text-base font-black text-white">
-                Scan QR Code to Receive & Download E-Receipt
-              </h4>
-
-              {/* QR Code Container */}
-              <div className="bg-white p-4 rounded-2xl inline-block shadow-2xl mx-auto border-4 border-slate-800">
-                {qrCodeDataUrl ? (
-                  <img 
-                    src={qrCodeDataUrl} 
-                    alt={`E-Receipt QR Code #${sale.receiptNumber}`}
-                    className="w-48 h-48 sm:w-56 sm:h-56 mx-auto object-contain"
-                  />
-                ) : (
-                  <div className="w-48 h-48 sm:w-56 sm:h-56 flex items-center justify-center text-slate-400 text-xs">
-                    Generating QR Code...
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-1.5">
-                <p className="text-xs text-slate-300 font-medium">
-                  Scan with your mobile camera. Automatically opens your <strong className="text-orange-400 font-bold">Mart Pro Customer Account</strong> where you can view, download (PNG, PDF, HTML, TXT), and keep this receipt in your mobile wallet.
-                </p>
-                
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-800 text-amber-300 border border-slate-700 text-[11px] font-bold">
-                  <Clock className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Available online for {getReceiptRemainingDays(sale.timestamp)} more days (Auto-deleted after 7 days)</span>
-                </div>
-
-                <p className="text-[11px] text-slate-400 font-mono">
-                  Receipt Ref: #{sale.receiptNumber} &bull; Total: {curr} {sale.totalAmount.toFixed(2)}
-                </p>
-              </div>
-            </div>
-
-            {/* Quick Actions Bar */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
-              <button
-                type="button"
-                onClick={handleDownloadImage}
-                disabled={isExportingImage}
-                className="py-3 px-2.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-bold rounded-xl shadow-sm transition-all text-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-              >
-                <ImageIcon className="w-4 h-4" />
-                <span>{isExportingImage ? 'Generating...' : 'Save PNG Image'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleDownloadHtml}
-                className="py-3 px-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl shadow-sm transition-all text-xs flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <Download className="w-4 h-4 text-emerald-400" />
-                <span>Download HTML</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (receiptUrl) {
-                    window.open(receiptUrl, '_blank');
-                  }
-                }}
-                className="py-3 px-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
-              >
-                <ExternalLink className="w-4 h-4 text-orange-400" />
-                <span>Open in Tab</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleCopyLink}
-                className="py-3 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold border border-slate-200 rounded-xl transition-all text-xs flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                {linkCopied ? <Check className="w-4 h-4 text-emerald-600" /> : <Link className="w-4 h-4 text-slate-600" />}
-                <span>{linkCopied ? 'Link Copied!' : 'Copy Link'}</span>
-              </button>
-            </div>
-          </div>
-        )}
 
       </div>
     </div>

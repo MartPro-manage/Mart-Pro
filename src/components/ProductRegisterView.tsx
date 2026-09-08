@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   db, 
   collection, 
@@ -40,7 +41,11 @@ import {
   Percent,
   Coins,
   DollarSign,
-  ArrowUpRight
+  ArrowUpRight,
+  Image as ImageIcon,
+  Upload,
+  X,
+  FileImage
 } from 'lucide-react';
 
 interface ProductRegisterViewProps {
@@ -60,6 +65,8 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   const [barcode, setBarcode] = useState('');
   const [serialNumber, setSerialNumber] = useState('');
   const [name, setName] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
+  const [imageInputMode, setImageInputMode] = useState<'upload' | 'url'>('upload');
   const [weight, setWeight] = useState('');
   const [weightPerUnit, setWeightPerUnit] = useState<number | ''>('');
   const [category, setCategory] = useState('General');
@@ -80,6 +87,53 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   const barcodeInputRef = useRef<HTMLInputElement | null>(null);
   const serialNumberInputRef = useRef<HTMLInputElement | null>(null);
   const quantityInputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Auto compress and convert uploaded image to compact base64
+  const handleImageFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      showNotification('error', 'Please select a valid image file (JPG, PNG, WEBP).');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_DIM = 400;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_DIM) {
+            height = Math.round((height * MAX_DIM) / width);
+            width = MAX_DIM;
+          }
+        } else {
+          if (height > MAX_DIM) {
+            width = Math.round((width * MAX_DIM) / height);
+            height = MAX_DIM;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressed = canvas.toDataURL('image/jpeg', 0.82);
+          setImageUrl(compressed);
+          showNotification('success', 'Product photo attached and optimized!');
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Auto focus barcode input for fast hardware USB barcode scanner support
   useEffect(() => {
@@ -146,6 +200,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
       if (!barcode && found.barcode) setBarcode(found.barcode);
       if (!serialNumber && found.serialNumber) setSerialNumber(found.serialNumber || '');
       setName(found.name);
+      setImageUrl(found.imageUrl || '');
       setWeight(found.weight || '');
       setCategory(found.category || 'General');
       setCostPrice(found.costPrice !== undefined ? found.costPrice : '');
@@ -170,6 +225,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     setBarcode('');
     setSerialNumber('');
     setName('');
+    setImageUrl('');
     setWeight('');
     setWeightPerUnit('');
     setCategory('General');
@@ -188,6 +244,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     setSerialNumber(p.serialNumber || '');
     setExistingProduct(p);
     setName(p.name);
+    setImageUrl(p.imageUrl || '');
     setWeight(p.weight || '');
     setCategory(p.category || 'General');
     setCostPrice(p.costPrice !== undefined ? p.costPrice : '');
@@ -207,6 +264,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     } else {
       setProductForGenerator({
         name: name || '',
+        imageUrl: imageUrl || undefined,
         barcode: barcode || '',
         serialNumber: serialNumber || '',
         weight: weight || (sellBy === 'weight' ? '1 kg' : '500g'),
@@ -259,6 +317,12 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
 
     if (isNaN(numericPrice) || numericPrice < 0) {
       showNotification('error', sellBy === 'weight' ? 'Please enter a valid price per kg in Pakistani Rupees (Rs.).' : 'Please enter a valid price in Pakistani Rupees (Rs.).');
+      return;
+    }
+
+    // MANDATORY REQUIREMENT: Product register cannot register product without adding cost price
+    if (numericCostPrice === undefined || isNaN(numericCostPrice) || numericCostPrice < 0) {
+      showNotification('error', 'Cost Price is mandatory! A product cannot be registered without adding its cost price.');
       return;
     }
 
@@ -365,6 +429,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
           barcode: trimmedBarcode || '',
           serialNumber: trimmedSerial || '',
           name: trimmedName,
+          imageUrl: imageUrl.trim() || undefined,
           weight: trimmedWeight || (sellBy === 'weight' ? `${finalTotalStock} kg` : ''),
           category: category.trim() || 'General',
           costPrice: numericCostPrice !== undefined && !isNaN(numericCostPrice) ? numericCostPrice : 0,
@@ -391,6 +456,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
           barcode: trimmedBarcode || '',
           serialNumber: trimmedSerial || '',
           name: trimmedName,
+          imageUrl: imageUrl.trim() || undefined,
           weight: trimmedWeight || (sellBy === 'weight' ? `${finalTotalStock} kg` : ''),
           category: category.trim() || 'General',
           costPrice: numericCostPrice !== undefined && !isNaN(numericCostPrice) ? numericCostPrice : 0,
@@ -608,10 +674,15 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
       <div className="max-w-7xl mx-auto space-y-8">
 
         {/* Top Control Banner */}
-        <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
+        <motion.div 
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden"
+        >
           <div className="space-y-2 z-10">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="px-3 py-1 rounded-full text-xs font-bold bg-orange-50 text-orange-700 border border-orange-200 flex items-center gap-1.5">
+              <span className="px-3 py-1 rounded-full text-xs font-bold bg-orange-50 text-orange-700 border border-orange-200 flex items-center gap-1.5 shadow-2xs">
                 <PackagePlus className="w-3.5 h-3.5 text-orange-600" /> Product Register & Inventory
               </span>
               <span className="text-xs text-slate-500 font-medium">Store: {store.name}</span>
@@ -629,24 +700,28 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
 
           <div className="flex flex-wrap items-center gap-3 z-10 shrink-0">
             {/* Generate Barcode Button */}
-            <button
+            <motion.button
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
               onClick={() => handleOpenGeneratorForProduct()}
               className="px-5 py-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <Sparkles className="w-4 h-4 text-amber-400" /> Generate & Print Barcode
-            </button>
+            </motion.button>
 
             {/* Camera Scanner Trigger (respects store setting) */}
             {store.cameraScannerEnabled !== false && (
-              <button
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
                 onClick={() => setIsScannerOpen(true)}
                 className="px-5 py-3.5 rounded-2xl bg-orange-600 hover:bg-orange-500 text-white font-extrabold text-xs uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Camera className="w-4 h-4" /> Camera Scanner
-              </button>
+              </motion.button>
             )}
           </div>
-        </div>
+        </motion.div>
 
         {/* Hardware Permissions & Voice Controls */}
         <HardwarePermissionsBar 
@@ -836,6 +911,100 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                 />
               </div>
 
+              {/* Product Picture / Image Attachment */}
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <ImageIcon className="w-4 h-4 text-orange-600" />
+                    <span>Product Picture</span>
+                    <span className="text-[10px] text-slate-400 font-normal lowercase">(optional)</span>
+                  </label>
+                  <div className="flex items-center gap-1 bg-slate-200/80 p-0.5 rounded-lg text-[10px] font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setImageInputMode('upload')}
+                      className={`px-2 py-0.5 rounded-md cursor-pointer transition-all ${
+                        imageInputMode === 'upload' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
+                      }`}
+                    >
+                      File Upload
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setImageInputMode('url')}
+                      className={`px-2 py-0.5 rounded-md cursor-pointer transition-all ${
+                        imageInputMode === 'url' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
+                      }`}
+                    >
+                      Image URL
+                    </button>
+                  </div>
+                </div>
+
+                {imageUrl ? (
+                  <div className="flex items-center gap-4 p-2.5 bg-white rounded-xl border border-slate-200 shadow-xs">
+                    <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
+                      <img
+                        src={imageUrl}
+                        alt="Product preview"
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.target as any).src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="%2394a3b8" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
+                        }}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-slate-800 truncate">Photo Attached</p>
+                      <p className="text-[10px] text-emerald-600 font-medium">Visible on Customer Price Checker & POS</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setImageUrl('')}
+                      className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border border-red-200 transition-colors cursor-pointer"
+                      title="Remove product picture"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    {imageInputMode === 'upload' ? (
+                      <div>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageFileUpload}
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="w-full py-4 border-2 border-dashed border-slate-300 hover:border-orange-500 rounded-xl bg-white hover:bg-orange-50/40 text-slate-600 hover:text-orange-600 transition-all flex flex-col items-center justify-center gap-1.5 cursor-pointer text-xs font-bold"
+                        >
+                          <Upload className="w-5 h-5 text-orange-600" />
+                          <span>Click to Upload Product Picture</span>
+                          <span className="text-[10px] text-slate-400 font-normal">Supports JPG, PNG, WEBP (auto-compressed)</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <div className="relative">
+                          <input
+                            type="url"
+                            placeholder="https://example.com/product-image.jpg"
+                            value={imageUrl}
+                            onChange={(e) => setImageUrl(e.target.value)}
+                            className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-orange-500 font-medium"
+                          />
+                        </div>
+                        <p className="text-[10px] text-slate-400">Paste direct image URL from web or catalog</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Weight & Category Grid */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -1020,8 +1189,8 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                   {/* Cost / Purchase Price (Rs.) */}
                   <div>
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                      <span>{sellBy === 'weight' ? 'Cost Price / KG' : 'Cost Price (Buy)'}</span>
-                      <span className="text-[10px] text-slate-500 font-medium">Wholesale Rate</span>
+                      <span>{sellBy === 'weight' ? 'Cost Price / KG *' : 'Cost Price (Buy) *'}</span>
+                      <span className="text-[10px] text-rose-600 font-bold bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">Required</span>
                     </label>
                     <div className="relative">
                       <span className="text-xs font-black text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2">
@@ -1031,14 +1200,15 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                         type="number"
                         step="any"
                         min="0"
+                        required
                         placeholder={sellBy === 'weight' ? 'e.g. 220.00' : 'e.g. 180.00'}
                         value={costPrice}
                         onChange={(e) => setCostPrice(e.target.value === '' ? '' : parseFloat(e.target.value))}
                         className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-bold text-slate-800 transition-all font-mono"
                       />
                     </div>
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      Purchase rate (used to track profit).
+                    <p className="text-[10px] text-slate-500 mt-1 font-medium">
+                      Mandatory. Wholesale cost price is required to calculate store profit.
                     </p>
                   </div>
 
@@ -1323,30 +1493,48 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                             />
                           </td>
                           <td className="p-3.5">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-slate-900">{p.name}</span>
-                              {isWeighted ? (
-                                <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-orange-100 text-orange-800 border border-orange-200 flex items-center gap-0.5">
-                                  <Scale className="w-2.5 h-2.5" /> By Weight
-                                </span>
-                              ) : (
-                                <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-slate-100 text-slate-700 border border-slate-200">
-                                  By Unit
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium mt-0.5">
-                              {p.weight && (
-                                <span className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-mono font-bold">
-                                  {p.weight}
-                                </span>
-                              )}
-                              {p.weightPerUnit && (
-                                <span className="text-orange-700 font-semibold">
-                                  ({p.weightPerUnit} kg/pack)
-                                </span>
-                              )}
-                              <span>{p.category || 'General'}</span>
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-lg overflow-hidden bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center">
+                                {p.imageUrl ? (
+                                  <img
+                                    src={p.imageUrl}
+                                    alt={p.name}
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      (e.target as any).style.display = 'none';
+                                    }}
+                                  />
+                                ) : (
+                                  <ImageIcon className="w-5 h-5 text-slate-300" />
+                                )}
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-slate-900">{p.name}</span>
+                                  {isWeighted ? (
+                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-orange-100 text-orange-800 border border-orange-200 flex items-center gap-0.5">
+                                      <Scale className="w-2.5 h-2.5" /> By Weight
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-slate-100 text-slate-700 border border-slate-200">
+                                      By Unit
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium mt-0.5">
+                                  {p.weight && (
+                                    <span className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-mono font-bold">
+                                      {p.weight}
+                                    </span>
+                                  )}
+                                  {p.weightPerUnit && (
+                                    <span className="text-orange-700 font-semibold">
+                                      ({p.weightPerUnit} kg/pack)
+                                    </span>
+                                  )}
+                                  <span>{p.category || 'General'}</span>
+                                </div>
+                              </div>
                             </div>
                           </td>
                           <td className="p-3.5 text-xs space-y-0.5 font-mono">

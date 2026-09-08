@@ -3,6 +3,7 @@ import {
   getFirestore, 
   initializeFirestore,
   memoryLocalCache,
+  setLogLevel,
   collection, 
   doc, 
   getDoc, 
@@ -20,14 +21,21 @@ import {
 import firebaseConfig from '../../firebase-applet-config.json';
 import { UserAccount, Store, Product, Sale } from '../types';
 
+// Suppress transient internal connection retry warnings in console
+try {
+  setLogLevel('error');
+} catch {
+  // ignore
+}
+
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Safely initialize Firestore with memoryLocalCache and auto-detect long polling for resilient connections in iframe sandbox
+// Safely initialize Firestore with memoryLocalCache and forced HTTP long-polling for resilient connections in iframe sandboxes
 function initDb() {
   const dbId = firebaseConfig.firestoreDatabaseId || undefined;
   const firestoreSettings = {
     localCache: memoryLocalCache(),
-    experimentalAutoDetectLongPolling: true,
+    experimentalForceLongPolling: true,
     ignoreUndefinedProperties: true
   };
   try {

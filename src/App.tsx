@@ -49,9 +49,12 @@ export default function App() {
   const [selectedReceiptSale, setSelectedReceiptSale] = useState<Sale | null>(null);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
 
-  // Seed Super Admin on boot
+  // Seed Super Admin on boot after initial connection initialization
   useEffect(() => {
-    ensureSuperAdminExists();
+    const timer = setTimeout(() => {
+      ensureSuperAdminExists();
+    }, 600);
+    return () => clearTimeout(timer);
   }, []);
 
   const handleExitPublicReceipt = () => {

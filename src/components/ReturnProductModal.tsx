@@ -158,6 +158,8 @@ export const ReturnProductModal: React.FC<ReturnProductModalProps> = ({
       return;
     }
 
+    const returnPolicyDays = store.returnPolicyDays && store.returnPolicyDays > 0 ? store.returnPolicyDays : 7;
+
     // 2. Search in recent sales items by exact full barcode or serial number
     for (const sale of recentSales) {
       const itemIndex = sale.items.findIndex(i => {
@@ -169,6 +171,16 @@ export const ReturnProductModal: React.FC<ReturnProductModalProps> = ({
                (iName && iName === targetName);
       });
       if (itemIndex !== -1) {
+        const saleAgeDays = Math.floor((Date.now() - new Date(sale.timestamp).getTime()) / (1000 * 60 * 60 * 24));
+        if (saleAgeDays > returnPolicyDays) {
+          playScanErrorBeep();
+          setErrorMsg(`Slip Expired / Disqualified! Item found in Receipt #${sale.receiptNumber}, but purchase was made ${saleAgeDays} days ago. Admin policy allows restock & refund only within ${returnPolicyDays} days of purchase.`);
+          if (voiceEnabled && store?.voiceAnnouncementEnabled !== false) {
+            speakMessage(`Slip expired. Return window of ${returnPolicyDays} days has passed.`);
+          }
+          return;
+        }
+
         const item = sale.items[itemIndex];
         const constructedProduct: Product = {
           id: item.productId,
@@ -207,12 +219,22 @@ export const ReturnProductModal: React.FC<ReturnProductModalProps> = ({
     if (!receiptQuery) return;
 
     setErrorMsg(null);
+    const returnPolicyDays = store.returnPolicyDays && store.returnPolicyDays > 0 ? store.returnPolicyDays : 7;
     const foundSale = recentSales.find(s => 
       s.receiptNumber.toLowerCase().includes(receiptQuery) ||
       s.id.toLowerCase().includes(receiptQuery)
     );
 
     if (foundSale) {
+      const saleAgeDays = Math.floor((Date.now() - new Date(foundSale.timestamp).getTime()) / (1000 * 60 * 60 * 24));
+      if (saleAgeDays > returnPolicyDays) {
+        playScanErrorBeep();
+        setErrorMsg(`Slip Expired / Disqualified! Slip #${foundSale.receiptNumber} is ${saleAgeDays} days old. Admin policy allows restock & refund only within ${returnPolicyDays} days from purchase.`);
+        if (voiceEnabled && store?.voiceAnnouncementEnabled !== false) {
+          speakMessage(`Slip expired. Return allowed only within ${returnPolicyDays} days.`);
+        }
+        return;
+      }
       setSelectedSale(foundSale);
       playScanSuccessBeep();
     } else {

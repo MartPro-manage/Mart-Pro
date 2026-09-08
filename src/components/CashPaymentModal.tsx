@@ -222,51 +222,6 @@ export const CashPaymentModal: React.FC<CashPaymentModalProps> = ({
             )}
           </div>
 
-          {/* Section 4: RECEIPT MODE SELECTION (PRINT RECEIPT OR GET E-RECEIPT) */}
-          <div className="space-y-1.5 pt-1">
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-              Customer Receipt Preference *
-            </label>
-
-            <div className="grid grid-cols-2 gap-2.5">
-              <button
-                type="button"
-                onClick={() => setReceiptType('print')}
-                className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
-                  receiptType === 'print'
-                    ? 'bg-orange-50 border-orange-500 text-orange-950 shadow-xs ring-2 ring-orange-500/20'
-                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                <div className={`p-2 rounded-xl shrink-0 ${receiptType === 'print' ? 'bg-orange-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
-                  <Printer className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className="font-extrabold text-xs block text-slate-900">Print Receipt</span>
-                  <span className="text-[10px] text-slate-500 block">Thermal paper receipt</span>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setReceiptType('ereceipt')}
-                className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
-                  receiptType === 'ereceipt'
-                    ? 'bg-emerald-50 border-emerald-500 text-emerald-950 shadow-xs ring-2 ring-emerald-500/20'
-                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                <div className={`p-2 rounded-xl shrink-0 ${receiptType === 'ereceipt' ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
-                  <QrCodeIcon className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className="font-extrabold text-xs block text-slate-900">Get E-Receipt</span>
-                  <span className="text-[10px] text-slate-500 block">Mobile QR Code download</span>
-                </div>
-              </button>
-            </div>
-          </div>
-
           {/* Modal Action Buttons */}
           <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
             <button
@@ -290,7 +245,7 @@ export const CashPaymentModal: React.FC<CashPaymentModalProps> = ({
                 </>
               ) : (
                 <>
-                  <CheckCircle2 className="w-4 h-4" /> Complete Sale ({receiptType === 'print' ? 'Print Slip' : 'Generate E-Receipt QR'})
+                  <CheckCircle2 className="w-4 h-4" /> Complete Sale & Print Slip
                 </>
               )}
             </button>

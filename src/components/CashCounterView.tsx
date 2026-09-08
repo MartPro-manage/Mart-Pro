@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   db, 
   collection, 
@@ -45,7 +46,14 @@ import {
   RotateCcw,
   Undo2,
   Receipt,
-  Scale
+  Scale,
+  Image as ImageIcon,
+  Zap,
+  Flame,
+  Maximize2,
+  Minimize2,
+  ArrowLeft,
+  Package
 } from 'lucide-react';
 
 interface CashCounterViewProps {
@@ -90,6 +98,32 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
   const [selectedReceiptType, setSelectedReceiptType] = useState<'print' | 'ereceipt'>('print');
   const [completedSale, setCompletedSale] = useState<Sale | null>(null);
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
+
+  // Full Screen Cart State
+  const [isCartFullScreen, setIsCartFullScreen] = useState(false);
+  const [fullScreenScanInput, setFullScreenScanInput] = useState('');
+  const fullScreenScanInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Auto-focus input when entering full screen or cart updates
+  useEffect(() => {
+    if (isCartFullScreen) {
+      const timer = setTimeout(() => {
+        fullScreenScanInputRef.current?.focus();
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [isCartFullScreen]);
+
+  // Handle ESC key to exit full screen mode
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isCartFullScreen) {
+        setIsCartFullScreen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isCartFullScreen]);
 
   const barcodeInputRef = useRef<HTMLInputElement | null>(null);
   const scannerBufferRef = useRef<string>('');
@@ -628,29 +662,56 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     }
   };
 
-  const filteredQuickProducts = products.filter((p) => {
-    if (!searchTerm.trim()) return true;
-    const term = searchTerm.toLowerCase();
-    return (
-      p.name.toLowerCase().includes(term) ||
-      p.barcode.toLowerCase().includes(term) ||
-      (p.serialNumber && p.serialNumber.toLowerCase().includes(term))
-    );
-  });
+  const [activeCategoryFilter, setActiveCategoryFilter] = useState<string>('all');
+
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    products.forEach((p) => {
+      if (p.category) set.add(p.category.trim());
+    });
+    return Array.from(set).filter(Boolean);
+  }, [products]);
+
+  const filteredQuickProducts = useMemo(() => {
+    return products.filter((p) => {
+      const matchesSearch = !searchTerm.trim() || (
+        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        p.barcode.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (p.serialNumber && p.serialNumber.toLowerCase().includes(searchTerm.toLowerCase()))
+      );
+
+      if (!matchesSearch) return false;
+
+      if (activeCategoryFilter === 'all') return true;
+      if (activeCategoryFilter === 'weight') return p.sellBy === 'weight' || p.unitType === 'kg' || Boolean(p.pricePerKg);
+      if (activeCategoryFilter === 'unit') return p.sellBy === 'unit' && !p.pricePerKg && p.unitType !== 'kg';
+      return p.category === activeCategoryFilter;
+    });
+  }, [products, searchTerm, activeCategoryFilter]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 p-4 sm:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
 
         {/* Counter Top Bar */}
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 relative overflow-hidden">
+        <motion.div 
+          initial={{ opacity: 0, y: -12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white p-6 rounded-3xl border border-slate-200/90 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 relative overflow-hidden"
+        >
+          {/* Subtle ambient gradient */}
+          <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-orange-100/40 via-amber-50/20 to-transparent rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+
           <div className="flex items-center gap-3 z-10">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center font-bold">
+            <motion.div 
+              whileHover={{ rotate: 5, scale: 1.05 }}
+              className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 text-emerald-700 border border-emerald-200 flex items-center justify-center font-bold shadow-xs"
+            >
               <Calculator className="w-6 h-6 text-emerald-600" />
-            </div>
+            </motion.div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs">
                   CASH COUNTER {currentUser.counterNumber ? `#${currentUser.counterNumber}` : ''}
                 </span>
                 <span className="text-xs text-slate-500 font-medium">{store.name}</span>
@@ -664,36 +725,39 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           {/* Top Bar Actions & Camera Scanner Visibility Check */}
           <div className="flex flex-wrap items-center gap-2.5 z-10">
             {/* RETURN / REFUND PRODUCT BUTTON */}
-            <button
+            <motion.button
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
               id="btn-return-product-modal"
               onClick={() => setIsReturnModalOpen(true)}
               className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-extrabold text-xs rounded-xl border border-rose-200 shadow-xs transition-all flex items-center gap-2 cursor-pointer"
               title="Process product return, restock item to inventory, and issue customer refund"
             >
               <RotateCcw className="w-4 h-4 text-rose-600" /> Return / Refund Item
-            </button>
+            </motion.button>
 
-            {isCameraScannerAllowed ? (
-              <button
+            {isCameraScannerAllowed && (
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
                 id="btn-scan-camera-barcode"
                 onClick={() => setIsScannerOpen(true)}
                 className="px-4 py-2.5 bg-orange-600 hover:bg-orange-500 text-white font-extrabold text-xs rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer"
                 title="Open built-in camera barcode scanner"
               >
                 <Camera className="w-4 h-4" /> Scan Camera Barcode
-              </button>
-            ) : (
-              <span className="px-3 py-2 bg-slate-100 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl flex items-center gap-1.5" title="Camera scanner disabled by Super Admin for this store">
-                <Camera className="w-3.5 h-3.5 text-slate-400" />
-                <span>Camera Scanner Disabled by Super Admin</span>
-              </span>
+              </motion.button>
             )}
           </div>
-        </div>
+        </motion.div>
 
         {/* Recent Returns Shift Banner (if returns processed today) */}
         {recentReturns.length > 0 && (
-          <div className="bg-rose-50/80 border border-rose-200/80 rounded-2xl p-3 sm:px-4 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <motion.div 
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            className="bg-rose-50/90 border border-rose-200 rounded-2xl p-3 sm:px-4 flex flex-wrap items-center justify-between gap-3 text-xs shadow-2xs"
+          >
             <div className="flex items-center gap-2.5 text-rose-900 font-medium">
               <div className="p-1.5 bg-rose-600 text-white rounded-lg shadow-xs">
                 <RotateCcw className="w-3.5 h-3.5" />
@@ -720,7 +784,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
             >
               <Receipt className="w-3 h-3 text-rose-600" /> View Latest Return Slip
             </button>
-          </div>
+          </motion.div>
         )}
 
         {/* Hardware Permissions, Scanner Status & Audio Controls Bar */}
@@ -732,16 +796,23 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
         />
 
         {/* Global Notifications */}
-        {msg && (
-          <div className={`p-4 rounded-2xl border flex items-center gap-3 text-sm font-medium shadow-sm transition-all ${
-            msg.type === 'success' 
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
-              : 'bg-red-50 border-red-200 text-red-800'
-          }`}>
-            {msg.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" /> : <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />}
-            <span>{msg.text}</span>
-          </div>
-        )}
+        <AnimatePresence>
+          {msg && (
+            <motion.div 
+              initial={{ opacity: 0, y: -10, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              className={`p-4 rounded-2xl border flex items-center gap-3 text-sm font-medium shadow-sm transition-all ${
+                msg.type === 'success' 
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+                  : 'bg-red-50 border-red-200 text-red-800'
+              }`}
+            >
+              {msg.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" /> : <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />}
+              <span>{msg.text}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
@@ -749,15 +820,19 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           <div className="lg:col-span-7 space-y-6">
 
             {/* Barcode Scanner Input */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between flex-wrap gap-2">
-                <span className="flex items-center gap-2">
-                  <BarcodeIcon className="w-4 h-4 text-orange-600" /> Barcode Reader / Manual Input
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 relative overflow-hidden"
+            >
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                  <BarcodeIcon className="w-4 h-4 text-orange-600" /> Barcode Reader / Rapid Scanner
+                </label>
+                <span className="text-[11px] text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 font-bold flex items-center gap-1.5 shadow-2xs">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-live-pulse" /> Live Scanner Ready
                 </span>
-                <span className="text-[11px] text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 font-bold flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> External Scanner: Scan Without Clicking Any Button
-                </span>
-              </label>
+              </div>
 
               <form
                 onSubmit={(e) => {
@@ -774,7 +849,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                 }}
                 className="flex gap-2"
               >
-                <div className="relative flex-1">
+                <div className="relative flex-1 group">
                   <input
                     id="barcode-hardware-input"
                     ref={barcodeInputRef}
@@ -784,73 +859,133 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                     autoCorrect="off"
                     spellCheck={false}
                     inputMode="text"
-                    placeholder="Scan product barcode with hardware scanner or type code..."
+                    placeholder="Scan barcode with laser or type code..."
                     value={barcodeInput}
                     onChange={(e) => setBarcodeInput(e.target.value)}
-                    className="w-full pl-4 pr-4 py-3 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-base font-mono focus:outline-none focus:border-orange-500 focus:bg-white transition-all shadow-inner"
+                    className="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-base font-mono focus:outline-none focus:border-orange-500 focus:bg-white focus:ring-3 focus:ring-orange-500/10 transition-all shadow-inner"
                   />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 pointer-events-none">
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 font-bold">↵ ENTER</span>
+                  </div>
                 </div>
-                <button
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                   id="btn-add-barcode-item"
                   type="submit"
-                  className="px-5 py-3 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl shadow-sm transition-all cursor-pointer text-sm shrink-0 flex items-center gap-1"
+                  className="px-5 py-3 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl shadow-sm transition-all cursor-pointer text-sm shrink-0 flex items-center gap-1.5"
                 >
                   <Plus className="w-4 h-4" /> Add Item
-                </button>
+                </motion.button>
               </form>
               <p className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                 <span>
-                  <strong>Continuous External Scanning:</strong> Use any USB/Bluetooth barcode scanner freely. Each scan automatically adds the item to the list with audio beep.
+                  <strong>Continuous Scanning Enabled:</strong> Hardware scanners automatically append item to active cart with audio beep.
                 </span>
               </p>
-            </div>
+            </motion.div>
 
             {/* Quick Product Grid Selector */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.05 }}
+              className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4"
+            >
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
                 <div className="flex items-center gap-2">
                   <ShoppingBag className="w-4 h-4 text-orange-600" />
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">Quick Product Selector</h3>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">Quick Product Catalog</h3>
                 </div>
 
-                  {/* Search Bar */}
-                  <div className="relative">
-                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      id="product-search-input"
-                      type="text"
-                      placeholder="Search & Press Enter to Add..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          const term = searchTerm.trim();
-                          if (!term) return;
+                {/* Search Bar */}
+                <div className="relative">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    id="product-search-input"
+                    type="text"
+                    placeholder="Search name, barcode..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const term = searchTerm.trim();
+                        if (!term) return;
 
-                          // If there's an exact or filtered match
-                          if (filteredQuickProducts.length > 0) {
-                            const targetProduct = filteredQuickProducts[0];
-                            if (targetProduct.stockQuantity <= 0) {
-                              playScanErrorBeep();
-                              showNotification('error', `"${targetProduct.name}" is OUT OF STOCK!`);
-                            } else {
-                              handleAddProductClick(targetProduct);
-                              setSearchTerm('');
-                              if (barcodeInputRef.current) {
-                                barcodeInputRef.current.focus();
-                              }
-                            }
+                        if (filteredQuickProducts.length > 0) {
+                          const targetProduct = filteredQuickProducts[0];
+                          if (targetProduct.stockQuantity <= 0) {
+                            playScanErrorBeep();
+                            showNotification('error', `"${targetProduct.name}" is OUT OF STOCK!`);
                           } else {
-                            handleAddByBarcode(term);
+                            handleAddProductClick(targetProduct);
                             setSearchTerm('');
+                            if (barcodeInputRef.current) {
+                              barcodeInputRef.current.focus();
+                            }
                           }
+                        } else {
+                          handleAddByBarcode(term);
+                          setSearchTerm('');
                         }
-                      }}
-                      className="pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-orange-500 font-medium"
-                    />
-                  </div>
+                      }
+                    }}
+                    className="pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-orange-500 font-medium w-48 sm:w-56"
+                  />
+                </div>
+              </div>
+
+              {/* Category Filter Pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 custom-scrollbar text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setActiveCategoryFilter('all')}
+                  className={`px-3 py-1 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
+                    activeCategoryFilter === 'all'
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  All Items ({products.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveCategoryFilter('weight')}
+                  className={`px-3 py-1 rounded-lg transition-all cursor-pointer whitespace-nowrap flex items-center gap-1 ${
+                    activeCategoryFilter === 'weight'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/60'
+                  }`}
+                >
+                  <Scale className="w-3 h-3" /> By Weight (Kg)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveCategoryFilter('unit')}
+                  className={`px-3 py-1 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
+                    activeCategoryFilter === 'unit'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200/60'
+                  }`}
+                >
+                  Packaged Units
+                </button>
+                {categories.map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setActiveCategoryFilter(cat)}
+                    className={`px-3 py-1 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
+                      activeCategoryFilter === cat
+                        ? 'bg-orange-600 text-white shadow-xs'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
               </div>
 
               {products.length === 0 ? (
@@ -859,7 +994,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                 </div>
               ) : filteredQuickProducts.length === 0 ? (
                 <div className="p-8 text-center text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-xs">
-                  No products matching "{searchTerm}".
+                  No products matching your search filter.
                 </div>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[460px] overflow-y-auto overscroll-contain pr-1.5 custom-scrollbar touch-pan-y">
@@ -867,20 +1002,34 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                     const isOut = p.stockQuantity <= 0;
                     const isWeightItem = p.sellBy === 'weight' || p.unitType === 'kg' || Boolean(p.pricePerKg);
                     return (
-                      <button
+                      <motion.button
                         key={p.id}
+                        whileHover={!isOut ? { scale: 1.02, y: -2 } : {}}
+                        whileTap={!isOut ? { scale: 0.97 } : {}}
                         disabled={isOut}
                         onClick={() => handleAddProductClick(p)}
-                        className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                        className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between relative overflow-hidden ${
                           isOut 
                             ? 'opacity-40 bg-slate-100 border-slate-200 cursor-not-allowed' 
-                            : 'bg-slate-50 hover:bg-orange-50/50 hover:border-orange-300 border-slate-200 cursor-pointer shadow-xs active:scale-[0.98]'
+                            : 'bg-white hover:bg-orange-50/40 hover:border-orange-300 border-slate-200/90 cursor-pointer shadow-xs'
                         }`}
                       >
+                        {/* Image Thumbnail if present */}
+                        {p.imageUrl && (
+                          <div className="w-full h-24 mb-2 rounded-lg bg-slate-100 overflow-hidden flex items-center justify-center border border-slate-200/60">
+                            <img 
+                              src={p.imageUrl} 
+                              alt={p.name} 
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
+                              referrerPolicy="no-referrer"
+                            />
+                          </div>
+                        )}
+
                         <div>
                           <div className="flex items-center gap-1">
                             {isWeightItem && (
-                              <span className="p-0.5 bg-amber-100 text-amber-800 rounded font-bold text-[9px] flex items-center gap-0.5 shrink-0" title="Sold by Weight">
+                              <span className="p-0.5 px-1 bg-amber-100 text-amber-800 rounded font-bold text-[9px] flex items-center gap-0.5 shrink-0" title="Sold by Weight">
                                 <Scale className="w-2.5 h-2.5" /> KG
                               </span>
                             )}
@@ -891,8 +1040,8 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-between mt-2">
-                          <span className="font-extrabold text-orange-600 text-xs">
+                        <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">
+                          <span className="font-extrabold text-orange-600 text-xs font-mono">
                             Rs. {p.price.toFixed(2)}{isWeightItem ? '/kg' : ''}
                           </span>
                           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
@@ -905,35 +1054,51 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                                 : `${p.stockQuantity} in stock`}
                           </span>
                         </div>
-                      </button>
+                      </motion.button>
                     );
                   })}
                 </div>
               )}
-            </div>
+            </motion.div>
 
           </div>
 
           {/* RIGHT 5 COLS: CART LIST, COMPULSORY QUANTITY & CHECKOUT */}
-          <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6 flex flex-col justify-between max-h-[calc(100vh-140px)] lg:sticky lg:top-6 overflow-y-auto overscroll-contain custom-scrollbar">
+          <motion.div 
+            initial={{ opacity: 0, x: 12 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="lg:col-span-5 bg-white rounded-3xl border border-slate-200/90 p-6 shadow-sm space-y-6 flex flex-col justify-between max-h-[calc(100vh-140px)] lg:sticky lg:top-6 overflow-y-auto overscroll-contain custom-scrollbar"
+          >
             
             <div className="space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-3 flex-wrap gap-2">
                 <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
-                  <Calculator className="w-5 h-5 text-orange-600" /> Active Cart List ({cart.length})
+                  <Calculator className="w-5 h-5 text-orange-600" /> Active Cart ({cart.length})
                 </h2>
-                {cart.length > 0 && (
+                <div className="flex items-center gap-2">
                   <button
-                    id="btn-clear-cart"
-                    onClick={() => {
-                      setCart([]);
-                      setDiscountValue(0);
-                    }}
-                    className="text-xs text-red-600 hover:text-red-700 font-bold cursor-pointer"
+                    id="btn-cart-fullscreen"
+                    type="button"
+                    onClick={() => setIsCartFullScreen(true)}
+                    className="flex items-center gap-1.5 text-xs font-black px-3 py-1.5 rounded-xl bg-orange-50 hover:bg-orange-600 text-orange-700 hover:text-white border border-orange-200 transition-all cursor-pointer shadow-2xs group"
+                    title="Open Cart in Full Screen Mode to scan and manage items"
                   >
-                    Clear Cart
+                    <Maximize2 className="w-3.5 h-3.5 text-orange-600 group-hover:text-white transition-colors" />
+                    <span>Full Screen</span>
                   </button>
-                )}
+                  {cart.length > 0 && (
+                    <button
+                      id="btn-clear-cart"
+                      onClick={() => {
+                        setCart([]);
+                        setDiscountValue(0);
+                      }}
+                      className="text-xs text-red-600 hover:text-red-700 font-bold cursor-pointer px-2 py-1"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* CART ITEMS LIST WITH COMPULSORY QUANTITY SELECTOR */}
@@ -941,99 +1106,108 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                 <div className="p-10 text-center text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-300 space-y-2">
                   <ShoppingBag className="w-8 h-8 text-slate-400 mx-auto" />
                   <p className="text-xs font-semibold text-slate-700">Cart is currently empty</p>
-                  <p className="text-[11px] text-slate-500 font-medium">Scan product barcode to populate customer bill automatically</p>
+                  <p className="text-[11px] text-slate-500 font-medium">Scan barcode or pick item to start billing</p>
                 </div>
               ) : (
                 <div className="space-y-3 max-h-[340px] sm:max-h-[380px] overflow-y-auto overscroll-contain pr-1.5 custom-scrollbar touch-pan-y">
-                  {cart.map((item) => {
-                    const isWeight = item.product.sellBy === 'weight' || item.product.unitType === 'kg' || Boolean(item.product.pricePerKg);
-                    const qtyStep = isWeight ? 0.25 : 1;
+                  <AnimatePresence initial={false}>
+                    {cart.map((item) => {
+                      const isWeight = item.product.sellBy === 'weight' || item.product.unitType === 'kg' || Boolean(item.product.pricePerKg);
+                      const qtyStep = isWeight ? 0.25 : 1;
 
-                    return (
-                      <div key={item.product.id} className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 flex items-center justify-between gap-3">
-                        
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            {isWeight && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setWeightPromptProduct(item.product);
-                                  setIsWeightModalOpen(true);
-                                }}
-                                className="px-1.5 py-0.5 rounded bg-amber-100 hover:bg-amber-200 text-amber-900 font-extrabold text-[10px] flex items-center gap-1 cursor-pointer transition-colors"
-                                title="Click to adjust weight in scale calculator"
-                              >
-                                <Scale className="w-3 h-3 text-amber-700" />
-                                <span>{item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(3)} kg</span>
-                              </button>
-                            )}
-                            <span className="font-bold text-slate-900 text-xs truncate">{item.product.name}</span>
-                          </div>
-                          <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                            Rs. {item.product.price.toFixed(2)}{isWeight ? '/kg' : ' each'} • <span className="text-emerald-700 font-semibold">Stock: {item.product.stockQuantity}{isWeight ? 'kg' : ''}</span>
-                          </div>
-                        </div>
-
-                        {/* COMPULSORY QUANTITY CONTROLS */}
-                        <div className="flex items-center gap-1 bg-white border border-slate-300 rounded-xl p-1 shadow-xs">
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateQuantity(item.product.id, Math.max(0, item.quantity - qtyStep))}
-                            className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-orange-100 hover:text-orange-700 text-slate-700 flex items-center justify-center cursor-pointer text-xs font-bold transition-colors"
-                            title={`Reduce quantity (-${qtyStep})`}
-                          >
-                            <Minus className="w-3.5 h-3.5" />
-                          </button>
+                      return (
+                        <motion.div 
+                          key={item.product.id}
+                          initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, x: -20, scale: 0.9 }}
+                          transition={{ duration: 0.2 }}
+                          className="bg-slate-50/90 hover:bg-slate-100/80 p-3.5 rounded-2xl border border-slate-200/90 flex items-center justify-between gap-3 transition-colors shadow-2xs"
+                        >
                           
-                          <input
-                            type="number"
-                            step={isWeight ? "0.001" : "1"}
-                            min="0.001"
-                            max={item.product.stockQuantity}
-                            value={item.quantity}
-                            onChange={(e) => {
-                              const val = parseFloat(e.target.value);
-                              if (!isNaN(val)) {
-                                handleUpdateQuantity(item.product.id, val);
-                              }
-                            }}
-                            className="w-14 text-center bg-transparent text-slate-900 font-black text-xs focus:outline-none font-mono"
-                            title="Type exact weight or quantity directly"
-                          />
-
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateQuantity(item.product.id, item.quantity + qtyStep)}
-                            className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-orange-100 hover:text-orange-700 text-slate-700 flex items-center justify-center cursor-pointer text-xs font-bold transition-colors"
-                            title={`Add quantity (+${qtyStep})`}
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-
-                        {/* Line Total and Instant Delete / Remove Button */}
-                        <div className="flex items-center gap-3 shrink-0">
-                          <div className="text-right">
-                            <div className="font-extrabold text-orange-600 text-xs font-mono">Rs. {item.totalPrice.toFixed(2)}</div>
-                            <div className="text-[10px] text-slate-400 font-mono">
-                              {isWeight ? `${item.quantity.toFixed(3)}kg` : `x${item.quantity}`}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              {isWeight && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setWeightPromptProduct(item.product);
+                                    setIsWeightModalOpen(true);
+                                  }}
+                                  className="px-1.5 py-0.5 rounded bg-amber-100 hover:bg-amber-200 text-amber-900 font-extrabold text-[10px] flex items-center gap-1 cursor-pointer transition-colors"
+                                  title="Click to adjust weight in scale calculator"
+                                >
+                                  <Scale className="w-3 h-3 text-amber-700" />
+                                  <span>{item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(3)} kg</span>
+                                </button>
+                              )}
+                              <span className="font-bold text-slate-900 text-xs truncate">{item.product.name}</span>
+                            </div>
+                            <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                              Rs. {item.product.price.toFixed(2)}{isWeight ? '/kg' : ' each'} • <span className="text-emerald-700 font-semibold">Stock: {item.product.stockQuantity}{isWeight ? 'kg' : ''}</span>
                             </div>
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveItem(item.product.id)}
-                            className="p-2 rounded-xl bg-red-50 hover:bg-red-600 text-red-600 hover:text-white border border-red-200 hover:border-red-600 transition-all cursor-pointer shadow-xs group"
-                            title={`Delete "${item.product.name}" from cart`}
-                          >
-                            <Trash2 className="w-4 h-4 transition-transform group-hover:scale-110" />
-                          </button>
-                        </div>
+                          {/* COMPULSORY QUANTITY CONTROLS */}
+                          <div className="flex items-center gap-1 bg-white border border-slate-300 rounded-xl p-1 shadow-xs">
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateQuantity(item.product.id, Math.max(0, item.quantity - qtyStep))}
+                              className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-orange-100 hover:text-orange-700 text-slate-700 flex items-center justify-center cursor-pointer text-xs font-bold transition-colors"
+                              title={`Reduce quantity (-${qtyStep})`}
+                            >
+                              <Minus className="w-3.5 h-3.5" />
+                            </button>
+                            
+                            <input
+                              type="number"
+                              step={isWeight ? "0.001" : "1"}
+                              min="0.001"
+                              max={item.product.stockQuantity}
+                              value={item.quantity}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value);
+                                if (!isNaN(val)) {
+                                  handleUpdateQuantity(item.product.id, val);
+                                }
+                              }}
+                              className="w-14 text-center bg-transparent text-slate-900 font-black text-xs focus:outline-none font-mono"
+                              title="Type exact weight or quantity directly"
+                            />
 
-                      </div>
-                    );
-                  })}
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateQuantity(item.product.id, item.quantity + qtyStep)}
+                              className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-orange-100 hover:text-orange-700 text-slate-700 flex items-center justify-center cursor-pointer text-xs font-bold transition-colors"
+                              title={`Add quantity (+${qtyStep})`}
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          {/* Line Total and Instant Delete / Remove Button */}
+                          <div className="flex items-center gap-3 shrink-0">
+                            <div className="text-right">
+                              <div className="font-extrabold text-orange-600 text-xs font-mono">Rs. {item.totalPrice.toFixed(2)}</div>
+                              <div className="text-[10px] text-slate-400 font-mono">
+                                {isWeight ? `${item.quantity.toFixed(3)}kg` : `x${item.quantity}`}
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveItem(item.product.id)}
+                              className="p-2 rounded-xl bg-red-50 hover:bg-red-600 text-red-600 hover:text-white border border-red-200 hover:border-red-600 transition-all cursor-pointer shadow-xs group"
+                              title={`Delete "${item.product.name}" from cart`}
+                            >
+                              <Trash2 className="w-4 h-4 transition-transform group-hover:scale-110" />
+                            </button>
+                          </div>
+
+                        </motion.div>
+                      );
+                    })}
+                  </AnimatePresence>
                 </div>
               )}
             </div>
@@ -1172,7 +1346,9 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
               </div>
 
               {/* Total Calculation Display Breakdown */}
-              <div className="bg-slate-900 text-white p-4 rounded-xl border border-slate-800 space-y-2 shadow-inner">
+              <div className="bg-slate-900 text-white p-5 rounded-2xl border border-slate-800 space-y-2 shadow-lg relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
+
                 {discountAmount > 0 && (
                   <div className="space-y-1 pb-2 border-b border-slate-800 text-xs">
                     <div className="flex items-center justify-between text-slate-400">
@@ -1188,23 +1364,25 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
 
                 <div className="flex items-center justify-between">
                   <div>
-                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Payable Total</span>
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Payable Grand Total</span>
                     {discountAmount > 0 && (
                       <span className="text-[10px] text-emerald-400 font-bold">Discount Applied</span>
                     )}
                   </div>
-                  <div className="text-2xl sm:text-3xl font-black text-amber-400 tracking-tight">
+                  <div className="text-2xl sm:text-3xl font-black text-amber-400 tracking-tight font-mono">
                     Rs. {cartTotal.toFixed(2)}
                   </div>
                 </div>
               </div>
 
               {/* Checkout Trigger */}
-              <button
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
                 id="btn-complete-checkout"
                 onClick={handleCheckout}
                 disabled={checkoutLoading || cart.length === 0}
-                className="w-full py-4 bg-orange-600 hover:bg-orange-500 active:bg-orange-700 text-white font-extrabold text-sm rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed uppercase tracking-wider"
+                className="w-full py-4 bg-orange-600 hover:bg-orange-500 active:bg-orange-700 text-white font-extrabold text-sm rounded-2xl shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed uppercase tracking-wider"
               >
                 {checkoutLoading ? (
                   <>
@@ -1216,11 +1394,11 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                     <CheckCircle2 className="w-5 h-5" /> Complete Checkout & Issue Receipt
                   </>
                 )}
-              </button>
+              </motion.button>
 
             </div>
 
-          </div>
+          </motion.div>
 
         </div>
 
@@ -1295,6 +1473,351 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           product={weightPromptProduct}
           onConfirm={handleConfirmWeight}
         />
+
+        {/* FULL SCREEN CART OVERLAY */}
+        {isCartFullScreen && (
+          <div className="fixed inset-0 z-50 bg-slate-100 flex flex-col overflow-hidden animate-fade-in">
+            {/* Top Navigation & Header Bar */}
+            <div className="bg-slate-900 text-white px-4 sm:px-6 py-3 flex items-center justify-between shadow-md border-b border-slate-800 shrink-0">
+              <div className="flex items-center gap-3">
+                <button
+                  id="btn-close-cart-fullscreen"
+                  type="button"
+                  onClick={() => setIsCartFullScreen(false)}
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-black text-xs transition-all cursor-pointer shadow-sm group"
+                  title="Return to regular view (Press Esc)"
+                >
+                  <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+                  <span>Back to Counter</span>
+                  <span className="text-[10px] bg-black/25 px-1.5 py-0.5 rounded font-mono font-normal">ESC</span>
+                </button>
+                <div className="hidden sm:block border-l border-slate-700 pl-3">
+                  <div className="text-xs font-black text-white flex items-center gap-2">
+                    <span>{store.name}</span>
+                    <span className="text-orange-400 font-normal">•</span>
+                    <span className="text-orange-400">Full-Screen Billing Station</span>
+                  </div>
+                  <div className="text-[10px] text-slate-400 font-medium">
+                    Cashier: <strong className="text-slate-200">{currentUser.username}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="bg-slate-800/90 border border-slate-700 px-3 py-1.5 rounded-xl text-right">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Cart Items</div>
+                  <div className="text-xs font-black font-mono text-orange-400">
+                    {cart.length} {cart.length === 1 ? 'item' : 'items'}
+                  </div>
+                </div>
+
+                {cart.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm('Clear all items from the active cart?')) {
+                        setCart([]);
+                        setDiscountValue(0);
+                      }
+                    }}
+                    className="px-3 py-2 rounded-xl bg-red-950/40 hover:bg-red-900/60 text-red-300 border border-red-800/60 font-bold text-xs cursor-pointer transition-colors"
+                  >
+                    Clear Cart
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setIsCartFullScreen(false)}
+                  className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                  title="Exit Full Screen"
+                >
+                  <Minimize2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Pinned Laser Barcode Scanner Bar */}
+            <div className="bg-white px-4 sm:px-6 py-3 border-b border-slate-200 shadow-xs shrink-0">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const val = (fullScreenScanInput || fullScreenScanInputRef.current?.value || '').trim();
+                  if (val) {
+                    handleAddByBarcode(val);
+                  }
+                  setFullScreenScanInput('');
+                  if (fullScreenScanInputRef.current) {
+                    fullScreenScanInputRef.current.value = '';
+                    fullScreenScanInputRef.current.focus();
+                  }
+                }}
+                className="flex items-center gap-2 max-w-5xl mx-auto"
+              >
+                <div className="relative flex-1">
+                  <BarcodeIcon className="w-5 h-5 text-orange-600 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    ref={fullScreenScanInputRef}
+                    id="fullscreen-barcode-input"
+                    type="text"
+                    autoFocus
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    placeholder="Scan barcode with laser or type product code/serial number here..."
+                    value={fullScreenScanInput}
+                    onChange={(e) => setFullScreenScanInput(e.target.value)}
+                    className="w-full pl-11 pr-24 py-2.5 bg-slate-50 border-2 border-orange-300 focus:border-orange-600 focus:bg-white rounded-xl text-slate-900 font-mono text-sm sm:text-base font-bold shadow-inner focus:outline-none transition-all"
+                  />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 pointer-events-none">
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-bold">↵ ENTER</span>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs sm:text-sm rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+                >
+                  <Plus className="w-4 h-4" /> Add to Cart
+                </button>
+
+                {isCameraScannerAllowed && (
+                  <button
+                    type="button"
+                    onClick={() => setIsScannerOpen(true)}
+                    className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold text-xs sm:text-sm rounded-xl border border-slate-700 shadow-xs transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+                    title="Open camera barcode scanner"
+                  >
+                    <Camera className="w-4 h-4 text-orange-400" />
+                    <span className="hidden sm:inline">Camera</span>
+                  </button>
+                )}
+              </form>
+            </div>
+
+            {/* Main Full-Screen Layout */}
+            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 p-4 sm:p-6 overflow-hidden min-h-0 max-w-7xl mx-auto w-full">
+              {/* LEFT 8 COLS: Large Cart Items Table / List */}
+              <div className="lg:col-span-8 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+                <div className="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
+                  <div className="flex items-center gap-2">
+                    <ShoppingBag className="w-4 h-4 text-orange-600" />
+                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-800">
+                      Full-Screen Cart Items ({cart.length})
+                    </h3>
+                  </div>
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    Adjust quantity or remove items before proceeding to checkout
+                  </span>
+                </div>
+
+                {cart.length === 0 ? (
+                  <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50/40">
+                    <div className="w-16 h-16 rounded-2xl bg-orange-50 text-orange-500 flex items-center justify-center mb-3">
+                      <BarcodeIcon className="w-8 h-8" />
+                    </div>
+                    <h4 className="text-base font-bold text-slate-800">Cart is Empty in Full Screen</h4>
+                    <p className="text-xs text-slate-500 max-w-sm mt-1">
+                      Scan product barcode with the laser reader or type the code in the scanner bar above to start adding items.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex-1 overflow-y-auto custom-scrollbar divide-y divide-slate-100">
+                    {cart.map((item, idx) => {
+                      const isWeight = item.product.sellBy === 'weight' || item.product.unitType === 'kg' || Boolean(item.product.pricePerKg);
+                      const qtyStep = isWeight ? 0.25 : 1;
+
+                      return (
+                        <div
+                          key={item.product.id}
+                          className="p-4 flex items-center justify-between gap-4 hover:bg-orange-50/30 transition-colors"
+                        >
+                          {/* Item Index & Picture */}
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <span className="text-xs font-mono font-bold text-slate-400 w-5 text-right">
+                              {idx + 1}.
+                            </span>
+
+                            {item.product.imageUrl ? (
+                              <img
+                                src={item.product.imageUrl}
+                                alt={item.product.name}
+                                className="w-12 h-12 rounded-xl object-cover border border-slate-200 shrink-0"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+                                <Package className="w-5 h-5" />
+                              </div>
+                            )}
+
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-extrabold text-slate-900 text-sm truncate">
+                                  {item.product.name}
+                                </span>
+                                {isWeight && (
+                                  <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-bold text-[10px] flex items-center gap-0.5">
+                                    <Scale className="w-3 h-3" /> KG
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-slate-500 font-mono mt-0.5 flex items-center gap-2">
+                                <span>Code: {item.product.barcode || item.product.serialNumber || 'N/A'}</span>
+                                <span>•</span>
+                                <span>Rate: Rs. {item.product.price.toFixed(2)}{isWeight ? '/kg' : ''}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Quantity Controls */}
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateQuantity(item.product.id, Math.max(0, item.quantity - qtyStep))}
+                              className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-black flex items-center justify-center cursor-pointer transition-colors"
+                            >
+                              <Minus className="w-3.5 h-3.5" />
+                            </button>
+
+                            <input
+                              type="number"
+                              step={isWeight ? "0.01" : "1"}
+                              min="0"
+                              value={item.quantity}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value);
+                                if (!isNaN(val)) {
+                                  handleUpdateQuantity(item.product.id, val);
+                                }
+                              }}
+                              className="w-16 py-1 text-center font-mono font-black text-sm bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:border-orange-500"
+                            />
+
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateQuantity(item.product.id, item.quantity + qtyStep)}
+                              className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-black flex items-center justify-center cursor-pointer transition-colors"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          {/* Item Total Price */}
+                          <div className="text-right min-w-[90px] shrink-0">
+                            <div className="font-mono font-black text-sm text-orange-600">
+                              Rs. {item.totalPrice.toFixed(2)}
+                            </div>
+                            <div className="text-[10px] text-slate-400">
+                              {item.quantity} × Rs. {item.product.price.toFixed(2)}
+                            </div>
+                          </div>
+
+                          {/* Delete Item */}
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveItem(item.product.id)}
+                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg cursor-pointer transition-colors shrink-0"
+                            title="Remove item"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* RIGHT 4 COLS: Payment & Total Station */}
+              <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col justify-between overflow-y-auto custom-scrollbar">
+                <div className="space-y-4">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 border-b border-slate-200 pb-3 flex items-center gap-2">
+                    <Calculator className="w-4 h-4 text-orange-600" />
+                    Payment Summary
+                  </h3>
+
+                  {/* Pricing Breakdown */}
+                  <div className="space-y-2.5 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
+                    <div className="flex justify-between text-slate-600">
+                      <span>Subtotal ({cart.length} {cart.length === 1 ? 'item' : 'items'})</span>
+                      <span className="font-mono font-bold text-slate-900">Rs. {cartSubtotal.toFixed(2)}</span>
+                    </div>
+
+                    {/* Discount Configuration */}
+                    <div className="pt-2 border-t border-slate-200/80">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="font-bold text-slate-700">Special Discount:</span>
+                        <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-slate-200">
+                          <button
+                            type="button"
+                            onClick={() => setDiscountType('percentage')}
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${discountType === 'percentage' ? 'bg-orange-600 text-white' : 'text-slate-600'}`}
+                          >
+                            %
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDiscountType('fixed')}
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${discountType === 'fixed' ? 'bg-orange-600 text-white' : 'text-slate-600'}`}
+                          >
+                            Rs.
+                          </button>
+                        </div>
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        placeholder="Discount amount..."
+                        value={discountValue}
+                        onChange={(e) => setDiscountValue(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold"
+                      />
+                    </div>
+
+                    {discountAmount > 0 && (
+                      <div className="flex justify-between text-emerald-700 font-bold pt-1">
+                        <span>Discount Saved</span>
+                        <span className="font-mono">-Rs. {discountAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Net Payable Grand Total */}
+                  <div className="bg-orange-50 border-2 border-orange-200 p-4 rounded-2xl text-center space-y-1">
+                    <span className="text-xs font-black uppercase tracking-wider text-orange-900">
+                      Net Total Payable
+                    </span>
+                    <div className="text-3xl font-black font-mono text-orange-600">
+                      Rs. {cartTotal.toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="space-y-3 pt-4">
+                  <button
+                    type="button"
+                    disabled={cart.length === 0 || checkoutLoading}
+                    onClick={() => setIsCashModalOpen(true)}
+                    className="w-full py-3.5 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-black text-sm rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle2 className="w-5 h-5" /> Collect Cash & Checkout
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsCartFullScreen(false)}
+                    className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <ArrowLeft className="w-4 h-4" /> Exit Full Screen (Come Back)
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
     </div>

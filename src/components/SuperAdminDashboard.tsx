@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   db, 
   collection, 
@@ -636,10 +637,15 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
       <div className="max-w-7xl mx-auto space-y-8">
         
         {/* Header Title Banner - Clean White Theme */}
-        <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
+        <motion.div 
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden"
+        >
           <div className="space-y-2 z-10">
             <div className="flex items-center gap-2">
-              <span className="px-3 py-1 rounded-full text-xs font-bold bg-orange-50 text-orange-700 border border-orange-200 flex items-center gap-1.5">
+              <span className="px-3 py-1 rounded-full text-xs font-bold bg-orange-50 text-orange-700 border border-orange-200 flex items-center gap-1.5 shadow-2xs">
                 <ShieldCheck className="w-3.5 h-3.5 text-orange-600" /> Super Admin Control
               </span>
               <span className="text-xs text-slate-500 font-semibold">Total Stores: {stores.length}</span>
@@ -653,18 +659,18 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
           </div>
 
           <div className="flex items-center gap-3 z-10 shrink-0">
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-center min-w-[100px]">
-              <div className="text-2xl font-extrabold text-orange-600">{stores.length}</div>
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-center min-w-[100px] shadow-2xs">
+              <div className="text-2xl font-extrabold text-orange-600 font-mono">{stores.length}</div>
               <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Stores</div>
             </div>
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-center min-w-[100px]">
-              <div className="text-2xl font-extrabold text-emerald-600">
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-center min-w-[100px] shadow-2xs">
+              <div className="text-2xl font-extrabold text-emerald-600 font-mono">
                 {uniqueUsers.filter(u => u.role !== 'super_admin').length}
               </div>
               <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Accounts</div>
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* Global Notifications */}
         {msg && (
@@ -680,7 +686,9 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
 
         {/* Action Tabs Navigation */}
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
-          <button
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
             onClick={() => setActiveTab('stores')}
             className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm cursor-pointer transition-all ${
               activeTab === 'stores'
@@ -689,9 +697,11 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
             }`}
           >
             <Building2 className="w-4 h-4" /> 1. Manage Stores & Admins
-          </button>
+          </motion.button>
 
-          <button
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
             onClick={() => setActiveTab('cash_counters')}
             className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm cursor-pointer transition-all ${
               activeTab === 'cash_counters'
@@ -700,9 +710,11 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
             }`}
           >
             <Calculator className="w-4 h-4" /> 2. Add Cash Counters
-          </button>
+          </motion.button>
 
-          <button
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
             onClick={() => setActiveTab('product_registers')}
             className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm cursor-pointer transition-all ${
               activeTab === 'product_registers'
@@ -711,9 +723,11 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
             }`}
           >
             <PackageCheck className="w-4 h-4" /> 3. Add Product Registers
-          </button>
+          </motion.button>
 
-          <button
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
             onClick={() => setActiveTab('price_checkers')}
             className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm cursor-pointer transition-all ${
               activeTab === 'price_checkers'
@@ -722,9 +736,11 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
             }`}
           >
             <ScanLine className="w-4 h-4" /> 4. Customer Price Checkers
-          </button>
+          </motion.button>
 
-          <button
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
             onClick={() => setActiveTab('all_accounts')}
             className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm cursor-pointer transition-all ${
               activeTab === 'all_accounts'
@@ -733,9 +749,11 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
             }`}
           >
             <UserCheck className="w-4 h-4" /> 5. Security Matrix & Accounts
-          </button>
+          </motion.button>
 
-          <button
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
             onClick={() => setActiveTab('settings')}
             className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm cursor-pointer transition-all ${
               activeTab === 'settings'
@@ -744,7 +762,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
             }`}
           >
             <Settings className="w-4 h-4" /> 6. Global Settings & Master Policies
-          </button>
+          </motion.button>
         </div>
 
         {/* TAB 1: STORES & STORE ADMINS */}

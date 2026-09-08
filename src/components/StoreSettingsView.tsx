@@ -246,20 +246,40 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
 
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                Return & Refund Policy Window (Days)
+                Delete Slip After (Days) from Purchase for Restock & Refund *
               </label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="number"
-                  min={1}
-                  max={90}
-                  value={returnPolicyDays}
-                  onChange={(e) => setReturnPolicyDays(Number(e.target.value))}
-                  className="w-28 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-xs font-bold focus:outline-none focus:border-orange-500"
-                />
-                <span className="text-xs text-slate-600 font-medium">Days from purchase for restock & refund</span>
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {[1, 3, 7, 14, 30].map((days) => (
+                    <button
+                      key={days}
+                      type="button"
+                      onClick={() => setReturnPolicyDays(days)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                        returnPolicyDays === days
+                          ? 'bg-orange-600 text-white border-orange-600 shadow-sm'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {days} {days === 1 ? 'Day' : 'Days'}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={returnPolicyDays}
+                    onChange={(e) => setReturnPolicyDays(Math.max(1, Number(e.target.value)))}
+                    className="w-28 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-xs font-bold focus:outline-none focus:border-orange-500"
+                  />
+                  <span className="text-xs text-slate-600 font-bold">Days from purchase</span>
+                </div>
               </div>
-              <p className="text-[11px] text-slate-400 mt-1">Standard customer returns policy window.</p>
+              <p className="text-[11px] text-slate-500 mt-1.5">
+                Slips older than {returnPolicyDays} days from purchase date will be deleted & disqualified from restock and customer refunds.
+              </p>
             </div>
 
             <div>
@@ -292,120 +312,109 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
           </div>
         </div>
 
-        {/* ROW 2: Hardware, Voice Announcements & Sound Effects */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          
-          {/* Voice Announcement Policy & Tester */}
-          <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-5 flex flex-col justify-between">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl">
-                    <Volume2 className="w-6 h-6" />
+        {/* ROW 2: Hardware, Voice Announcements & Sound Effects (Only shown if allowed) */}
+        {(store.voiceAnnouncementEnabled !== false || store.cameraScannerEnabled !== false) && (
+          <div className={`grid grid-cols-1 ${store.voiceAnnouncementEnabled !== false && store.cameraScannerEnabled !== false ? 'md:grid-cols-2' : 'md:grid-cols-1'} gap-6`}>
+            
+            {/* Voice Announcement Policy & Tester (Completely hidden if disallowed) */}
+            {store.voiceAnnouncementEnabled !== false && (
+              <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-5 flex flex-col justify-between">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl">
+                        <Volume2 className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-extrabold text-slate-900">Voice Speech Announcements</h3>
+                        <p className="text-xs text-slate-500 font-medium">
+                          Audio greeting & total bill speech at checkout.
+                        </p>
+                      </div>
+                    </div>
+
+                    <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold border bg-emerald-50 text-emerald-700 border-emerald-200">
+                      ALLOWED
+                    </span>
                   </div>
-                  <div>
-                    <h3 className="text-base font-extrabold text-slate-900">Voice Speech Announcements</h3>
-                    <p className="text-xs text-slate-500 font-medium">
-                      Audio greeting & total bill speech at checkout.
+
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                    <div className="text-xs font-bold text-slate-800 flex items-center justify-between">
+                      <span>Voice Announcement Policy:</span>
+                      <span className="font-mono text-emerald-700 font-extrabold">Active & Ready</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
+                      Cash counters announce: "Total bill is [X] rupees. Thank you for shopping at {store.name}!" at a natural 0.85 rate.
                     </p>
                   </div>
                 </div>
 
-                <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold border ${
-                  store.voiceAnnouncementEnabled !== false
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    : 'bg-rose-50 text-rose-700 border-rose-200'
-                }`}>
-                  {store.voiceAnnouncementEnabled !== false ? 'ALLOWED' : 'SUPER ADMIN MUTED'}
-                </span>
-              </div>
-
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                <div className="text-xs font-bold text-slate-800 flex items-center justify-between">
-                  <span>Voice Announcement Policy:</span>
-                  <span className="font-mono text-emerald-700 font-extrabold">
-                    {store.voiceAnnouncementEnabled !== false ? 'Active & Ready' : 'Disabled by Super Admin'}
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
-                  {store.voiceAnnouncementEnabled !== false 
-                    ? 'Cash counters announce: "Total bill is [X] rupees. Thank you for shopping at [Store Name]!" at a natural 0.85 rate.' 
-                    : 'Voice generation is currently disallowed for this store by central Super Admin policy.'}
-                </p>
-              </div>
-            </div>
-
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={handleTestVoice}
-                disabled={store.voiceAnnouncementEnabled === false}
-                className={`w-full py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border transition-all ${
-                  store.voiceAnnouncementEnabled !== false
-                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-600 shadow-sm cursor-pointer'
-                    : 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
-                }`}
-              >
-                <Volume2 className="w-4 h-4" /> Test Checkout Voice Audio
-              </button>
-              {voiceTestMsg && (
-                <p className="text-xs text-emerald-700 font-bold text-center mt-2 animate-pulse">{voiceTestMsg}</p>
-              )}
-            </div>
-          </div>
-
-          {/* Barcode Camera Scanner & Beep Sounds */}
-          <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-5 flex flex-col justify-between">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-3 bg-purple-50 text-purple-600 rounded-2xl">
-                    <Camera className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-extrabold text-slate-900">Hardware & Barcode Scanning</h3>
-                    <p className="text-xs text-slate-500 font-medium">
-                      Camera scanner & USB barcode reader settings.
-                    </p>
-                  </div>
-                </div>
-
-                <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold border ${
-                  store.cameraScannerEnabled !== false
-                    ? 'bg-purple-50 text-purple-700 border-purple-200'
-                    : 'bg-slate-100 text-slate-600 border-slate-200'
-                }`}>
-                  {store.cameraScannerEnabled !== false ? 'CAMERA ALLOWED' : 'HARDWARE SCANNER ONLY'}
-                </span>
-              </div>
-
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800">Scan Audio Beep Effects:</span>
+                <div className="pt-2">
                   <button
                     type="button"
-                    onClick={() => setSoundEffectsEnabled(!soundEffectsEnabled)}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                      soundEffectsEnabled
-                        ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
-                        : 'bg-white text-slate-600 border-slate-300'
-                    }`}
+                    onClick={handleTestVoice}
+                    className="w-full py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-600 shadow-sm cursor-pointer transition-all"
                   >
-                    {soundEffectsEnabled ? 'Beep: ON' : 'Beep: OFF'}
+                    <Volume2 className="w-4 h-4" /> Test Checkout Voice Audio
                   </button>
+                  {voiceTestMsg && (
+                    <p className="text-xs text-emerald-700 font-bold text-center mt-2 animate-pulse">{voiceTestMsg}</p>
+                  )}
                 </div>
-                <p className="text-[11px] text-slate-500 font-medium">
-                  Plays positive high-frequency beep on valid scan and buzz alert on out-of-stock items.
-                </p>
               </div>
-            </div>
+            )}
 
-            <div className="p-3 bg-purple-50/50 border border-purple-200 rounded-xl text-[11px] text-purple-900 font-medium flex items-center gap-2">
-              <Check className="w-4 h-4 text-purple-600 shrink-0" />
-              <span>External USB & Wireless Barcode Scanners are plug-and-play active on all cash counters.</span>
-            </div>
+            {/* Barcode Camera Scanner & Beep Sounds (Completely hidden if disallowed) */}
+            {store.cameraScannerEnabled !== false && (
+              <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-5 flex flex-col justify-between">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-3 bg-purple-50 text-purple-600 rounded-2xl">
+                        <Camera className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-extrabold text-slate-900">Hardware & Barcode Scanning</h3>
+                        <p className="text-xs text-slate-500 font-medium">
+                          Camera scanner & USB barcode reader settings.
+                        </p>
+                      </div>
+                    </div>
+
+                    <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold border bg-purple-50 text-purple-700 border-purple-200">
+                      CAMERA ALLOWED
+                    </span>
+                  </div>
+
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-800">Scan Audio Beep Effects:</span>
+                      <button
+                        type="button"
+                        onClick={() => setSoundEffectsEnabled(!soundEffectsEnabled)}
+                        className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                          soundEffectsEnabled
+                            ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                            : 'bg-white text-slate-600 border-slate-300'
+                        }`}
+                      >
+                        {soundEffectsEnabled ? 'Beep: ON' : 'Beep: OFF'}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      Plays positive high-frequency beep on valid scan and buzz alert on out-of-stock items.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-purple-50/50 border border-purple-200 rounded-xl text-[11px] text-purple-900 font-medium flex items-center gap-2">
+                  <Check className="w-4 h-4 text-purple-600 shrink-0" />
+                  <span>External USB & Wireless Barcode Scanners are plug-and-play active on all cash counters.</span>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
+        )}
 
         {/* ROW 4: Inventory Thresholds & Store Admin Security */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

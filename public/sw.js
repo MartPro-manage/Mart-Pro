@@ -1,5 +1,5 @@
 // Mart Pro Service Worker for Windows & Android PWA installability
-const CACHE_NAME = 'martpro-cache-v1';
+const CACHE_NAME = 'martpro-cache-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',

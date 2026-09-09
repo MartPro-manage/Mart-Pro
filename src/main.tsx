@@ -29,7 +29,18 @@ window.addEventListener('unhandledrejection', (event) => {
 // Register Service Worker for PWA offline & desktop/mobile installability
 if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((err) => {
+    navigator.serviceWorker.register('/sw.js').then((registration) => {
+      registration.onupdatefound = () => {
+        const installingWorker = registration.installing;
+        if (installingWorker) {
+          installingWorker.onstatechange = () => {
+            if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              window.location.reload();
+            }
+          };
+        }
+      };
+    }).catch((err) => {
       console.warn('Service worker registration failed:', err);
     });
   });

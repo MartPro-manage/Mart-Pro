@@ -14,6 +14,7 @@ import { Product, Sale, Store, UserAccount, ProductReturn } from '../types';
 import { cleanupExpiredReceipts, isSaleExpired } from '../lib/salesCleanup';
 import { ReturnSlipModal } from './ReturnSlipModal';
 import { StoreSettingsView } from './StoreSettingsView';
+import { SalesRevenueChart } from './SalesRevenueChart';
 import { 
   TrendingUp, 
   Package, 
@@ -42,7 +43,8 @@ import {
   Undo2,
   Settings,
   Coins,
-  Percent
+  Percent,
+  BarChart3
 } from 'lucide-react';
 
 interface StoreAdminDashboardProps {
@@ -94,7 +96,8 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
   const [storeUsers, setStoreUsers] = useState<UserAccount[]>([]);
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'sales_by_date' | 'returns' | 'sold_products' | 'stock_remaining' | 'sales_history' | 'staff' | 'settings'>('sales_by_date');
+  const [activeTab, setActiveTab] = useState<'sales_by_date' | 'revenue_trends' | 'returns' | 'sold_products' | 'stock_remaining' | 'sales_history' | 'staff' | 'settings'>('sales_by_date');
+  const [showChartInSalesByDate, setShowChartInSalesByDate] = useState<boolean>(true);
 
   // Return Voucher Modal State
   const [viewingReturnSlip, setViewingReturnSlip] = useState<ProductReturn | null>(null);
@@ -988,6 +991,17 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             </button>
 
             <button
+              onClick={() => setActiveTab('revenue_trends')}
+              className={`px-4 py-2.5 rounded-xl font-bold text-xs cursor-pointer transition-all flex items-center gap-1.5 ${
+                activeTab === 'revenue_trends'
+                  ? 'bg-orange-600 text-white shadow-sm'
+                  : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+              }`}
+            >
+              <TrendingUp className="w-4 h-4 text-orange-500" /> Revenue Trends Chart
+            </button>
+
+            <button
               onClick={() => setActiveTab('returns')}
               className={`px-4 py-2.5 rounded-xl font-bold text-xs cursor-pointer transition-all flex items-center gap-1.5 ${
                 activeTab === 'returns'
@@ -1066,9 +1080,45 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
           </div>
         </div>
 
+        {/* TAB: DEDICATED REVENUE TRENDS CHART */}
+        {activeTab === 'revenue_trends' && (
+          <div className="space-y-6">
+            <SalesRevenueChart 
+              sales={sales} 
+              returns={returns} 
+              products={products} 
+            />
+          </div>
+        )}
+
         {/* TAB 1: SALES BY DATE - DAY BY DAY BREAKDOWN TABLE */}
         {activeTab === 'sales_by_date' && (
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6">
+            {/* Embedded Recharts Sales Trend with Collapse Toggle */}
+            <div className="space-y-3 pb-2 border-b border-slate-100">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <TrendingUp className="w-4 h-4 text-orange-600" /> Revenue & Profit Trend Chart
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowChartInSalesByDate(prev => !prev)}
+                  className="text-xs font-bold text-orange-600 hover:text-orange-700 bg-orange-50 hover:bg-orange-100 px-3 py-1.5 rounded-lg border border-orange-200 transition-all cursor-pointer flex items-center gap-1"
+                >
+                  <BarChart3 className="w-3.5 h-3.5" />
+                  {showChartInSalesByDate ? 'Collapse Chart' : 'Expand Revenue Chart'}
+                </button>
+              </div>
+
+              {showChartInSalesByDate && (
+                <SalesRevenueChart 
+                  sales={sales} 
+                  returns={returns} 
+                  products={products} 
+                />
+              )}
+            </div>
+
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
               <div>
                 <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">

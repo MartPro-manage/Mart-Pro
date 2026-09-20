@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { db, doc, getDoc, collection, query, where, getDocs, deleteDoc } from '../lib/firebase';
+import { db, doc, getDoc, collection, query, where, getDocs, updateDoc } from '../lib/firebase';
 import { Sale, Store } from '../types';
 import { isSaleExpired, getReceiptRemainingDays } from '../lib/salesCleanup';
 import JsBarcode from 'jsbarcode';
@@ -285,12 +285,16 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
         return;
       }
 
-      // Check 7-day expiration policy
+      // Check 7-day expiration policy for customer slips
       if (isSaleExpired(foundSale)) {
-        if (foundSale.id) {
-          deleteDoc(doc(db, 'sales', foundSale.id)).catch((e) => console.warn('Purge expired receipt:', e));
+        if (foundSale.id && !foundSale.isSlipDeleted) {
+          updateDoc(doc(db, 'sales', foundSale.id), {
+            isSlipDeleted: true,
+            slipExpired: true,
+            slipDeletedAt: new Date().toISOString()
+          }).catch((e) => console.warn('Update slip expired flag in background:', e));
         }
-        setError(`This receipt (#${foundSale.receiptNumber}) is over 7 days old and has been automatically deleted per our 7-day digital retention policy.`);
+        setError(`Customer receipt slip #${foundSale.receiptNumber} has reached its 7-day public retention limit and is no longer available online. The store's sales and accounting ledger remains permanently preserved.`);
         setLoading(false);
         return;
       }
@@ -447,7 +451,7 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
     txt += `${divider}\n`;
     txt += `ITEMS:\n`;
 
-    sale.items.forEach((item, idx) => {
+    (sale.items || []).forEach((item, idx) => {
       const isWeight = item.sellBy === 'weight' || item.unitType === 'kg' || item.quantity % 1 !== 0;
       const qtyStr = isWeight ? `${item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(3)} kg` : `${item.quantity} pcs`;
       txt += `${idx + 1}. ${item.name}\n`;
@@ -472,7 +476,7 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
   const getReceiptHtmlContent = (): string => {
     if (!sale) return '';
     const dateStr = new Date(sale.timestamp).toLocaleString();
-    const itemsHtml = sale.items.map(item => {
+    const itemsHtml = (sale.items || []).map(item => {
       const isWeight = item.sellBy === 'weight' || item.unitType === 'kg' || item.quantity % 1 !== 0;
       const qtyStr = isWeight ? `${item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(3)} kg` : `${item.quantity} pcs`;
       return `
@@ -1007,7 +1011,7 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
                     <span className="col-span-2 text-right">Total</span>
                   </div>
 
-                  {sale.items.map((item, idx) => {
+                  {(sale.items || []).map((item, idx) => {
                     const isWeight = item.sellBy === 'weight' || item.unitType === 'kg' || item.quantity % 1 !== 0;
                     const qtyDisplay = isWeight ? `${item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(3)}kg` : item.quantity.toString();
 

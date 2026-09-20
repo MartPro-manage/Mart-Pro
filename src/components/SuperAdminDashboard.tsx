@@ -152,7 +152,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
 
   // Deduplicated users list
   const userMap = new Map<string, UserAccount>();
-  users.forEach((user) => {
+  (users || []).forEach((user) => {
     const key = (user.username || user.id).trim().toLowerCase();
     if (!userMap.has(key)) {
       userMap.set(key, user);

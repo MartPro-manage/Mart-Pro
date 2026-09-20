@@ -15,6 +15,10 @@ import { cleanupExpiredReceipts, isSaleExpired } from '../lib/salesCleanup';
 import { ReturnSlipModal } from './ReturnSlipModal';
 import { StoreSettingsView } from './StoreSettingsView';
 import { SalesRevenueChart } from './SalesRevenueChart';
+import { SevenDaySalesVolumeChart } from './SevenDaySalesVolumeChart';
+import { StoreAiAssistantModal } from './StoreAiAssistantModal';
+import { ExcelManagerModal } from './ExcelManagerModal';
+import { BatchProductRow } from '../lib/excelParser';
 import { 
   TrendingUp, 
   Package, 
@@ -44,7 +48,11 @@ import {
   Settings,
   Coins,
   Percent,
-  BarChart3
+  BarChart3,
+  Sparkles,
+  Bot,
+  LineChart as LineChartIcon,
+  FileSpreadsheet
 } from 'lucide-react';
 
 interface StoreAdminDashboardProps {
@@ -96,8 +104,11 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
   const [storeUsers, setStoreUsers] = useState<UserAccount[]>([]);
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'sales_by_date' | 'revenue_trends' | 'returns' | 'sold_products' | 'stock_remaining' | 'sales_history' | 'staff' | 'settings'>('sales_by_date');
+  const [activeTab, setActiveTab] = useState<'sales_by_date' | 'volume_chart' | 'revenue_trends' | 'returns' | 'sold_products' | 'stock_remaining' | 'sales_history' | 'staff' | 'settings'>('sales_by_date');
   const [showChartInSalesByDate, setShowChartInSalesByDate] = useState<boolean>(true);
+  const [isAiAssistantOpen, setIsAiAssistantOpen] = useState(false);
+  const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
+  const [spreadsheetProductsForAi, setSpreadsheetProductsForAi] = useState<BatchProductRow[] | null>(null);
 
   // Return Voucher Modal State
   const [viewingReturnSlip, setViewingReturnSlip] = useState<ProductReturn | null>(null);
@@ -147,7 +158,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       handleFirestoreError(err, OperationType.GET, 'products');
     });
 
-    // 2. Subscribe to Sales (Run 7-day auto-purge and filter out expired receipts)
+    // 2. Subscribe to Sales (Customer slips older than 7 days expire from public access, but sales records, revenue, profit, stock, and sold items remain permanent)
     cleanupExpiredReceipts(store.id);
 
     const salesQuery = query(
@@ -159,9 +170,8 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       const saleList: Sale[] = [];
       snapshot.forEach((doc) => {
         const saleData = { id: doc.id, ...doc.data() } as Sale;
-        if (!isSaleExpired(saleData)) {
-          saleList.push(saleData);
-        }
+        // CRITICAL: NEVER delete or exclude sales records! Total revenue, profit, inventory, and sold products are permanent.
+        saleList.push(saleData);
       });
       // Sort sales by timestamp descending (newest first)
       saleList.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -362,7 +372,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       return dateMap[dateKey];
     };
 
-    sales.forEach((sale) => {
+    (sales || []).forEach((sale) => {
       const dateKey = getLocalDateString(sale.timestamp) || 'Unknown Date';
       const d = getOrCreate(dateKey);
 
@@ -377,7 +387,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       }
 
       let saleCost = 0;
-      sale.items?.forEach((item) => {
+      (sale.items || []).forEach((item) => {
         const qty = item.quantity || 0;
         d.grossUnitsSold += qty;
         
@@ -395,7 +405,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       d.sales.push(sale);
     });
 
-    returns.forEach((ret) => {
+    (returns || []).forEach((ret) => {
       const dateKey = getLocalDateString(ret.timestamp) || 'Unknown Date';
       const d = getOrCreate(dateKey);
 
@@ -439,8 +449,8 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
 
   const filteredCostOfGoods = useMemo(() => {
     let totalCost = 0;
-    filteredSalesByDate.forEach((sale) => {
-      sale.items?.forEach((item) => {
+    (filteredSalesByDate || []).forEach((sale) => {
+      (sale.items || []).forEach((item) => {
         const qty = item.quantity || 0;
         let unitCost = 0;
         if (typeof item.costPrice === 'number' && item.costPrice >= 0) {
@@ -453,7 +463,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       });
     });
 
-    filteredReturnsByDate.forEach((ret) => {
+    (filteredReturnsByDate || []).forEach((ret) => {
       const retQty = ret.quantity || 0;
       const matching = products.find(p => (ret.productId && p.id === ret.productId) || (ret.barcode && p.barcode === ret.barcode));
       const retCost = (matching?.costPrice || 0) * retQty;
@@ -511,8 +521,8 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       } 
     } = {};
 
-    filteredSalesByDate.forEach((sale) => {
-      sale.items?.forEach((item) => {
+    (filteredSalesByDate || []).forEach((sale) => {
+      (sale.items || []).forEach((item) => {
         const key = item.barcode || item.name;
         if (!summaryMap[key]) {
           let unitCost = 0;
@@ -545,7 +555,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       });
     });
 
-    filteredReturnsByDate.forEach((ret) => {
+    (filteredReturnsByDate || []).forEach((ret) => {
       const key = ret.barcode || ret.productName;
       if (!summaryMap[key]) {
         const matching = products.find(p => (ret.productId && p.id === ret.productId) || (ret.barcode && p.barcode === ret.barcode));
@@ -701,6 +711,23 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
 
           {/* Quick Shortcuts for Admin */}
           <div className="flex flex-wrap items-center gap-3 z-10 shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsExcelModalOpen(true)}
+              className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 cursor-pointer transition-all shadow-sm"
+              title="Upload Excel file from device or create spreadsheet with products & barcodes"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-200" /> Excel / Spreadsheet
+            </button>
+
+            <button
+              onClick={() => setIsAiAssistantOpen(true)}
+              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-bold text-xs flex items-center gap-2 cursor-pointer transition-all shadow-sm"
+              title="Open AI Assistant to query cheapest, most selling, least selling items or software guides"
+            >
+              <Sparkles className="w-4 h-4 text-amber-200" /> Mart Pro AI Copilot
+            </button>
+
             <button
               onClick={() => setActiveTab('settings')}
               className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 cursor-pointer transition-all shadow-sm ${
@@ -895,10 +922,19 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
         </div>
 
         {/* DYNAMIC REALTIME METRICS CARDS (Adjusts to selected Date Filter) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <motion.div 
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, ease: 'easeOut' }}
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+        >
           
           {/* Net Realized Profit */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
+          <motion.div 
+            whileHover={{ y: -2 }}
+            transition={{ duration: 0.15 }}
+            className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden"
+          >
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                 {dateFilter === 'all' ? 'Net Realized Profit' : 'Net Profit (Filtered Date)'}
@@ -920,10 +956,14 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
               <span className="text-slate-400">•</span>
               <span className="text-slate-600 font-semibold">Cost: Rs. {filteredCostOfGoods.toFixed(0)}</span>
             </div>
-          </div>
+          </motion.div>
 
           {/* Net Sales Revenue */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <motion.div 
+            whileHover={{ y: -2 }}
+            transition={{ duration: 0.15 }}
+            className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"
+          >
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                 {dateFilter === 'all' ? 'Net Sales Revenue' : 'Revenue (Filtered Date)'}
@@ -938,10 +978,14 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             <p className="text-[11px] text-slate-500 mt-1 font-medium">
               Gross: Rs. {filteredGrossRevenue.toFixed(0)} {filteredRefundsTotal > 0 ? `• -Rs. ${filteredRefundsTotal.toFixed(0)} refunds` : ''}
             </p>
-          </div>
+          </motion.div>
 
           {/* Cost of Goods Sold (Wholesale Cost) */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <motion.div 
+            whileHover={{ y: -2 }}
+            transition={{ duration: 0.15 }}
+            className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"
+          >
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                 Cost of Goods Sold (COGS)
@@ -956,10 +1000,14 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             <p className="text-[11px] text-slate-500 mt-1 font-medium flex items-center gap-1">
               Purchase rate for {filteredNetUnitsSold.toLocaleString()} sold units
             </p>
-          </div>
+          </motion.div>
 
           {/* Sold Units & Realtime Stock */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <motion.div 
+            whileHover={{ y: -2 }}
+            transition={{ duration: 0.15 }}
+            className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"
+          >
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Units Sold</span>
               <div className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-200">
@@ -972,9 +1020,9 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1 font-medium">
               <Package className="w-3.5 h-3.5 text-slate-400" /> {products.reduce((acc, p) => acc + (p.stockQuantity || 0), 0).toLocaleString()} units in inventory
             </p>
-          </div>
+          </motion.div>
 
-        </div>
+        </motion.div>
 
         {/* Tab Selection & Search */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
@@ -988,6 +1036,17 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
               }`}
             >
               <CalendarDays className="w-4 h-4" /> Sales by Date ({dailySalesBreakdown.length} Days)
+            </button>
+
+            <button
+              onClick={() => setActiveTab('volume_chart')}
+              className={`px-4 py-2.5 rounded-xl font-bold text-xs cursor-pointer transition-all flex items-center gap-1.5 ${
+                activeTab === 'volume_chart'
+                  ? 'bg-orange-600 text-white shadow-sm'
+                  : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+              }`}
+            >
+              <LineChartIcon className="w-4 h-4 text-orange-500" /> 7-Day Sales Volume Line Chart
             </button>
 
             <button
@@ -1080,20 +1139,45 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
           </div>
         </div>
 
+        {/* TAB: 7-DAY DAILY SALES VOLUME LINE CHART */}
+        {activeTab === 'volume_chart' && (
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25 }}
+            className="space-y-4"
+          >
+            <SevenDaySalesVolumeChart sales={sales} />
+          </motion.div>
+        )}
+
         {/* TAB: DEDICATED REVENUE TRENDS CHART */}
         {activeTab === 'revenue_trends' && (
-          <div className="space-y-6">
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25 }}
+            className="space-y-6"
+          >
             <SalesRevenueChart 
               sales={sales} 
               returns={returns} 
               products={products} 
             />
-          </div>
+          </motion.div>
         )}
 
         {/* TAB 1: SALES BY DATE - DAY BY DAY BREAKDOWN TABLE */}
         {activeTab === 'sales_by_date' && (
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6">
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25 }}
+            className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6"
+          >
+            {/* 7-Day Sales Volume Line Chart Preview */}
+            <SevenDaySalesVolumeChart sales={sales} className="mb-2 border-slate-100 bg-slate-50/50" />
+
             {/* Embedded Recharts Sales Trend with Collapse Toggle */}
             <div className="space-y-3 pb-2 border-b border-slate-100">
               <div className="flex items-center justify-between">
@@ -1129,8 +1213,10 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                 </p>
               </div>
 
-              <div className="text-xs text-slate-500 font-medium bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
-                Total Days with Activity: <strong className="text-slate-900">{dailySalesBreakdown.length}</strong>
+              <div className="flex items-center gap-2">
+                <div className="text-xs text-slate-500 font-medium bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
+                  Total Days: <strong className="text-slate-900">{dailySalesBreakdown.length}</strong>
+                </div>
               </div>
             </div>
 
@@ -1350,12 +1436,17 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                 </div>
               </div>
             )}
-          </div>
+          </motion.div>
         )}
 
         {/* TAB 2: PRODUCT RETURNS & REFUNDS LOG */}
         {activeTab === 'returns' && (
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25 }}
+            className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4"
+          >
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
               <div>
                 <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -1449,12 +1540,17 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                 </table>
               </div>
             )}
-          </div>
+          </motion.div>
         )}
 
         {/* TAB 3: TOTAL PRODUCTS SOLD WITH NAMES AND QUANTITY (FILTERED BY DATE) */}
         {activeTab === 'sold_products' && (
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25 }}
+            className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4"
+          >
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
               <div>
                 <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -1553,12 +1649,17 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                 </table>
               </div>
             )}
-          </div>
+          </motion.div>
         )}
 
         {/* TAB 3: REALTIME REMAINING STOCK */}
         {activeTab === 'stock_remaining' && (
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25 }}
+            className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4"
+          >
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <div>
                 <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -1635,12 +1736,17 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                 </table>
               </div>
             )}
-          </div>
+          </motion.div>
         )}
 
         {/* TAB 4: SALES HISTORY (FILTERED BY SELECTED DATE) */}
         {activeTab === 'sales_history' && (
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25 }}
+            className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4"
+          >
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
               <div>
                 <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -1651,9 +1757,11 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                 </p>
               </div>
 
-              <span className="text-xs font-bold text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
-                {filteredReceipts.length} Receipts
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
+                  {filteredReceipts.length} Receipts
+                </span>
+              </div>
             </div>
 
             {filteredReceipts.length === 0 ? (
@@ -1697,6 +1805,18 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                               Discount -Rs. {sale.discountAmount.toFixed(2)}
                             </span>
                           ) : null}
+                          {isSaleExpired(sale) ? (
+                            <span 
+                              className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-300"
+                              title="Customer public receipt slip cleared after 7-day retention period. Sales and profit records are permanently preserved."
+                            >
+                              Slip Cleared (7d) • Record Permanent
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              Slip Active
+                            </span>
+                          )}
                         </div>
                         <p className="text-xs text-slate-600 mt-1 font-medium">
                           Counter: <span className="text-slate-900 font-semibold">{sale.counterName}</span> ({sale.cashierUsername}) • <span className="text-orange-700 font-bold">{new Date(sale.timestamp).toLocaleString()}</span>
@@ -1729,12 +1849,17 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                 })}
               </div>
             )}
-          </div>
+          </motion.div>
         )}
 
         {/* TAB 5: STORE STAFF */}
         {activeTab === 'staff' && (
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25 }}
+            className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4"
+          >
             <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
               <Calculator className="w-5 h-5 text-orange-600" /> Cashiers & Product Registers for {liveStore.name}
             </h2>
@@ -1760,7 +1885,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                 </div>
               ))}
             </div>
-          </div>
+          </motion.div>
         )}
 
         {/* TAB 6: SETTINGS & CONFIGURATION */}
@@ -1785,6 +1910,38 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             storeName={store.name}
           />
         )}
+
+        {/* EXCEL MANAGER MODAL (UPLOAD FROM DEVICE OR CREATE NOW) */}
+        <ExcelManagerModal
+          isOpen={isExcelModalOpen}
+          onClose={() => setIsExcelModalOpen(false)}
+          store={liveStore}
+          onSendToAi={(parsedRows) => {
+            setSpreadsheetProductsForAi(parsedRows);
+            setIsExcelModalOpen(false);
+            setIsAiAssistantOpen(true);
+          }}
+          onProductsSaved={() => {
+            // Live Firestore subscription automatically refreshes products
+          }}
+          onOpenBatchModal={onNavigateToInventory}
+        />
+
+        {/* STORE AI ASSISTANT MODAL */}
+        <StoreAiAssistantModal
+          isOpen={isAiAssistantOpen}
+          onClose={() => {
+            setIsAiAssistantOpen(false);
+            setSpreadsheetProductsForAi(null);
+          }}
+          store={liveStore}
+          products={products}
+          sales={sales}
+          returns={returns}
+          currentUser={currentUser}
+          initialSpreadsheetProducts={spreadsheetProductsForAi}
+          onOpenBatchRegister={onNavigateToInventory}
+        />
 
       </div>
     </div>

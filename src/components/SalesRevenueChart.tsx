@@ -29,9 +29,9 @@ import {
 } from 'lucide-react';
 
 interface SalesRevenueChartProps {
-  sales: Sale[];
-  returns: ProductReturn[];
-  products: Product[];
+  sales?: Sale[];
+  returns?: ProductReturn[];
+  products?: Product[];
   className?: string;
 }
 
@@ -73,9 +73,9 @@ function getMondayOfWeek(d: Date): Date {
 }
 
 export const SalesRevenueChart: React.FC<SalesRevenueChartProps> = ({
-  sales,
-  returns,
-  products,
+  sales = [],
+  returns = [],
+  products = [],
   className = ''
 }) => {
   const [timeframe, setTimeframe] = useState<TimeframeMode>('daily');
@@ -87,7 +87,7 @@ export const SalesRevenueChart: React.FC<SalesRevenueChartProps> = ({
   // Map product cost lookup for accurate cost calculation
   const productCostMap = useMemo(() => {
     const map = new Map<string, number>();
-    products.forEach((p) => {
+    (products || []).forEach((p) => {
       if (p.id) map.set(p.id, p.costPrice || 0);
       if (p.barcode) map.set(p.barcode, p.costPrice || 0);
     });
@@ -128,7 +128,7 @@ export const SalesRevenueChart: React.FC<SalesRevenueChartProps> = ({
       return dateMap.get(dateStr)!;
     };
 
-    sales.forEach((s) => {
+    (sales || []).forEach((s) => {
       const dStr = toLocalDateStr(s.timestamp);
       if (!dStr) return;
       const rec = getOrCreate(dStr);
@@ -144,7 +144,7 @@ export const SalesRevenueChart: React.FC<SalesRevenueChartProps> = ({
       }
 
       let cost = 0;
-      s.items?.forEach((item) => {
+      (s.items || []).forEach((item) => {
         const qty = item.quantity || 0;
         rec.unitsSold += qty;
         let unitCost = 0;
@@ -159,7 +159,7 @@ export const SalesRevenueChart: React.FC<SalesRevenueChartProps> = ({
       rec.grossCost += cost;
     });
 
-    returns.forEach((r) => {
+    (returns || []).forEach((r) => {
       const dStr = toLocalDateStr(r.timestamp);
       if (!dStr) return;
       const rec = getOrCreate(dStr);
@@ -321,7 +321,7 @@ export const SalesRevenueChart: React.FC<SalesRevenueChartProps> = ({
       return weekMap.get(key)!;
     };
 
-    sales.forEach((s) => {
+    (sales || []).forEach((s) => {
       const d = new Date(s.timestamp);
       if (isNaN(d.getTime())) return;
       const rec = getOrCreateWeek(d);
@@ -335,7 +335,7 @@ export const SalesRevenueChart: React.FC<SalesRevenueChartProps> = ({
       }
 
       let cost = 0;
-      s.items?.forEach((item) => {
+      (s.items || []).forEach((item) => {
         const qty = item.quantity || 0;
         rec.unitsSold += qty;
         let unitCost = 0;
@@ -350,7 +350,7 @@ export const SalesRevenueChart: React.FC<SalesRevenueChartProps> = ({
       rec.grossCost += cost;
     });
 
-    returns.forEach((r) => {
+    (returns || []).forEach((r) => {
       const d = new Date(r.timestamp);
       if (isNaN(d.getTime())) return;
       const rec = getOrCreateWeek(d);

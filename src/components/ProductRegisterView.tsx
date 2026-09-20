@@ -18,7 +18,12 @@ import { Product, Store, UserAccount } from '../types';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
 import { BarcodeGeneratorModal } from './BarcodeGeneratorModal';
 import { HardwarePermissionsBar } from './HardwarePermissionsBar';
+import { MultiProductBatchModal } from './MultiProductBatchModal';
+import { ExcelManagerModal } from './ExcelManagerModal';
+import { StoreAiAssistantModal } from './StoreAiAssistantModal';
 import { downloadBarcodeForProduct } from '../lib/barcodeDownload';
+import { BatchProductRow } from '../lib/excelParser';
+import { getAllCategories, addCustomCategoryToStore } from '../lib/categories';
 import { 
   PackagePlus, 
   Barcode as BarcodeIcon, 
@@ -45,7 +50,14 @@ import {
   Image as ImageIcon,
   Upload,
   X,
-  FileImage
+  FileImage,
+  ListPlus,
+  FileSpreadsheet,
+  Boxes,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  SlidersHorizontal
 } from 'lucide-react';
 
 interface ProductRegisterViewProps {
@@ -58,6 +70,16 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isGeneratorOpen, setIsGeneratorOpen] = useState(false);
   const [productForGenerator, setProductForGenerator] = useState<Partial<Product> | null>(null);
+  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
+  const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
+  const [spreadsheetProductsForAi, setSpreadsheetProductsForAi] = useState<BatchProductRow[] | null>(null);
+  const [isAiAssistantOpen, setIsAiAssistantOpen] = useState(false);
+  const [aiEditTargetProduct, setAiEditTargetProduct] = useState<Product | null>(null);
+
+  // Category addition states
+  const [isAddCategoryModalOpen, setIsAddCategoryModalOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [isSavingCategory, setIsSavingCategory] = useState(false);
 
   // Form states
   const [sellBy, setSellBy] = useState<'unit' | 'weight'>('unit');
@@ -83,11 +105,42 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [showHardwareBar, setShowHardwareBar] = useState(false);
 
   const barcodeInputRef = useRef<HTMLInputElement | null>(null);
   const serialNumberInputRef = useRef<HTMLInputElement | null>(null);
   const quantityInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Compute all available categories including presets and custom store categories
+  const availableCategories = useMemo(() => {
+    return getAllCategories(store, products);
+  }, [store, products]);
+
+  // Handler to add a new category dynamically
+  const handleAddNewCategory = async () => {
+    const trimmed = (newCategoryName || '').trim();
+    if (!trimmed) {
+      showNotification('error', 'Please enter a category name.');
+      return;
+    }
+    setIsSavingCategory(true);
+    try {
+      const res = await addCustomCategoryToStore(store.id, trimmed, store.customCategories);
+      if (res.success) {
+        setCategory(trimmed);
+        setNewCategoryName('');
+        setIsAddCategoryModalOpen(false);
+        showNotification('success', `Category "${trimmed}" added and selected!`);
+      } else {
+        showNotification('error', res.error || 'Failed to add category.');
+      }
+    } catch {
+      showNotification('error', 'Failed to save category.');
+    } finally {
+      setIsSavingCategory(false);
+    }
+  };
 
   // Auto compress and convert uploaded image to compact base64
   const handleImageFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -541,27 +594,40 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   const inventoryStats = useMemo(() => {
     let totalCostValue = 0;
     let totalRetailValue = 0;
-    let totalItemsCount = 0;
+    let totalUnitsCount = 0;
+    let lowStockCount = 0;
+    let outOfStockCount = 0;
 
-    products.forEach((p) => {
+    (products || []).forEach((p) => {
       const qty = p.stockQuantity || 0;
       const effectiveSellPrice = p.price || p.pricePerKg || 0;
       const effectiveCostPrice = p.costPrice || 0;
+      const minLevel = p.minStockLevel ?? 5;
 
-      totalItemsCount += qty;
+      totalUnitsCount += qty;
       totalCostValue += effectiveCostPrice * qty;
       totalRetailValue += effectiveSellPrice * qty;
+
+      if (qty <= 0) {
+        outOfStockCount++;
+      } else if (qty <= minLevel) {
+        lowStockCount++;
+      }
     });
 
     const projectedProfit = totalRetailValue - totalCostValue;
     const overallMargin = totalRetailValue > 0 ? (projectedProfit / totalRetailValue) * 100 : 0;
 
     return {
-      totalItemsCount,
+      totalItemsCount: totalUnitsCount,
+      totalUnitsCount,
+      totalProductsCount: (products || []).length,
       totalCostValue,
       totalRetailValue,
       projectedProfit,
-      overallMargin
+      overallMargin,
+      lowStockCount,
+      outOfStockCount
     };
   }, [products]);
 
@@ -671,64 +737,229 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 p-4 sm:p-6 lg:p-8">
-      <div className="max-w-7xl mx-auto space-y-8">
+      <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6">
 
         {/* Top Control Banner */}
         <motion.div 
-          initial={{ opacity: 0, y: 15 }}
+          initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-          className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden"
+          transition={{ duration: 0.25 }}
+          className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-5 relative overflow-hidden"
         >
-          <div className="space-y-2 z-10">
+          <div className="space-y-1.5 z-10">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="px-3 py-1 rounded-full text-xs font-bold bg-orange-50 text-orange-700 border border-orange-200 flex items-center gap-1.5 shadow-2xs">
-                <PackagePlus className="w-3.5 h-3.5 text-orange-600" /> Product Register & Inventory
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-orange-50 text-orange-700 border border-orange-200 flex items-center gap-1.5 shadow-2xs">
+                <PackagePlus className="w-3.5 h-3.5 text-orange-600" /> Product Register & Stock
               </span>
-              <span className="text-xs text-slate-500 font-medium">Store: {store.name}</span>
-              <span className="text-xs bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-full font-bold">
+              <span className="text-xs text-slate-500 font-medium">Store: <strong className="text-slate-800">{store.name}</strong></span>
+              <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold">
                 PKR (Rs.)
               </span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-              Product Stock Entry & <span className="text-orange-600">Barcode Generator</span>
+            <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+              <span>Product Register &</span>
+              <span className="text-orange-600">Inventory Stock</span>
             </h1>
-            <p className="text-sm text-slate-600 max-w-2xl font-medium">
-              Add products with custom weights, auto-generate and print barcode labels, and adjust stock quantities. External USB barcode scanners work automatically without clicking any buttons on screen.
+            <p className="text-xs sm:text-sm text-slate-600 max-w-2xl font-medium">
+              Add products, adjust stock quantities, and generate barcode stickers. Scanners work automatically.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 z-10 shrink-0">
+          <div className="flex flex-wrap items-center gap-2.5 z-10 shrink-0">
+            {/* Multi-Product Batch Entry & Excel Import */}
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setIsExcelModalOpen(true)}
+              className="px-4 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-extrabold text-xs uppercase tracking-wider shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              title="Upload Excel from device or create spreadsheet in-app"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-orange-200" /> Excel / Spreadsheet
+            </motion.button>
+
+            {/* AI Assistant Button */}
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setIsAiAssistantOpen(true)}
+              className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-extrabold text-xs uppercase tracking-wider shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              title="Store AI Copilot: Query cheapest/most selling items or ask questions"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-200" /> AI Assistant
+            </motion.button>
+
             {/* Generate Barcode Button */}
             <motion.button
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               onClick={() => handleOpenGeneratorForProduct()}
-              className="px-5 py-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+              className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs uppercase tracking-wider shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
             >
-              <Sparkles className="w-4 h-4 text-amber-400" /> Generate & Print Barcode
+              <BarcodeIcon className="w-4 h-4 text-amber-400" /> Barcode Sticker
             </motion.button>
 
             {/* Camera Scanner Trigger (respects store setting) */}
             {store.cameraScannerEnabled !== false && (
               <motion.button
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
                 onClick={() => setIsScannerOpen(true)}
-                className="px-5 py-3.5 rounded-2xl bg-orange-600 hover:bg-orange-500 text-white font-extrabold text-xs uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                className="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-extrabold text-xs uppercase tracking-wider shadow-2xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
               >
-                <Camera className="w-4 h-4" /> Camera Scanner
+                <Camera className="w-3.5 h-3.5 text-orange-600" /> Scanner
               </motion.button>
             )}
+
+            {/* Collapsible Device & Hardware Controls Toggle */}
+            <button
+              type="button"
+              onClick={() => setShowHardwareBar(!showHardwareBar)}
+              className={`px-3 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border cursor-pointer ${
+                showHardwareBar 
+                  ? 'bg-slate-800 text-white border-slate-700 shadow-xs' 
+                  : 'bg-white text-slate-700 hover:bg-slate-100 border-slate-300 shadow-2xs'
+              }`}
+              title="Show or hide camera, audio, and device permissions bar"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
+              <span className="hidden sm:inline">Hardware</span>
+              {showHardwareBar ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
           </div>
         </motion.div>
 
-        {/* Hardware Permissions & Voice Controls */}
-        <HardwarePermissionsBar 
-          voiceEnabled={voiceEnabled} 
-          onToggleVoice={setVoiceEnabled} 
-          voiceAllowed={store?.voiceAnnouncementEnabled !== false}
-        />
+        {/* Top Screen Inventory & Valuation KPI Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {/* Card 1: Total SKUs */}
+          <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-2xs hover:border-orange-300 transition-all">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total SKUs</span>
+              <div className="w-7 h-7 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center border border-orange-100">
+                <PackagePlus className="w-3.5 h-3.5" />
+              </div>
+            </div>
+            <div className="text-xl sm:text-2xl font-black text-slate-900 font-mono mt-1.5">
+              {inventoryStats.totalProductsCount}
+            </div>
+            <div className="text-[11px] text-slate-500 mt-0.5 font-medium flex items-center gap-1">
+              <span>Catalog Items</span>
+              <span className="text-slate-300">•</span>
+              <span className="text-orange-600 font-semibold">{catalogFilter === 'all' ? 'All' : catalogFilter}</span>
+            </div>
+          </div>
+
+          {/* Card 2: Units On Hand */}
+          <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-2xs hover:border-blue-300 transition-all">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Stock On Hand</span>
+              <div className="w-7 h-7 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
+                <Boxes className="w-3.5 h-3.5" />
+              </div>
+            </div>
+            <div className="text-xl sm:text-2xl font-black text-blue-700 font-mono mt-1.5">
+              {inventoryStats.totalUnitsCount.toLocaleString()}
+            </div>
+            <div className="text-[11px] text-slate-500 mt-0.5 font-medium">
+              Physical units on shelves
+            </div>
+          </div>
+
+          {/* Card 3: Stock Wholesale Cost */}
+          <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-2xs hover:border-slate-300 transition-all">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Wholesale Cost</span>
+              <div className="w-7 h-7 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center border border-slate-200">
+                <Coins className="w-3.5 h-3.5" />
+              </div>
+            </div>
+            <div className="text-lg sm:text-xl font-black text-slate-900 font-mono mt-1.5 truncate" title={`Rs. ${inventoryStats.totalCostValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}>
+              Rs. {inventoryStats.totalCostValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </div>
+            <div className="text-[11px] text-slate-500 mt-0.5 font-medium">
+              Purchase Investment
+            </div>
+          </div>
+
+          {/* Card 4: Retail Stock Value */}
+          <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-2xs hover:border-emerald-300 transition-all">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Retail Value</span>
+              <div className="w-7 h-7 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
+                <Tag className="w-3.5 h-3.5" />
+              </div>
+            </div>
+            <div className="text-lg sm:text-xl font-black text-emerald-700 font-mono mt-1.5 truncate" title={`Rs. ${inventoryStats.totalRetailValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}>
+              Rs. {inventoryStats.totalRetailValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </div>
+            <div className="text-[11px] text-emerald-700 mt-0.5 font-bold flex items-center gap-1">
+              <span>{inventoryStats.overallMargin.toFixed(1)}% Margin</span>
+              <span className="text-slate-300">•</span>
+              <span className="text-slate-500 font-normal">Gross</span>
+            </div>
+          </div>
+
+          {/* Card 5: Stock Health / Alert */}
+          <div className={`p-3.5 sm:p-4 rounded-2xl border shadow-2xs transition-all col-span-2 sm:col-span-1 ${
+            inventoryStats.outOfStockCount > 0 || inventoryStats.lowStockCount > 0
+              ? 'bg-amber-50/70 border-amber-200 hover:border-amber-300'
+              : 'bg-emerald-50/70 border-emerald-200 hover:border-emerald-300'
+          }`}>
+            <div className="flex items-center justify-between">
+              <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                inventoryStats.outOfStockCount > 0 || inventoryStats.lowStockCount > 0
+                  ? 'text-amber-900'
+                  : 'text-emerald-900'
+              }`}>
+                Stock Health
+              </span>
+              <div className={`w-7 h-7 rounded-xl flex items-center justify-center border ${
+                inventoryStats.outOfStockCount > 0 || inventoryStats.lowStockCount > 0
+                  ? 'bg-amber-100 text-amber-700 border-amber-200'
+                  : 'bg-emerald-100 text-emerald-700 border-emerald-200'
+              }`}>
+                {inventoryStats.outOfStockCount > 0 || inventoryStats.lowStockCount > 0 ? (
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                ) : (
+                  <CheckCircle className="w-3.5 h-3.5" />
+                )}
+              </div>
+            </div>
+            <div className="text-lg sm:text-xl font-black font-mono mt-1.5 flex items-center gap-2">
+              {inventoryStats.outOfStockCount > 0 ? (
+                <span className="text-red-700">{inventoryStats.outOfStockCount} Out of Stock</span>
+              ) : inventoryStats.lowStockCount > 0 ? (
+                <span className="text-amber-800">{inventoryStats.lowStockCount} Low Stock</span>
+              ) : (
+                <span className="text-emerald-800">All Stocked</span>
+              )}
+            </div>
+            <div className="text-[11px] mt-0.5 font-medium text-slate-600">
+              {inventoryStats.outOfStockCount > 0
+                ? `${inventoryStats.lowStockCount} low items below min`
+                : inventoryStats.lowStockCount > 0
+                ? `Min threshold: 5 units`
+                : 'All items above minimum level'}
+            </div>
+          </div>
+        </div>
+
+        {/* Collapsible Hardware Permissions & Voice Controls */}
+        <AnimatePresence>
+          {showHardwareBar && (
+            <motion.div
+              initial={{ opacity: 0, height: 0, overflow: 'hidden' }}
+              animate={{ opacity: 1, height: 'auto', overflow: 'visible' }}
+              exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
+              transition={{ duration: 0.2 }}
+            >
+              <HardwarePermissionsBar 
+                voiceEnabled={voiceEnabled} 
+                onToggleVoice={setVoiceEnabled} 
+                voiceAllowed={store?.voiceAnnouncementEnabled !== false}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Global Notifications */}
         {msg && (
@@ -1035,17 +1266,81 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                   )}
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Category
-                  </label>
-                  <input
-                    type="text"
-                    placeholder={sellBy === 'weight' ? 'e.g. Grocery, Fruits, Vegetables' : 'e.g. Grocery, Dairy'}
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-medium transition-all"
-                  />
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      Category
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewCategoryName('');
+                        setIsAddCategoryModalOpen(true);
+                      }}
+                      className="text-[11px] font-black text-orange-600 hover:text-orange-700 flex items-center gap-1 cursor-pointer transition-colors"
+                      title="Create a new store category"
+                    >
+                      <PlusCircle className="w-3.5 h-3.5" />
+                      <span>+ Add New Category</span>
+                    </button>
+                  </div>
+
+                  {/* Category Selection Combobox & Text Input */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={availableCategories.includes(category) ? category : 'custom'}
+                        onChange={(e) => {
+                          if (e.target.value === '__add_new__') {
+                            setNewCategoryName('');
+                            setIsAddCategoryModalOpen(true);
+                          } else if (e.target.value !== 'custom') {
+                            setCategory(e.target.value);
+                          }
+                        }}
+                        className="w-1/2 px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs sm:text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-medium transition-all"
+                      >
+                        <option value="">Select Category...</option>
+                        {availableCategories.map((cat) => (
+                          <option key={cat} value={cat}>
+                            {cat}
+                          </option>
+                        ))}
+                        <option value="custom">Other / Custom...</option>
+                        <option value="__add_new__">➕ + Add New Category</option>
+                      </select>
+
+                      <input
+                        type="text"
+                        placeholder="Or type custom category..."
+                        value={category}
+                        onChange={(e) => setCategory(e.target.value)}
+                        className="w-1/2 px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs sm:text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-medium transition-all"
+                      />
+                    </div>
+
+                    {/* Quick Category Presets as requested: Grain, Biscuit, Oil, Ghee, Tea, Toys, Detergent, Soap, Laundry */}
+                    <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                      <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mr-1">Presets:</span>
+                      {['Grain', 'Biscuit', 'Oil', 'Ghee', 'Tea', 'Toys', 'Detergent', 'Soap', 'Laundry'].map((preset) => {
+                        const isSelected = category.toLowerCase() === preset.toLowerCase();
+                        return (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => setCategory(preset)}
+                            className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
+                              isSelected
+                                ? 'bg-orange-600 text-white border-orange-600 shadow-2xs'
+                                : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                            }`}
+                          >
+                            {preset}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -1366,46 +1661,20 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
               </div>
             </div>
 
-            {/* Store Inventory Financial Valuation Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
-              <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs">
-                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider flex items-center gap-1">
-                  <Coins className="w-3 h-3 text-slate-400" /> Stock Cost (Buy)
-                </div>
-                <div className="text-sm font-black text-slate-800 font-mono mt-1">
-                  Rs. {inventoryStats.totalCostValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </div>
-                <div className="text-[10px] text-slate-400 mt-0.5 font-medium">Total Wholesale Value</div>
-              </div>
-
-              <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs">
-                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider flex items-center gap-1">
-                  <Tag className="w-3 h-3 text-orange-500" /> Retail Value
-                </div>
-                <div className="text-sm font-black text-orange-600 font-mono mt-1">
-                  Rs. {inventoryStats.totalRetailValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </div>
-                <div className="text-[10px] text-slate-400 mt-0.5 font-medium">Expected Gross Sales</div>
-              </div>
-
-              <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs">
-                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider flex items-center gap-1">
-                  <TrendingUp className="w-3 h-3 text-emerald-600" /> Projected Profit
-                </div>
-                <div className={`text-sm font-black font-mono mt-1 ${inventoryStats.projectedProfit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
-                  Rs. {inventoryStats.projectedProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </div>
-                <div className="text-[10px] text-slate-400 mt-0.5 font-medium">Gross Inventory Profit</div>
-              </div>
-
-              <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs">
-                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider flex items-center gap-1">
-                  <Percent className="w-3 h-3 text-blue-600" /> Profit Margin
-                </div>
-                <div className="text-sm font-black text-blue-700 font-mono mt-1">
+            {/* Catalog Sub-header with Profit Margin and Filter Tabs */}
+            <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-200">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="font-bold text-slate-700">Projected Margin:</span>
+                <span className="font-extrabold text-emerald-700 font-mono">
                   {inventoryStats.overallMargin.toFixed(1)}%
-                </div>
-                <div className="text-[10px] text-slate-400 mt-0.5 font-medium">Overall Store Markup</div>
+                </span>
+                <span className="text-slate-300">|</span>
+                <span className="text-slate-500 font-medium">
+                  Profit: <strong className="text-slate-900 font-mono">Rs. {inventoryStats.projectedProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong>
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-500 font-medium">
+                Showing {filteredCatalog.length} of {products.length} products
               </div>
             </div>
 
@@ -1589,9 +1858,21 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                               <button
                                 onClick={() => handleSelectProductToEdit(p)}
                                 className="px-2.5 py-1.5 rounded-lg bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-600 hover:text-white transition-all text-xs font-bold flex items-center gap-1 cursor-pointer shadow-sm"
-                                title="Update stock or price"
+                                title="Update stock or price manually in the form"
                               >
                                 <Edit3 className="w-3 h-3" /> Edit
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setAiEditTargetProduct(p);
+                                  setIsAiAssistantOpen(true);
+                                }}
+                                className="px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-50 to-orange-50 text-orange-900 border border-orange-300 hover:from-orange-600 hover:to-amber-600 hover:text-white transition-all text-xs font-bold flex items-center gap-1 cursor-pointer shadow-xs"
+                                title="Ask AI Copilot to edit price, cost, stock, or details"
+                              >
+                                <Sparkles className="w-3 h-3 text-amber-500" /> AI Edit
                               </button>
 
                               <button
@@ -1711,6 +1992,120 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                   className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs cursor-pointer transition-all shadow-md flex items-center gap-1.5"
                 >
                   {loading ? 'Deleting All...' : `Delete ${selectedProductIds.length} Items`}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* EXCEL MANAGER MODAL (TWO OPTIONS: UPLOAD FROM DEVICE OR CREATE NOW) */}
+        <ExcelManagerModal
+          isOpen={isExcelModalOpen}
+          onClose={() => setIsExcelModalOpen(false)}
+          store={store}
+          onSendToAi={(parsedRows) => {
+            setSpreadsheetProductsForAi(parsedRows);
+            setIsExcelModalOpen(false);
+            setIsAiAssistantOpen(true);
+          }}
+          onProductsSaved={(count) => {
+            showNotification('success', `Successfully saved ${count} products to store catalog!`);
+          }}
+          onOpenBatchModal={() => {
+            setIsExcelModalOpen(false);
+            setIsBatchModalOpen(true);
+          }}
+        />
+
+        {/* MULTI-PRODUCT BATCH REGISTER & EXCEL MODAL */}
+        <MultiProductBatchModal
+          isOpen={isBatchModalOpen}
+          onClose={() => setIsBatchModalOpen(false)}
+          store={store}
+          currentUser={currentUser}
+          onProductsImported={(count) => {
+            showNotification('success', `Successfully registered ${count} products into catalog!`);
+          }}
+        />
+
+        {/* SOFTWARE AI ASSISTANT MODAL */}
+        <StoreAiAssistantModal
+          isOpen={isAiAssistantOpen}
+          onClose={() => {
+            setIsAiAssistantOpen(false);
+            setAiEditTargetProduct(null);
+            setSpreadsheetProductsForAi(null);
+          }}
+          store={store}
+          products={products}
+          currentUser={currentUser}
+          initialProductToEdit={aiEditTargetProduct}
+          initialSpreadsheetProducts={spreadsheetProductsForAi}
+          onProductUpdated={(updated) => {
+            showNotification('success', `AI successfully updated "${updated.name}"!`);
+          }}
+          onOpenBatchRegister={() => {
+            setIsAiAssistantOpen(false);
+            setIsBatchModalOpen(true);
+          }}
+        />
+
+        {/* ADD NEW CATEGORY MODAL */}
+        {isAddCategoryModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2 text-orange-600 font-black text-base">
+                  <Tag className="w-5 h-5" />
+                  <span>Add New Category</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsAddCategoryModalOpen(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  Category Name
+                </label>
+                <input
+                  type="text"
+                  autoFocus
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddNewCategory();
+                    }
+                  }}
+                  placeholder="e.g. Grain, Biscuit, Oil, Ghee, Toys..."
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-medium transition-all"
+                />
+                <p className="text-[11px] text-slate-500">
+                  This category will be permanently saved for store "{store.name}" and available in all product forms & AI queries.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsAddCategoryModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddNewCategory}
+                  disabled={isSavingCategory || !newCategoryName.trim()}
+                  className="px-5 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-md cursor-pointer flex items-center gap-1.5"
+                >
+                  {isSavingCategory ? 'Saving...' : 'Save & Select'}
                 </button>
               </div>
             </div>

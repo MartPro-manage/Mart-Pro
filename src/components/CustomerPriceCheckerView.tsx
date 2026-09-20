@@ -8,10 +8,11 @@ import {
   handleFirestoreError,
   OperationType 
 } from '../lib/firebase';
-import { Product, Store, UserAccount } from '../types';
+import { Product, Store, UserAccount, Sale } from '../types';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
 import { speakMessage } from '../lib/speech';
 import { playScanSuccessBeep, playScanErrorBeep } from '../lib/sound';
+import { processStoreAiQuery, AiQueryResult } from '../lib/storeAiEngine';
 import { 
   ScanLine, 
   Barcode as BarcodeIcon, 
@@ -29,7 +30,11 @@ import {
   Layers,
   ArrowRight,
   Image as ImageIcon,
-  Flame
+  Flame,
+  Mic,
+  MicOff,
+  X,
+  MessageSquare
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -40,6 +45,7 @@ interface CustomerPriceCheckerViewProps {
 
 export const CustomerPriceCheckerView: React.FC<CustomerPriceCheckerViewProps> = ({ store, currentUser }) => {
   const [products, setProducts] = useState<Product[]>([]);
+  const [sales, setSales] = useState<Sale[]>([]);
   const [barcodeInput, setBarcodeInput] = useState('');
   const [scannedProduct, setScannedProduct] = useState<Product | null>(null);
   const [scanStatus, setScanStatus] = useState<'idle' | 'found' | 'not_found' | 'out_of_stock'>('idle');
@@ -47,10 +53,17 @@ export const CustomerPriceCheckerView: React.FC<CustomerPriceCheckerViewProps> =
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
 
+  // AI Query Assistant States for Buyers
+  const [aiQuestion, setAiQuestion] = useState('');
+  const [aiResult, setAiResult] = useState<AiQueryResult | null>(null);
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+
   const barcodeInputRef = useRef<HTMLInputElement | null>(null);
   const scannerBufferRef = useRef<string>('');
   const lastKeyTimestampRef = useRef<number>(0);
   const autoResetTimerRef = useRef<any>(null);
+  const speechRecognitionRef = useRef<any>(null);
 
   const isCameraScannerAllowed = store?.cameraScannerEnabled !== false;
   const isVoiceAllowed = store?.voiceAnnouncementEnabled !== false;
@@ -77,9 +90,100 @@ export const CustomerPriceCheckerView: React.FC<CustomerPriceCheckerViewProps> =
     return () => unsub();
   }, [store?.id]);
 
+  // Real-time subscribe to sales for this store (for top selling calculations)
+  useEffect(() => {
+    if (!store?.id) return;
+    const q = query(collection(db, 'sales'), where('storeId', '==', store.id));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const list: Sale[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() } as Sale);
+      });
+      setSales(list);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, 'sales');
+    });
+    return () => unsub();
+  }, [store?.id]);
+
   // Clean codes
   const cleanCode = (v: any) => String(v ?? '').replace(/[\r\n\t\s]/g, '').trim().toLowerCase();
   const cleanName = (v: any) => String(v ?? '').trim().toLowerCase();
+
+  // AI Shopping Assistant Query Execution
+  const handleAskAi = useCallback((questionText: string) => {
+    const q = (questionText || '').trim();
+    if (!q) return;
+
+    setIsAiLoading(true);
+    if (autoResetTimerRef.current) {
+      clearTimeout(autoResetTimerRef.current);
+    }
+
+    const res = processStoreAiQuery(q, products, sales);
+    setAiResult(res);
+    setIsAiLoading(false);
+
+    if (voiceEnabled && isVoiceAllowed) {
+      speakMessage(res.speechText);
+    }
+
+    if (res.highlightedProduct) {
+      setScannedProduct(res.highlightedProduct);
+      setScanStatus(res.highlightedProduct.stockQuantity > 0 ? 'found' : 'out_of_stock');
+      setStatusMessage(res.speechText);
+      playScanSuccessBeep();
+    }
+  }, [products, sales, voiceEnabled, isVoiceAllowed]);
+
+  // Voice speech recognition for buyer questions
+  const handleToggleVoiceRecognition = () => {
+    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRec) {
+      return;
+    }
+
+    if (isListening) {
+      if (speechRecognitionRef.current) {
+        speechRecognitionRef.current.stop();
+      }
+      setIsListening(false);
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRec();
+      recognition.lang = 'en-US';
+      recognition.continuous = false;
+      recognition.interimResults = false;
+
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
+
+      recognition.onresult = (event: any) => {
+        const transcript = event.results?.[0]?.[0]?.transcript || '';
+        if (transcript) {
+          setAiQuestion(transcript);
+          handleAskAi(transcript);
+        }
+        setIsListening(false);
+      };
+
+      recognition.onerror = () => {
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      speechRecognitionRef.current = recognition;
+      recognition.start();
+    } catch {
+      setIsListening(false);
+    }
+  };
 
   // Handle Barcode Look up
   const handleLookupBarcode = useCallback((targetBarcode: string) => {
@@ -291,46 +395,120 @@ export const CustomerPriceCheckerView: React.FC<CustomerPriceCheckerViewProps> =
       {/* Main Interactive Scanner Area (Fit directly into viewport) */}
       <main className="relative z-10 flex-1 max-w-5xl w-full mx-auto px-4 py-2 sm:py-3 flex flex-col justify-between overflow-hidden">
         
-        {/* Top Section: Barcode Scanner Input + Continuous Scrolling Ticker */}
+        {/* Top Section: Barcode Scanner Input + Ask AI Assistant Bar + Continuous Scrolling Ticker */}
         <div className="w-full shrink-0 space-y-2">
           
-          {/* Barcode Input Form */}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              const val = (barcodeInput || barcodeInputRef.current?.value || '').trim();
-              if (val) {
-                handleLookupBarcode(val);
-              }
-            }}
-            className="w-full"
-          >
-            <div className="relative max-w-xl mx-auto">
-              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                <BarcodeIcon className="w-5 h-5 text-orange-400" />
+          {/* Dual Inputs: Barcode Scanner & AI Shopping Assistant */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-w-4xl mx-auto">
+            
+            {/* 1. Barcode Input Form */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const val = (barcodeInput || barcodeInputRef.current?.value || '').trim();
+                if (val) {
+                  handleLookupBarcode(val);
+                }
+              }}
+              className="w-full"
+            >
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                  <BarcodeIcon className="w-5 h-5 text-orange-400" />
+                </div>
+                <input
+                  id="kiosk-barcode-input"
+                  ref={barcodeInputRef}
+                  type="text"
+                  autoFocus
+                  autoComplete="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  value={barcodeInput}
+                  onChange={(e) => setBarcodeInput(e.target.value)}
+                  placeholder="Scan barcode or type code..."
+                  className="w-full pl-11 pr-22 py-2 sm:py-2.5 bg-slate-900/90 border-2 border-slate-700 focus:border-orange-500 focus:bg-slate-800 rounded-2xl text-white placeholder-slate-400 text-xs sm:text-sm font-mono focus:outline-none transition-all shadow-lg backdrop-blur-sm"
+                />
+                <button
+                  type="submit"
+                  className="absolute right-1 top-1 bottom-1 px-3 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1"
+                >
+                  <span>Check</span>
+                  <ArrowRight className="w-3 h-3" />
+                </button>
+              </div>
+            </form>
+
+            {/* 2. Ask AI Question Form */}
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-amber-400">
+                <Sparkles className="w-4 h-4 animate-pulse" />
               </div>
               <input
-                id="kiosk-barcode-input"
-                ref={barcodeInputRef}
+                id="kiosk-ai-input"
                 type="text"
-                autoFocus
-                autoComplete="off"
-                autoCorrect="off"
-                spellCheck={false}
-                value={barcodeInput}
-                onChange={(e) => setBarcodeInput(e.target.value)}
-                placeholder="Scan barcode or type item code..."
-                className="w-full pl-11 pr-24 py-2.5 sm:py-3 bg-slate-900/90 border-2 border-slate-700 focus:border-orange-500 focus:bg-slate-800 rounded-2xl text-white placeholder-slate-400 text-sm sm:text-base font-mono focus:outline-none transition-all shadow-lg backdrop-blur-sm"
+                value={aiQuestion}
+                onChange={(e) => setAiQuestion(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAskAi(aiQuestion);
+                  }
+                }}
+                placeholder="Ask AI: 'Top selling oil', 'Price of zeera biscuit'..."
+                className="w-full pl-10 pr-24 py-2 sm:py-2.5 bg-slate-900/90 border-2 border-amber-500/60 focus:border-amber-400 focus:bg-slate-800 rounded-2xl text-white placeholder-slate-400 text-xs sm:text-sm font-medium focus:outline-none transition-all shadow-lg backdrop-blur-sm"
               />
-              <button
-                type="submit"
-                className="absolute right-1.5 top-1.5 bottom-1.5 px-4 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1"
-              >
-                <span>Check</span>
-                <ArrowRight className="w-3 h-3" />
-              </button>
+              <div className="absolute right-1 top-1 bottom-1 flex items-center gap-1">
+                {/* Voice Input Mic */}
+                <button
+                  type="button"
+                  onClick={handleToggleVoiceRecognition}
+                  className={`p-1.5 rounded-lg transition-all ${isListening ? 'bg-rose-600 text-white animate-pulse' : 'bg-slate-800 hover:bg-slate-700 text-amber-400'}`}
+                  title={isListening ? "Listening... click to stop" : "Speak to AI"}
+                >
+                  {isListening ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAskAi(aiQuestion)}
+                  disabled={isAiLoading || !aiQuestion.trim()}
+                  className="px-3 py-1 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 disabled:opacity-50 text-white font-black rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 shadow-sm"
+                >
+                  <span>Ask AI</span>
+                </button>
+              </div>
             </div>
-          </form>
+          </div>
+
+          {/* Quick AI Question Chips */}
+          <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar py-0.5 max-w-4xl mx-auto select-none">
+            <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 shrink-0 flex items-center gap-1 pl-1">
+              <Sparkles className="w-3 h-3" /> Quick Ask:
+            </span>
+            {[
+              { label: '🔥 Top selling oil', q: 'Top selling oil' },
+              { label: '🍪 Price of zeera biscuit', q: 'Price of zeera biscuit' },
+              { label: '🛢️ Cheapest oil', q: 'Cheapest oil' },
+              { label: '🧈 Cheapest ghee', q: 'Cheapest ghee' },
+              { label: '☕ Cheapest tea', q: 'Cheapest tea' },
+              { label: '🧼 Cheapest soap', q: 'Cheapest soap' },
+              { label: '🧺 Cheapest laundry', q: 'Cheapest laundry' },
+              { label: '🧸 Popular toys', q: 'Popular toys' },
+              { label: '🌾 Cheapest grain', q: 'Cheapest grain' }
+            ].map((item, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => {
+                  setAiQuestion(item.q);
+                  handleAskAi(item.q);
+                }}
+                className="px-2.5 py-1 bg-slate-800/90 hover:bg-amber-500/20 text-slate-300 hover:text-amber-200 border border-slate-700 hover:border-amber-400/50 rounded-full text-[11px] font-bold whitespace-nowrap transition-all cursor-pointer shrink-0 shadow-xs"
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
 
           {/* ALWAYS SCROLLING LEFT TICKER: Items with Name, Pics, and Price (Extra Large Size) */}
           <div className="w-full overflow-hidden relative py-2.5 border-y border-slate-800 bg-slate-900/70 rounded-2xl backdrop-blur-md group shadow-inner">
@@ -418,7 +596,79 @@ export const CustomerPriceCheckerView: React.FC<CustomerPriceCheckerViewProps> =
         </div>
 
         {/* Dynamic Display State (Centered in available viewport) */}
-        <div className="flex-1 flex flex-col justify-center items-center py-2 overflow-hidden">
+        <div className="flex-1 flex flex-col justify-center items-center py-2 overflow-hidden w-full">
+          
+          {/* AI ANSWER BANNER */}
+          {aiResult && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="w-full max-w-2xl mx-auto mb-3 p-4 bg-gradient-to-br from-slate-900 via-slate-800 to-amber-950/40 border-2 border-amber-500/50 rounded-3xl shadow-2xl backdrop-blur-xl relative"
+            >
+              <div className="flex items-center justify-between pb-2 border-b border-slate-700/80 mb-2">
+                <div className="flex items-center gap-2">
+                  <div className="p-1 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <span className="text-xs font-black uppercase tracking-wider text-amber-300">
+                    Store AI Assistant
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAiResult(null)}
+                  className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-700 transition-all cursor-pointer"
+                  title="Dismiss Answer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Formatted Text */}
+              <div className="text-sm font-semibold text-white leading-relaxed whitespace-pre-line mb-2.5">
+                {aiResult.reply}
+              </div>
+
+              {/* Matched Product Fast-Inspect Chips */}
+              {aiResult.matchedProducts.length > 0 && (
+                <div className="space-y-1.5 pt-2 border-t border-slate-700/60">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+                    Matching Store Inventory ({aiResult.matchedProducts.length} items):
+                  </span>
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                    {aiResult.matchedProducts.map((p) => {
+                      const priceVal = p.price || p.pricePerKg || 0;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => {
+                            setScannedProduct(p);
+                            setScanStatus(p.stockQuantity > 0 ? 'found' : 'out_of_stock');
+                            setStatusMessage(`Inspecting ${p.name}`);
+                            playScanSuccessBeep();
+                            if (voiceEnabled && isVoiceAllowed) {
+                              speakMessage(`${p.name}, Price ${curr} ${priceVal.toFixed(2)}`);
+                            }
+                          }}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer shrink-0 ${
+                            scannedProduct?.id === p.id 
+                              ? 'bg-orange-600 text-white border-orange-400 shadow-md' 
+                              : 'bg-slate-800/90 hover:bg-slate-700 text-slate-200 border-slate-700'
+                          }`}
+                        >
+                          <Tag className="w-3 h-3 text-amber-400" />
+                          <span className="max-w-[140px] truncate">{p.name}</span>
+                          <span className="font-mono text-emerald-300 font-extrabold">{curr} {priceVal.toFixed(0)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          )}
+
           <AnimatePresence mode="wait">
             
             {/* IDLE / WELCOME STATE */}

@@ -388,9 +388,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
       const list: Sale[] = [];
       snapshot.forEach((docSnap) => {
         const saleData = { id: docSnap.id, ...docSnap.data() } as Sale;
-        if (!isSaleExpired(saleData)) {
-          list.push(saleData);
-        }
+        list.push(saleData);
       });
       list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       setRecentSales(list);
@@ -666,7 +664,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
 
   const categories = useMemo(() => {
     const set = new Set<string>();
-    products.forEach((p) => {
+    (products || []).forEach((p) => {
       if (p.category) set.add(p.category.trim());
     });
     return Array.from(set).filter(Boolean);
@@ -1515,10 +1513,8 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                   <button
                     type="button"
                     onClick={() => {
-                      if (confirm('Clear all items from the active cart?')) {
-                        setCart([]);
-                        setDiscountValue(0);
-                      }
+                      setCart([]);
+                      setDiscountValue(0);
                     }}
                     className="px-3 py-2 rounded-xl bg-red-950/40 hover:bg-red-900/60 text-red-300 border border-red-800/60 font-bold text-xs cursor-pointer transition-colors"
                   >

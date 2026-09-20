@@ -17,6 +17,7 @@ export interface Store {
   currencySymbol?: string;
   returnPolicyDays?: number;
   soundEffectsEnabled?: boolean;
+  customCategories?: string[];
   createdAt: string;
 }
 
@@ -94,6 +95,9 @@ export interface Sale {
   receiptNumber: string;
   timestamp: string;
   expiresAt?: string;
+  isSlipDeleted?: boolean;
+  slipExpired?: boolean;
+  slipDeletedAt?: string;
 }
 
 export interface ProductReturn {

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Sale, Store } from '../types';
 import QRCode from 'qrcode';
 import html2canvas from 'html2canvas';
-import { getReceiptRemainingDays } from '../lib/salesCleanup';
+import { isSlipExpired, getReceiptRemainingDays } from '../lib/salesCleanup';
 import { 
   Printer, 
   Share2, 
@@ -91,7 +91,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     text += `Payment Method: ${sale.paymentMethod.toUpperCase()}\n`;
     text += `-----------------------------------\n`;
     text += `ITEMS:\n`;
-    sale.items.forEach((item, index) => {
+    (sale.items || []).forEach((item, index) => {
       const isWeight = item.sellBy === 'weight' || item.unitType === 'kg' || item.quantity % 1 !== 0;
       const qtyText = isWeight ? `${item.quantity}kg` : `${item.quantity}`;
       text += `${index + 1}. ${item.name}\n`;
@@ -200,7 +200,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 </tr>
               </thead>
               <tbody>
-                ${sale.items.map(item => {
+                ${(sale.items || []).map(item => {
                   const isWeight = item.sellBy === 'weight' || item.unitType === 'kg' || item.quantity % 1 !== 0;
                   const qtyText = isWeight ? `${item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(3)} kg` : item.quantity.toString();
                   return `
@@ -398,7 +398,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               </tr>
             </thead>
             <tbody>
-              ${sale.items.map(item => {
+              ${(sale.items || []).map(item => {
                 const isWeight = item.sellBy === 'weight' || item.unitType === 'kg' || item.quantity % 1 !== 0;
                 const qtyText = isWeight ? `${item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(3)} kg` : item.quantity.toString();
                 return `
@@ -645,6 +645,34 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
           </div>
         )}
 
+        {/* SLIP RETENTION & SALES PERMANENCE BANNER */}
+        {isSlipExpired(sale) ? (
+          <div className="px-3.5 py-2 bg-amber-50 text-amber-900 border border-amber-200 rounded-xl text-xs flex items-center justify-between gap-2 no-print shrink-0">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+              <div>
+                <span className="font-bold">Customer Slip Cleared (7-Day Policy)</span>
+                <p className="text-[11px] text-amber-700 font-normal">
+                  Public customer slip expired after 7 days. Store sales ledger, profit, and stock records are permanently preserved.
+                </p>
+              </div>
+            </div>
+            <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-amber-200/60 text-amber-900 shrink-0">
+              Sales Permanent
+            </span>
+          </div>
+        ) : (
+          <div className="px-3 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-[11px] flex items-center justify-between gap-2 no-print shrink-0">
+            <div className="flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <span>Customer Online Slip: Active ({getReceiptRemainingDays(sale.timestamp)} days left)</span>
+            </div>
+            <span className="text-[10px] text-emerald-700 font-semibold shrink-0">
+              Sales Data Permanent
+            </span>
+          </div>
+        )}
+
         {/* STANDARD PRINTABLE RECEIPT CARD */}
             <div 
               id="printable-receipt" 
@@ -692,7 +720,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                   <span className="col-span-3 text-right">Total</span>
                 </div>
 
-                {sale.items.map((item, idx) => {
+                {(sale.items || []).map((item, idx) => {
                   const isWeight = item.sellBy === 'weight' || item.unitType === 'kg' || item.quantity % 1 !== 0;
                   const qtyDisplay = isWeight ? `${item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(3)}kg` : item.quantity.toString();
 

@@ -26,6 +26,7 @@ import { HeldBillsModal } from './HeldBillsModal';
 import { ProductShortcutsModal } from './ProductShortcutsModal';
 import { UniversalBackButton } from './UniversalBackButton';
 import { findProductByShortcutOrBarcode } from '../utils/productShortcuts';
+import { getProductDiscountInfo, getEffectiveProductPrice } from '../utils/discountUtils';
 import { speakMessage } from '../lib/speech';
 import { playScanSuccessBeep, playScanErrorBeep } from '../lib/sound';
 import { cleanupExpiredReceipts, isSaleExpired, getReceiptRemainingDays } from '../lib/salesCleanup';
@@ -174,7 +175,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           return prevCart;
         }
 
-        const effectiveRate = product.price || product.pricePerKg || 0;
+        const effectiveRate = getEffectiveProductPrice(product) || product.price || product.pricePerKg || 0;
         updated[existingIdx] = {
           ...updated[existingIdx],
           product: product,
@@ -184,13 +185,15 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
         showNotification('success', `Updated "${product.name}" in bill (${newQty.toFixed(3)} kg total)`);
         return updated;
       } else {
-        showNotification('success', `Added "${product.name}" (${qtyDisplay} kg) for Rs. ${totalPrice.toFixed(2)}`);
+        const effectiveRate = getEffectiveProductPrice(product) || product.price || product.pricePerKg || 0;
+        const finalCalculatedPrice = Math.round(quantityInKg * effectiveRate * 100) / 100;
+        showNotification('success', `Added "${product.name}" (${qtyDisplay} kg) for Rs. ${finalCalculatedPrice.toFixed(2)}`);
         return [
           ...prevCart,
           {
             product: product,
             quantity: quantityInKg,
-            totalPrice: Math.round(totalPrice * 100) / 100
+            totalPrice: finalCalculatedPrice
           }
         ];
       }
@@ -277,6 +280,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     // Add or increment in cart
     setCart((prevCart) => {
       const existingIdx = prevCart.findIndex(item => item.product.id === found!.id);
+      const effectiveRate = getEffectiveProductPrice(found!) || found!.price || 0;
       if (existingIdx >= 0) {
         const updated = [...prevCart];
         const currentQty = updated[existingIdx].quantity;
@@ -290,18 +294,18 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           ...updated[existingIdx],
           product: found!, // update latest stock/price ref
           quantity: newQty,
-          totalPrice: Math.round(newQty * found!.price * 100) / 100
+          totalPrice: Math.round(newQty * effectiveRate * 100) / 100
         };
         showNotification('success', `Incremented "${found!.name}" in list (Qty: ${newQty})`);
         return updated;
       } else {
-        showNotification('success', `Matched & added "${found!.name}" to list (Rs. ${(found!.price || 0).toFixed(2)})`);
+        showNotification('success', `Matched & added "${found!.name}" to list (Rs. ${effectiveRate.toFixed(2)})`);
         return [
           ...prevCart,
           {
             product: found!,
             quantity: 1,
-            totalPrice: found!.price
+            totalPrice: effectiveRate
           }
         ];
       }
@@ -485,7 +489,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     }
 
     const roundedQty = Math.round(newQty * 1000) / 1000;
-    const effectivePrice = liveProd.price || liveProd.pricePerKg || itemInCart.product.price;
+    const effectivePrice = getEffectiveProductPrice(liveProd) || liveProd.price || liveProd.pricePerKg || itemInCart.product.price;
 
     setCart((prevCart) =>
       prevCart.map((item) => {
@@ -1383,7 +1387,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                         >
                           
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               {isWeight && (
                                 <button
                                   type="button"
@@ -1398,10 +1402,36 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                                   <span>{item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(3)} kg</span>
                                 </button>
                               )}
+                              {(() => {
+                                const discInfo = getProductDiscountInfo(item.product);
+                                if (discInfo.hasDiscount) {
+                                  return (
+                                    <span className="px-1.5 py-0.2 rounded bg-rose-100 text-rose-700 font-extrabold text-[9px] uppercase tracking-wide border border-rose-200">
+                                      {discInfo.discountLabel}
+                                    </span>
+                                  );
+                                }
+                                return null;
+                              })()}
                               <span className="font-bold text-slate-900 text-xs truncate">{item.product.name}</span>
                             </div>
-                            <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                              Rs. {item.product.price.toFixed(2)}{isWeight ? '/kg' : ' each'} • <span className="text-emerald-700 font-semibold">Stock: {item.product.stockQuantity}{isWeight ? 'kg' : ''}</span>
+                            <div className="text-[10px] text-slate-500 font-mono mt-0.5 flex items-center gap-1.5 flex-wrap">
+                              {(() => {
+                                const discInfo = getProductDiscountInfo(item.product);
+                                if (discInfo.hasDiscount) {
+                                  return (
+                                    <>
+                                      <span className="line-through text-slate-400">Rs. {discInfo.basePrice.toFixed(2)}</span>
+                                      <span className="text-rose-600 font-black">Rs. {discInfo.effectivePrice.toFixed(2)}{isWeight ? '/kg' : ' each'}</span>
+                                    </>
+                                  );
+                                }
+                                return (
+                                  <span>Rs. {item.product.price.toFixed(2)}{isWeight ? '/kg' : ' each'}</span>
+                                );
+                              })()}
+                              <span>•</span>
+                              <span className="text-emerald-700 font-semibold">Stock: {item.product.stockQuantity}{isWeight ? 'kg' : ''}</span>
                             </div>
                           </div>
 

@@ -12,6 +12,10 @@ export interface Store {
   address?: string;
   receiptHeader?: string;
   receiptFooter?: string;
+  receiptGreeting?: string; // Custom greeting message on receipt
+  receiptQrCodeEnabled?: boolean; // Option to enable QR code on receipt
+  receiptQrTitle?: string; // Title above the QR code on receipt
+  receiptQrData?: string; // Custom URL or info for the QR code (defaults to verified receipt link)
   logoUrl?: string; // Black & white store logo (data URL or image URL)
   receiptFormat?: 'standard' | 'classic_detailed' | 'compact_eco'; // 3 distinct receipt templates
   taxRegistrationNumber?: string;
@@ -82,6 +86,9 @@ export interface Product {
   unitType?: 'piece' | 'kg' | 'g' | 'liter' | 'dozen';
   pricePerKg?: number; // Rate per kg
   weightPerUnit?: number; // Weight in kg per single pack/piece (e.g. 0.5 for 500g pack)
+  discountType?: 'percentage' | 'fixed'; // percentage (%) or fixed (Rs.)
+  discountValue?: number; // e.g. 10 for 10% or 50 for Rs. 50
+  discountActive?: boolean; // Whether discount is currently active on this product
   updatedAt: string;
   createdAt: string;
 }

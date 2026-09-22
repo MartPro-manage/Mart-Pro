@@ -16,14 +16,15 @@ import {
   where, 
   onSnapshot,
   orderBy,
-  runTransaction
+  runTransaction,
+  writeBatch
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { UserAccount, Store, Product, Sale } from '../types';
 
 // Suppress transient internal connection retry warnings in console
 try {
-  setLogLevel('error');
+  setLogLevel('silent');
 } catch {
   // ignore
 }
@@ -102,6 +103,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 // Default Super Admin credentials constant
 export const SUPER_ADMIN_USERNAME = 'supermarketmanage@gmail.com';
 export const SUPER_ADMIN_PASSWORD = 'Hashir@56';
+export const SUPER_ADMIN_SAFETY_PIN = '48488030'; // 8-digit master 2FA safety security passkey
 
 // Seed initial super admin if not present
 export async function ensureSuperAdminExists(): Promise<void> {
@@ -145,5 +147,6 @@ export {
   where,
   onSnapshot,
   orderBy,
-  runTransaction
+  runTransaction,
+  writeBatch
 };

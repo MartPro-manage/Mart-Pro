@@ -541,6 +541,50 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
     return filteredNetRevenue - filteredCostOfGoods;
   }, [filteredNetRevenue, filteredCostOfGoods]);
 
+  // Filter Expenses according to selected Date Range
+  const filteredExpensesByDate = useMemo(() => {
+    if (dateFilter === 'all') return expenses;
+    const now = new Date();
+    if (dateFilter === 'today') {
+      return expenses.filter(e => (e.date || getLocalDateString(e.timestamp)) === todayStr);
+    }
+    if (dateFilter === 'yesterday') {
+      return expenses.filter(e => (e.date || getLocalDateString(e.timestamp)) === yesterdayStr);
+    }
+    if (dateFilter === 'last_7_days') {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(now.getDate() - 7);
+      sevenDaysAgo.setHours(0, 0, 0, 0);
+      return expenses.filter(e => new Date(e.date || e.timestamp) >= sevenDaysAgo);
+    }
+    if (dateFilter === 'this_month') {
+      const curYear = now.getFullYear();
+      const curMonth = now.getMonth();
+      return expenses.filter(e => {
+        const d = new Date(e.date || e.timestamp);
+        return d.getFullYear() === curYear && d.getMonth() === curMonth;
+      });
+    }
+    if (dateFilter === 'custom_single') {
+      return expenses.filter(e => (e.date || getLocalDateString(e.timestamp)) === selectedSingleDate);
+    }
+    if (dateFilter === 'custom_range') {
+      return expenses.filter(e => {
+        const expDate = e.date || getLocalDateString(e.timestamp);
+        return expDate >= customStartDate && expDate <= customEndDate;
+      });
+    }
+    return expenses;
+  }, [expenses, dateFilter, todayStr, yesterdayStr, selectedSingleDate, customStartDate, customEndDate]);
+
+  const filteredTotalExpenses = useMemo(() => {
+    return filteredExpensesByDate.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
+  }, [filteredExpensesByDate]);
+
+  const filteredNetProfitIncludingExpenses = useMemo(() => {
+    return filteredNetProfit - filteredTotalExpenses;
+  }, [filteredNetProfit, filteredTotalExpenses]);
+
   const filteredProfitMargin = useMemo(() => {
     if (filteredNetRevenue <= 0) return 0;
     return (filteredNetProfit / filteredNetRevenue) * 100;
@@ -873,7 +917,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col lg:flex-row">
+    <div className="h-screen bg-slate-100 text-slate-900 flex overflow-hidden">
       {/* STORE ADMIN SIDEBAR NAVIGATION */}
       <StoreAdminSidebar
         activeTab={activeTab}
@@ -893,7 +937,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       />
 
       {/* MAIN DASHBOARD CONTENT WRAPPER */}
-      <div className="flex-1 min-w-0 flex flex-col min-h-screen overflow-x-hidden">
+      <div className="flex-1 min-w-0 flex flex-col h-screen overflow-hidden">
         {/* STICKY TOP APP BAR */}
         <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 sm:px-6 py-3.5 flex items-center justify-between gap-4 shadow-2xs">
           <div className="flex items-center gap-3 min-w-0">
@@ -1218,29 +1262,39 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4"
         >
           
-          {/* Net Realized Profit */}
+          {/* Net Realized Profit (Excl. & Incl. Expenses) */}
           <motion.div 
             whileHover={{ y: -2 }}
             transition={{ duration: 0.15 }}
-            className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden"
+            className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden xl:col-span-2"
           >
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                {dateFilter === 'all' ? 'Net Realized Profit' : 'Net Profit (Filtered Date)'}
+                Net Profit (Excl. & Incl. Expenses)
               </span>
-              <div className={`p-2 rounded-xl border font-bold text-xs flex items-center gap-1 ${
-                filteredNetProfit >= 0 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'
-              }`}>
-                <TrendingUp className="w-4 h-4" />
-                <span>{(filteredProfitMargin || 0).toFixed(1)}%</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] bg-orange-50 text-orange-700 px-2 py-0.5 rounded-full font-bold border border-orange-200">
+                  Total Exp: Rs. {filteredTotalExpenses.toLocaleString('en-PK', { maximumFractionDigits: 0 })}
+                </span>
               </div>
             </div>
-            <div className={`mt-3 text-2xl sm:text-3xl font-black font-mono ${
-              filteredNetProfit >= 0 ? 'text-emerald-600' : 'text-red-600'
-            }`}>
-              Rs. {filteredNetProfit.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-slate-100">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">Excluding Expenses</span>
+                <div className={`text-xl sm:text-2xl font-black font-mono ${filteredNetProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                  Rs. {filteredNetProfit.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">Including Expenses</span>
+                <div className={`text-xl sm:text-2xl font-black font-mono ${filteredNetProfitIncludingExpenses >= 0 ? 'text-blue-600' : 'text-rose-600'}`}>
+                  Rs. {filteredNetProfitIncludingExpenses.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+              </div>
             </div>
-            <div className="text-[11px] text-slate-500 mt-1 flex flex-wrap items-center gap-1 font-medium">
+
+            <div className="text-[11px] text-slate-500 mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap items-center gap-1 font-medium">
               <span className="text-slate-700 font-bold">Revenue: Rs. {(filteredNetRevenue || 0).toFixed(0)}</span>
               <span className="text-slate-400">•</span>
               <span className="text-slate-600 font-semibold">Cost: Rs. {(filteredCostOfGoods || 0).toFixed(0)}</span>

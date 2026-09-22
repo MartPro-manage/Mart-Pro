@@ -10,7 +10,8 @@ import {
   getDoc,
   addDoc,
   SUPER_ADMIN_USERNAME,
-  SUPER_ADMIN_PASSWORD 
+  SUPER_ADMIN_PASSWORD,
+  SUPER_ADMIN_SAFETY_PIN
 } from '../lib/firebase';
 import { UserAccount, Store, AuthState } from '../types';
 import { Logo } from './Logo';
@@ -33,7 +34,9 @@ import {
   Receipt,
   Store as StoreIcon,
   Wifi,
-  Flame
+  Flame,
+  KeyRound,
+  ShieldAlert
 } from 'lucide-react';
 
 interface LoginProps {
@@ -63,12 +66,17 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     setLoading(true);
 
     try {
-      // 1. Check Super Admin hardcoded match or Firestore query
-      if (
-        trimmedUsername.toLowerCase() === SUPER_ADMIN_USERNAME.toLowerCase() && 
-        trimmedPassword === SUPER_ADMIN_PASSWORD
-      ) {
-        // Find or build super admin account object
+      // 1. Check Super Admin hardcoded match
+      if (trimmedUsername.toLowerCase() === SUPER_ADMIN_USERNAME.toLowerCase()) {
+        const isPasswordCorrect = trimmedPassword === SUPER_ADMIN_PASSWORD;
+
+        if (!isPasswordCorrect) {
+          setError('Security Verification Failed: Incorrect Super Admin Password.');
+          setLoading(false);
+          return;
+        }
+
+        // Log in successfully!
         const superAdminUser: UserAccount = {
           id: 'super_admin_id',
           storeId: 'all',
@@ -83,13 +91,6 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           user: superAdminUser,
           store: null
         });
-        setLoading(false);
-        return;
-      }
-
-      // If user typed supermarketmanage@gmail.com but wrong password
-      if (trimmedUsername.toLowerCase() === SUPER_ADMIN_USERNAME.toLowerCase()) {
-        setError('Invalid password for Super Admin account.');
         setLoading(false);
         return;
       }
@@ -123,9 +124,10 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         return;
       }
 
+      const targetUser: UserAccount = matchedUser;
+
       // Fetch store details if not super admin
       let storeDetails: Store | null = null;
-      const targetUser: UserAccount = matchedUser;
 
       if (targetUser.storeId && targetUser.storeId !== 'all') {
         const storeDocRef = doc(db, 'stores', targetUser.storeId);
@@ -164,7 +166,6 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         user: targetUser,
         store: storeDetails
       });
-
     } catch (err: any) {
       console.error('Login error:', err);
       setError('An error occurred during authentication: ' + (err?.message || 'Check network connection.'));

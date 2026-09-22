@@ -53,7 +53,10 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
   const curr = store?.currencySymbol || 'Rs.';
   const receiptSubHeader = store?.receiptHeader || 'OFFICIAL SALES INVOICE';
+  const receiptGreetingMessage = store?.receiptGreeting || 'Welcome & Thank You for Shopping With Us!';
   const receiptFooterText = store?.receiptFooter || `THANK YOU FOR SHOPPING AT ${(store?.name || sale?.storeName || 'OUR STORE').toUpperCase()}! Please retain slip for return.`;
+  const isQrEnabled = store?.receiptQrCodeEnabled !== false;
+  const qrTitle = store?.receiptQrTitle || 'Scan to Verify Receipt';
   const isVoiceAllowed = store?.voiceAnnouncementEnabled !== false;
 
   useEffect(() => {
@@ -449,6 +452,15 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             <div style="font-size: 10px; font-weight: bold; margin-top: 6px;">Ref: ${sale.receiptNumber}</div>
           </div>
 
+          ${isQrEnabled && qrCodeDataUrl ? `
+            <div class="divider"></div>
+            <div class="text-center" style="margin-top: 8px;">
+              <div style="font-size: 10px; font-weight: bold; text-transform: uppercase; margin-bottom: 4px;">${qrTitle}</div>
+              <img src="${qrCodeDataUrl}" alt="${qrTitle}" style="width: 100px; height: 100px; margin: 0 auto; display: block;" />
+              <div style="font-size: 9px; color: #555; margin-top: 2px;">Invoice #${sale.receiptNumber}</div>
+            </div>
+          ` : ''}
+
           <script>
             window.onload = function() {
               setTimeout(function() {
@@ -707,11 +719,16 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 <div className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">
                   {receiptSubHeader}
                 </div>
+                {receiptGreetingMessage && (
+                  <div className="text-[10px] font-bold text-orange-700 italic pt-0.5">
+                    "{receiptGreetingMessage}"
+                  </div>
+                )}
                 {store?.address && (
                   <div className="text-[10px] text-slate-600 font-medium">{store.address}</div>
                 )}
                 {store?.phone && (
-                  <div className="text-[10px] text-slate-500 font-medium">Tel: {store.phone}</div>
+                  <div className="text-[10px] text-slate-700 font-bold">Tel / Helpline: {store.phone}</div>
                 )}
                 {store?.taxRegistrationNumber && (
                   <div className="text-[10px] text-slate-700 font-bold">{store.taxRegistrationNumber}</div>
@@ -820,6 +837,25 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                   <p className="text-[9px] text-slate-400">{store.address}</p>
                 )}
               </div>
+
+              {/* QR Code with Title Above It */}
+              {isQrEnabled && qrCodeDataUrl && (
+                <div className="pt-3 border-t border-dashed border-slate-300 flex flex-col items-center justify-center text-center space-y-1.5">
+                  <div className="text-[10px] font-black uppercase tracking-wider text-slate-800">
+                    {qrTitle}
+                  </div>
+                  <div className="bg-white p-2 rounded-xl border border-slate-300 inline-block shadow-2xs">
+                    <img 
+                      src={qrCodeDataUrl} 
+                      alt={qrTitle} 
+                      className="w-24 h-24 sm:w-28 sm:h-28 object-contain"
+                    />
+                  </div>
+                  <div className="text-[9px] text-slate-400 font-mono">
+                    Invoice #{sale.receiptNumber}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Action Controls for Printing & Downloading */}

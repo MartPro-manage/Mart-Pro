@@ -38,7 +38,8 @@ import {
   Tag,
   MapPin,
   Store as StoreIcon,
-  FileText
+  FileText,
+  QrCode
 } from 'lucide-react';
 
 interface StoreSettingsViewProps {
@@ -57,11 +58,16 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
   // Store Identity & Address
   const [storeName, setStoreName] = useState(store.name || '');
   const [storeAddress, setStoreAddress] = useState(store.address || '');
+  const [storePhone, setStorePhone] = useState(store.phone || '');
 
   // POS & Receipt Settings
   const [currencySymbol, setCurrencySymbol] = useState(store.currencySymbol || 'Rs.');
   const [receiptHeader, setReceiptHeader] = useState(store.receiptHeader || 'OFFICIAL SALES INVOICE');
   const [receiptFooter, setReceiptFooter] = useState(store.receiptFooter || 'THANK YOU FOR SHOPPING WITH US! Retain slip for returns.');
+  const [receiptGreeting, setReceiptGreeting] = useState(store.receiptGreeting || 'Welcome & Thank You for Shopping!');
+  const [receiptQrCodeEnabled, setReceiptQrCodeEnabled] = useState<boolean>(store.receiptQrCodeEnabled !== false);
+  const [receiptQrTitle, setReceiptQrTitle] = useState(store.receiptQrTitle || 'Scan to Verify Receipt');
+  const [receiptQrData, setReceiptQrData] = useState(store.receiptQrData || '');
   const [returnPolicyDays, setReturnPolicyDays] = useState<number>(store.returnPolicyDays || 7);
   const [receiptFormat, setReceiptFormat] = useState<'standard' | 'classic_detailed' | 'compact_eco'>(store.receiptFormat || 'standard');
   const [logoUrl, setLogoUrl] = useState<string>(store.logoUrl || '');
@@ -87,9 +93,14 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
   useEffect(() => {
     setStoreName(store.name || '');
     setStoreAddress(store.address || '');
+    setStorePhone(store.phone || '');
     setCurrencySymbol(store.currencySymbol || 'Rs.');
     setReceiptHeader(store.receiptHeader || 'OFFICIAL SALES INVOICE');
     setReceiptFooter(store.receiptFooter || 'THANK YOU FOR SHOPPING WITH US! Retain slip for returns.');
+    setReceiptGreeting(store.receiptGreeting || 'Welcome & Thank You for Shopping!');
+    setReceiptQrCodeEnabled(store.receiptQrCodeEnabled !== false);
+    setReceiptQrTitle(store.receiptQrTitle || 'Scan to Verify Receipt');
+    setReceiptQrData(store.receiptQrData || '');
     setReturnPolicyDays(store.returnPolicyDays || 7);
     setReceiptFormat(store.receiptFormat || 'standard');
     setLogoUrl(store.logoUrl || '');
@@ -195,9 +206,14 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
       const updatePayload: Partial<Store> = {
         name: storeName.trim() || store.name,
         address: storeAddress.trim(),
+        phone: storePhone.trim(),
         currencySymbol: currencySymbol.trim() || 'Rs.',
         receiptHeader: receiptHeader.trim(),
         receiptFooter: receiptFooter.trim(),
+        receiptGreeting: receiptGreeting.trim(),
+        receiptQrCodeEnabled: Boolean(receiptQrCodeEnabled),
+        receiptQrTitle: receiptQrTitle.trim() || 'Scan to Verify Receipt',
+        receiptQrData: receiptQrData.trim(),
         returnPolicyDays: Number(returnPolicyDays) || 7,
         receiptFormat: receiptFormat,
         logoUrl: logoUrl || '',
@@ -315,7 +331,7 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
                 Store Name (Prints on all receipts)
@@ -328,6 +344,20 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-xs font-bold focus:outline-none focus:border-orange-500 focus:bg-white transition-all shadow-xs"
               />
               <p className="text-[11px] text-slate-400 mt-1">Changes name displayed on POS terminals and receipts.</p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                Store Phone / Helpline (Prints on receipts)
+              </label>
+              <input
+                type="text"
+                value={storePhone}
+                onChange={(e) => setStorePhone(e.target.value)}
+                placeholder="e.g. +92 300 1234567 / 042-111-222"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-xs font-bold focus:outline-none focus:border-orange-500 focus:bg-white transition-all shadow-xs"
+              />
+              <p className="text-[11px] text-slate-400 mt-1">Contact number printed at the top of customer receipts.</p>
             </div>
 
             <div>
@@ -695,7 +725,21 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
 
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                Receipt Footer Thank You Message
+                Receipt Customer Greeting Message
+              </label>
+              <input
+                type="text"
+                value={receiptGreeting}
+                onChange={(e) => setReceiptGreeting(e.target.value)}
+                placeholder="e.g. Welcome & Thank you for shopping with us!"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-xs font-bold focus:outline-none focus:border-orange-500 focus:bg-white transition-all shadow-xs"
+              />
+              <p className="text-[11px] text-slate-400 mt-1">Special welcoming / promotional greeting printed on the bill.</p>
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                Receipt Footer Policy & Note
               </label>
               <input
                 type="text"
@@ -706,6 +750,68 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
               />
               <p className="text-[11px] text-slate-400 mt-1">Closing greeting printed at the bottom of the slip.</p>
             </div>
+          </div>
+
+          {/* RECEIPT QR CODE CONFIGURATION (With Title Above QR Code) */}
+          <div className="p-5 bg-gradient-to-r from-orange-50/60 to-amber-50/60 border border-orange-200/80 rounded-2xl space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-orange-200/60 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-orange-600 text-white rounded-xl shadow-xs">
+                  <QrCode className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-extrabold text-slate-900">Receipt QR Code Settings</h4>
+                  <p className="text-[11px] text-slate-600 font-medium">
+                    Print an automated verification QR code with custom title on every customer invoice slip.
+                  </p>
+                </div>
+              </div>
+
+              <label className="relative inline-flex items-center cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={receiptQrCodeEnabled}
+                  onChange={(e) => setReceiptQrCodeEnabled(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div>
+                <span className="ml-3 text-xs font-extrabold text-slate-800">
+                  {receiptQrCodeEnabled ? 'QR Code Enabled' : 'QR Code Disabled'}
+                </span>
+              </label>
+            </div>
+
+            {receiptQrCodeEnabled && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1 animate-fade-in">
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5">
+                    Title Displayed Above QR Code *
+                  </label>
+                  <input
+                    type="text"
+                    value={receiptQrTitle}
+                    onChange={(e) => setReceiptQrTitle(e.target.value)}
+                    placeholder="e.g. Scan to Verify Receipt / Digital Invoice"
+                    className="w-full px-3.5 py-2.5 bg-white border border-orange-200 rounded-xl text-slate-900 text-xs font-bold focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/10 transition-all"
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">This text appears directly above the QR code on the thermal slip.</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5">
+                    Custom QR Target URL / Data (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={receiptQrData}
+                    onChange={(e) => setReceiptQrData(e.target.value)}
+                    placeholder="e.g. https://yourmart.com or leave blank for auto slip-verification"
+                    className="w-full px-3.5 py-2.5 bg-white border border-orange-200 rounded-xl text-slate-900 text-xs font-bold focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/10 transition-all"
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">If blank, defaults to generating an instant digital verification link for that invoice.</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

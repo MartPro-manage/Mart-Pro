@@ -22,10 +22,12 @@ import { MultiProductBatchModal } from './MultiProductBatchModal';
 import { ExcelManagerModal } from './ExcelManagerModal';
 import { StoreAiAssistantModal } from './StoreAiAssistantModal';
 import { UniversalBackButton } from './UniversalBackButton';
+import { DiscountManagerModal } from './DiscountManagerModal';
 import { downloadBarcodeForProduct } from '../lib/barcodeDownload';
 import { BatchProductRow } from '../lib/excelParser';
 import { getAllCategories, addCustomCategoryToStore } from '../lib/categories';
 import { generateNextShortcutCode } from '../utils/productShortcuts';
+import { getProductDiscountInfo } from '../utils/discountUtils';
 import { 
   Package,
   PackagePlus, 
@@ -79,6 +81,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   const [spreadsheetProductsForAi, setSpreadsheetProductsForAi] = useState<BatchProductRow[] | null>(null);
   const [isAiAssistantOpen, setIsAiAssistantOpen] = useState(false);
   const [aiEditTargetProduct, setAiEditTargetProduct] = useState<Product | null>(null);
+  const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false);
 
   // Category addition states
   const [isAddCategoryModalOpen, setIsAddCategoryModalOpen] = useState(false);
@@ -98,6 +101,9 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   const [category, setCategory] = useState('General');
   const [costPrice, setCostPrice] = useState<number | ''>('');
   const [price, setPrice] = useState<number | ''>('');
+  const [discountActive, setDiscountActive] = useState<boolean>(false);
+  const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage');
+  const [discountValue, setDiscountValue] = useState<number | ''>('');
   const [stockQuantityToAdd, setStockQuantityToAdd] = useState<number | ''>('');
   const [stockAdjustmentMode, setStockAdjustmentMode] = useState<'keep' | 'add' | 'set'>('keep');
   const [minStockLevel, setMinStockLevel] = useState<number>(5);
@@ -298,6 +304,9 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     setCategory('General');
     setCostPrice('');
     setPrice('');
+    setDiscountActive(false);
+    setDiscountType('percentage');
+    setDiscountValue('');
     setStockQuantityToAdd('');
     setStockAdjustmentMode('keep');
     setExistingProduct(null);
@@ -316,6 +325,9 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     setCategory(p.category || 'General');
     setCostPrice(p.costPrice !== undefined ? p.costPrice : '');
     setPrice(p.price);
+    setDiscountActive(p.discountActive || false);
+    setDiscountType(p.discountType || 'percentage');
+    setDiscountValue(p.discountValue !== undefined && p.discountValue > 0 ? p.discountValue : '');
     setMinStockLevel(p.minStockLevel || 5);
     setSellBy(p.sellBy || (p.unitType === 'kg' ? 'weight' : 'unit'));
     setUnitType((p.unitType as any) || (p.sellBy === 'weight' ? 'kg' : 'piece'));
@@ -493,6 +505,8 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
         const productDocRef = doc(db, 'products', targetProduct.id);
         const shortcutCode = targetProduct.shortcutCode || generateNextShortcutCode(products);
 
+        const numDiscountValue = discountActive && discountValue !== '' ? Number(discountValue) : undefined;
+
         await updateDoc(productDocRef, cleanFirestoreData({
           barcode: trimmedBarcode || '',
           shortcutCode,
@@ -507,6 +521,9 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
           sellBy: sellBy,
           unitType: sellBy === 'weight' ? (unitType || 'kg') : (unitType || 'piece'),
           weightPerUnit: numericWeightPerUnit || undefined,
+          discountActive: discountActive && !!numDiscountValue,
+          discountType: discountType || 'percentage',
+          discountValue: numDiscountValue || undefined,
           stockQuantity: finalTotalStock,
           minStockLevel: minStockLevel || 5,
           updatedAt: new Date().toISOString()
@@ -520,6 +537,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
         // REGISTER NEW PRODUCT with automated 4-digit shortcut code
         const productDocRef = doc(collection(db, 'products'));
         const shortcutCode = generateNextShortcutCode(products);
+        const numDiscountValue = discountActive && discountValue !== '' ? Number(discountValue) : undefined;
 
         const newProduct: Product = {
           id: productDocRef.id,
@@ -537,6 +555,9 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
           sellBy: sellBy,
           unitType: sellBy === 'weight' ? (unitType || 'kg') : (unitType || 'piece'),
           weightPerUnit: numericWeightPerUnit || undefined,
+          discountActive: discountActive && !!numDiscountValue,
+          discountType: discountType || 'percentage',
+          discountValue: numDiscountValue || undefined,
           stockQuantity: finalTotalStock,
           minStockLevel: minStockLevel || 5,
           createdAt: new Date().toISOString(),
@@ -792,6 +813,23 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 z-10 shrink-0">
+            {/* Discounts & Promotions Manager Button */}
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setIsDiscountModalOpen(true)}
+              className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs uppercase tracking-wider shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer relative"
+              title="Add discount to all or selected products (% or Rs.)"
+            >
+              <Tag className="w-4 h-4 text-rose-200" />
+              <span>Discounts & Sales</span>
+              {products.filter(p => p.discountActive && p.discountValue).length > 0 && (
+                <span className="ml-1 px-1.5 py-0.2 bg-white text-rose-700 text-[10px] font-black rounded-full">
+                  {products.filter(p => p.discountActive && p.discountValue).length}
+                </span>
+              )}
+            </motion.button>
+
             {/* Multi-Product Batch Entry & Excel Import */}
             <motion.button
               whileHover={{ scale: 1.02 }}
@@ -1445,6 +1483,85 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                   </div>
                 </div>
 
+                {/* Product Discount Configuration */}
+                <div className="p-3.5 bg-rose-50/60 rounded-2xl border border-rose-200/80 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={discountActive}
+                        onChange={(e) => setDiscountActive(e.target.checked)}
+                        className="w-4 h-4 text-rose-600 rounded border-slate-300 focus:ring-rose-500 cursor-pointer"
+                      />
+                      <Tag className="w-3.5 h-3.5 text-rose-600" />
+                      <span>Apply Discount on this Product</span>
+                    </label>
+                    {discountActive && (
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200 uppercase tracking-wider">
+                        Active Discount
+                      </span>
+                    )}
+                  </div>
+
+                  {discountActive && (
+                    <div className="space-y-2.5 pt-1">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                            Discount Type
+                          </label>
+                          <select
+                            value={discountType}
+                            onChange={(e) => setDiscountType(e.target.value as any)}
+                            className="w-full px-3 py-2 bg-white border border-rose-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-rose-500"
+                          >
+                            <option value="percentage">Percentage (%)</option>
+                            <option value="fixed">Fixed Rupees (Rs.)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                            {discountType === 'percentage' ? 'Percentage Off (%)' : 'Amount Off (Rs.)'}
+                          </label>
+                          <input
+                            type="number"
+                            step="any"
+                            min="0"
+                            max={discountType === 'percentage' ? 100 : undefined}
+                            placeholder={discountType === 'percentage' ? 'e.g. 10' : 'e.g. 50'}
+                            value={discountValue}
+                            onChange={(e) => setDiscountValue(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                            className="w-full px-3 py-2 bg-white border border-rose-200 rounded-xl text-xs font-bold text-rose-700 focus:outline-none focus:border-rose-500 font-mono"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Live calculation preview */}
+                      {(() => {
+                        const originalP = typeof price === 'number' ? price : (price ? parseFloat(price as any) : 0);
+                        const discVal = typeof discountValue === 'number' ? discountValue : (discountValue ? parseFloat(discountValue as any) : 0);
+                        if (originalP > 0 && discVal > 0) {
+                          const discAmt = discountType === 'percentage' ? (originalP * discVal) / 100 : discVal;
+                          const finalP = Math.max(0, originalP - discAmt);
+                          return (
+                            <div className="p-2.5 bg-white rounded-xl border border-rose-200/90 flex items-center justify-between text-xs">
+                              <div>
+                                <span className="text-slate-500 text-[10px] block">Customer Pays</span>
+                                <span className="font-black text-rose-700 text-sm font-mono">Rs. {finalP.toFixed(2)}</span>
+                              </div>
+                              <div className="text-right">
+                                <span className="text-slate-500 text-[10px] block">Customer Saves</span>
+                                <span className="font-bold text-emerald-600 font-mono">Rs. {discAmt.toFixed(2)} {discountType === 'percentage' ? `(${discVal}%)` : ''}</span>
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
+                  )}
+                </div>
+
                 {/* Live Profit & Margin Indicator */}
                 {(() => {
                   const numSellingPrice = typeof price === 'number' ? price : (price !== '' ? parseFloat(price as any) : 0);
@@ -1947,6 +2064,17 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
           onOpenBatchRegister={() => {
             setIsAiAssistantOpen(false);
             setIsBatchModalOpen(true);
+          }}
+        />
+
+        {/* DISCOUNT MANAGER MODAL */}
+        <DiscountManagerModal
+          isOpen={isDiscountModalOpen}
+          onClose={() => setIsDiscountModalOpen(false)}
+          products={products}
+          store={store}
+          onDiscountApplied={() => {
+            showNotification('success', 'Product discounts successfully updated!');
           }}
         />
 

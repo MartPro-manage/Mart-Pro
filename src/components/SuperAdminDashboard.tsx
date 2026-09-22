@@ -16,6 +16,7 @@ import {
 } from '../lib/firebase';
 import { Store, UserAccount } from '../types';
 import { cleanupExpiredReceipts } from '../lib/salesCleanup';
+import { RealTimeDatabaseUsage } from './RealTimeDatabaseUsage';
 import { 
   Store as StoreIcon, 
   Plus, 
@@ -62,7 +63,25 @@ interface SuperAdminProps {
 export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreToManage }) => {
   const [stores, setStores] = useState<Store[]>([]);
   const [users, setUsers] = useState<UserAccount[]>([]);
-  const [activeTab, setActiveTab] = useState<'stores' | 'cash_counters' | 'product_registers' | 'price_checkers' | 'all_accounts' | 'settings'>('stores');
+  const [activeTab, setActiveTab] = useState<'stores' | 'cash_counters' | 'product_registers' | 'price_checkers' | 'all_accounts' | 'settings' | 'database_usage'>('stores');
+
+  // 8-Digit Safety PIN verification after login
+  const [isPinVerified, setIsPinVerified] = useState(() => {
+    return sessionStorage.getItem('super_admin_pin_verified') === 'true';
+  });
+  const [safetyPinInput, setSafetyPinInput] = useState('');
+  const [pinError, setPinError] = useState<string | null>(null);
+
+  const handleVerifySafetyPin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (safetyPinInput.trim() === '48488030') {
+      sessionStorage.setItem('super_admin_pin_verified', 'true');
+      setIsPinVerified(true);
+      setPinError(null);
+    } else {
+      setPinError('Incorrect 8-digit Super Admin Safety Passkey. (Correct passkey is 48488030)');
+    }
+  };
 
   // Master SuperAdmin Account Settings
   const [masterAdminPassword, setMasterAdminPassword] = useState('');
@@ -634,6 +653,54 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 p-4 sm:p-6 lg:p-8">
+      {/* 8-Digit Safety PIN Verification Modal Gate */}
+      {!isPinVerified && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl space-y-6 text-slate-900">
+            <div className="text-center space-y-2">
+              <div className="w-14 h-14 bg-amber-100 text-amber-700 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
+                <ShieldCheck className="w-7 h-7" />
+              </div>
+              <h2 className="text-xl font-black text-slate-900 tracking-tight">Super Admin Security Verification</h2>
+              <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                Please enter your 8-digit Super Admin Safety Passkey (<code className="font-mono bg-slate-100 px-1.5 py-0.5 rounded font-bold text-amber-700">48488030</code>) to unlock Master Control.
+              </p>
+            </div>
+
+            {pinError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-bold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{pinError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleVerifySafetyPin} className="space-y-4">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  8-Digit Safety Passkey
+                </label>
+                <input
+                  type="password"
+                  maxLength={8}
+                  autoFocus
+                  value={safetyPinInput}
+                  onChange={(e) => setSafetyPinInput(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                  placeholder="Enter 8-digit PIN..."
+                  className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl text-slate-900 font-mono font-black tracking-widest text-center text-lg focus:outline-none focus:bg-white focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3.5 bg-orange-600 hover:bg-orange-700 text-white font-black rounded-xl shadow-md text-sm uppercase tracking-wider transition-all cursor-pointer"
+              >
+                Verify & Unlock Dashboard
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto space-y-8">
         
         {/* Header Title Banner - Clean White Theme */}
@@ -762,6 +829,19 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
             }`}
           >
             <Settings className="w-4 h-4" /> 6. Global Settings & Master Policies
+          </motion.button>
+
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setActiveTab('database_usage')}
+            className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm cursor-pointer transition-all ${
+              activeTab === 'database_usage'
+                ? 'bg-orange-600 text-white shadow-md shadow-orange-600/20'
+                : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            <Database className="w-4 h-4" /> 7. Real-Time Database Usage
           </motion.button>
         </div>
 
@@ -2054,6 +2134,11 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
             </div>
 
           </div>
+        )}
+
+        {/* TAB 7: REAL-TIME DATABASE USAGE */}
+        {activeTab === 'database_usage' && (
+          <RealTimeDatabaseUsage stores={stores} users={uniqueUsers} />
         )}
 
       </div>

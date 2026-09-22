@@ -220,6 +220,7 @@ export const StoreAdminSidebar: React.FC<StoreAdminSidebarProps> = ({
       <aside
         className={`
           fixed inset-y-0 left-0 z-50 lg:static lg:z-auto
+          h-screen sticky top-0
           bg-slate-900 text-slate-100 flex flex-col border-r border-slate-800/80
           transition-all duration-200 ease-in-out shrink-0 select-none
           ${isOpenMobile ? 'translate-x-0 w-72 shadow-2xl' : '-translate-x-full lg:translate-x-0'}

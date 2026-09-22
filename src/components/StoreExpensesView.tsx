@@ -226,6 +226,35 @@ export const StoreExpensesView: React.FC<StoreExpensesViewProps> = ({
     }
   };
 
+  // Handle Delete Monthly Expenses
+  const handleDeleteMonthlyExpenses = async () => {
+    const now = new Date();
+    const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const monthlyExpenses = expenses.filter(exp => {
+      const expDate = exp.date || exp.timestamp.split('T')[0];
+      return expDate.startsWith(currentMonthStr);
+    });
+
+    if (monthlyExpenses.length === 0) {
+      showNotification('error', 'No expenses found for this month to delete.');
+      return;
+    }
+
+    if (!window.confirm(`Are you sure you want to delete all ${monthlyExpenses.length} monthly expense records for (${currentMonthStr})? This cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      for (const exp of monthlyExpenses) {
+        await deleteDoc(doc(db, 'expenses', exp.id));
+      }
+      showNotification('success', `Successfully deleted ${monthlyExpenses.length} monthly expenses.`);
+    } catch (err: any) {
+      console.error('Error deleting monthly expenses:', err);
+      showNotification('error', 'Failed to delete monthly expenses.');
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Banner & Action */}
@@ -244,13 +273,24 @@ export const StoreExpensesView: React.FC<StoreExpensesViewProps> = ({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setIsAddModalOpen(true)}
-          className="px-4 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer shrink-0"
-        >
-          <Plus className="w-4 h-4" /> Add New Expense
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleDeleteMonthlyExpenses}
+            className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer shrink-0"
+            title="Delete all expense records for the current month"
+          >
+            <Trash2 className="w-4 h-4" /> Delete Monthly Expenses
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsAddModalOpen(true)}
+            className="px-4 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer shrink-0"
+          >
+            <Plus className="w-4 h-4" /> Add New Expense
+          </button>
+        </div>
       </div>
 
       {/* Notification banner */}

@@ -92,21 +92,21 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     text += `-----------------------------------\n`;
     text += `ITEMS:\n`;
     (sale.items || []).forEach((item, index) => {
-      const isWeight = item.sellBy === 'weight' || item.unitType === 'kg' || item.quantity % 1 !== 0;
+      const isWeight = item.sellBy === 'weight' || item.unitType === 'kg' || (item.quantity || 0) % 1 !== 0;
       const qtyText = isWeight ? `${item.quantity}kg` : `${item.quantity}`;
       text += `${index + 1}. ${item.name}\n`;
-      text += `   ${qtyText} x ${curr} ${item.price.toFixed(2)} = ${curr} ${item.total.toFixed(2)}\n`;
+      text += `   ${qtyText} x ${curr} ${(item.price || 0).toFixed(2)} = ${curr} ${(item.total || 0).toFixed(2)}\n`;
     });
     text += `-----------------------------------\n`;
     if (sale.discountAmount && sale.discountAmount > 0) {
-      const sub = sale.subtotalAmount || (sale.totalAmount + sale.discountAmount);
-      text += `SUBTOTAL:     ${curr} ${sub.toFixed(2)}\n`;
-      text += `DISCOUNT${sale.discountType === 'percentage' && sale.discountValue ? ` (${sale.discountValue}%)` : ''}: -${curr} ${sale.discountAmount.toFixed(2)}\n`;
+      const sub = sale.subtotalAmount || ((sale.totalAmount || 0) + (sale.discountAmount || 0));
+      text += `SUBTOTAL:     ${curr} ${(sub || 0).toFixed(2)}\n`;
+      text += `DISCOUNT${sale.discountType === 'percentage' && sale.discountValue ? ` (${sale.discountValue}%)` : ''}: -${curr} ${(sale.discountAmount || 0).toFixed(2)}\n`;
       text += `-----------------------------------\n`;
     }
-    text += `TOTAL AMOUNT: ${curr} ${sale.totalAmount.toFixed(2)}\n`;
+    text += `TOTAL AMOUNT: ${curr} ${(sale.totalAmount || 0).toFixed(2)}\n`;
     if (sale.paymentMethod === 'cash' && sale.cashReceived !== undefined) {
-      text += `CASH RECEIVED:   ${curr} ${sale.cashReceived.toFixed(2)}\n`;
+      text += `CASH RECEIVED:   ${curr} ${(sale.cashReceived || 0).toFixed(2)}\n`;
       text += `CHANGE RETURNED: ${curr} ${(sale.changeReturned || 0).toFixed(2)}\n`;
     }
     text += `===================================\n`;
@@ -201,14 +201,14 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               </thead>
               <tbody>
                 ${(sale.items || []).map(item => {
-                  const isWeight = item.sellBy === 'weight' || item.unitType === 'kg' || item.quantity % 1 !== 0;
-                  const qtyText = isWeight ? `${item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(3)} kg` : item.quantity.toString();
+                  const isWeight = item.sellBy === 'weight' || item.unitType === 'kg' || (item.quantity || 0) % 1 !== 0;
+                  const qtyText = isWeight ? `${(item.quantity || 0) % 1 === 0 ? (item.quantity || 0) : (item.quantity || 0).toFixed(3)} kg` : (item.quantity || 0).toString();
                   return `
                     <tr>
                       <td><strong>${item.name}</strong>${item.weightInfo ? `<br/><small style="color:#64748b">${item.weightInfo}</small>` : ''}</td>
                       <td class="text-center font-bold">${qtyText}</td>
-                      <td class="text-right">${curr} ${item.price.toFixed(2)}${isWeight ? '/kg' : ''}</td>
-                      <td class="text-right font-bold">${curr} ${item.total.toFixed(2)}</td>
+                      <td class="text-right">${curr} ${(item.price || 0).toFixed(2)}${isWeight ? '/kg' : ''}</td>
+                      <td class="text-right font-bold">${curr} ${(item.total || 0).toFixed(2)}</td>
                     </tr>
                   `;
                 }).join('')}
@@ -220,23 +220,23 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             ${sale.discountAmount && sale.discountAmount > 0 ? `
               <div class="flex-row" style="color: #64748b;">
                 <span>Subtotal:</span>
-                <span>${curr} ${(sale.subtotalAmount || (sale.totalAmount + sale.discountAmount)).toFixed(2)}</span>
+                <span>${curr} ${(sale.subtotalAmount || ((sale.totalAmount || 0) + (sale.discountAmount || 0))).toFixed(2)}</span>
               </div>
               <div class="flex-row font-bold" style="color: #047857;">
                 <span>Discount ${sale.discountType === 'percentage' && sale.discountValue ? `(${sale.discountValue}%)` : ''}:</span>
-                <span>-${curr} ${sale.discountAmount.toFixed(2)}</span>
+                <span>-${curr} ${(sale.discountAmount || 0).toFixed(2)}</span>
               </div>
             ` : ''}
 
             <div class="flex-row total-box">
               <span>GRAND TOTAL:</span>
-              <span>${curr} ${sale.totalAmount.toFixed(2)}</span>
+              <span>${curr} ${(sale.totalAmount || 0).toFixed(2)}</span>
             </div>
 
             ${sale.paymentMethod === 'cash' && sale.cashReceived !== undefined ? `
               <div class="flex-row" style="margin-top: 4px;">
                 <span>Cash Received:</span>
-                <span>${curr} ${sale.cashReceived.toFixed(2)}</span>
+                <span>${curr} ${(sale.cashReceived || 0).toFixed(2)}</span>
               </div>
               <div class="flex-row font-bold" style="color: #047857;">
                 <span>Change Returned:</span>
@@ -399,14 +399,14 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             </thead>
             <tbody>
               ${(sale.items || []).map(item => {
-                const isWeight = item.sellBy === 'weight' || item.unitType === 'kg' || item.quantity % 1 !== 0;
-                const qtyText = isWeight ? `${item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(3)} kg` : item.quantity.toString();
+                const isWeight = item.sellBy === 'weight' || item.unitType === 'kg' || (item.quantity || 0) % 1 !== 0;
+                const qtyText = isWeight ? `${(item.quantity || 0) % 1 === 0 ? (item.quantity || 0) : (item.quantity || 0).toFixed(3)} kg` : (item.quantity || 0).toString();
                 return `
                   <tr>
                     <td><strong>${item.name}</strong>${item.weightInfo ? `<br/><small style="color:#666">${item.weightInfo}</small>` : ''}</td>
                     <td class="text-center">${qtyText}</td>
-                    <td class="text-right">${curr} ${item.price.toFixed(2)}${isWeight ? '/kg' : ''}</td>
-                    <td class="text-right">${curr} ${item.total.toFixed(2)}</td>
+                    <td class="text-right">${curr} ${(item.price || 0).toFixed(2)}${isWeight ? '/kg' : ''}</td>
+                    <td class="text-right">${curr} ${(item.total || 0).toFixed(2)}</td>
                   </tr>
                 `;
               }).join('')}
@@ -418,23 +418,23 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
           ${sale.discountAmount && sale.discountAmount > 0 ? `
             <div class="flex-row" style="margin-top: 4px; font-size: 11px;">
               <span>Subtotal:</span>
-              <span>${curr} ${(sale.subtotalAmount || (sale.totalAmount + sale.discountAmount)).toFixed(2)}</span>
+              <span>${curr} ${(sale.subtotalAmount || ((sale.totalAmount || 0) + (sale.discountAmount || 0))).toFixed(2)}</span>
             </div>
             <div class="flex-row font-bold" style="margin-top: 2px; font-size: 11px; color: #047857;">
               <span>Discount ${sale.discountType === 'percentage' && sale.discountValue ? `(${sale.discountValue}%)` : ''}:</span>
-              <span>-${curr} ${sale.discountAmount.toFixed(2)}</span>
+              <span>-${curr} ${(sale.discountAmount || 0).toFixed(2)}</span>
             </div>
           ` : ''}
 
           <div class="flex-row total-box">
             <span>GRAND TOTAL:</span>
-            <span>${curr} ${sale.totalAmount.toFixed(2)}</span>
+            <span>${curr} ${(sale.totalAmount || 0).toFixed(2)}</span>
           </div>
 
           ${sale.paymentMethod === 'cash' && sale.cashReceived !== undefined ? `
             <div class="flex-row" style="margin-top: 4px; font-size: 11px;">
               <span>Cash Received:</span>
-              <span>${curr} ${sale.cashReceived.toFixed(2)}</span>
+              <span>${curr} ${(sale.cashReceived || 0).toFixed(2)}</span>
             </div>
             <div class="flex-row font-bold" style="font-size: 11px; color: #047857;">
               <span>Change Returned:</span>
@@ -750,8 +750,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 </div>
 
                 {(sale.items || []).map((item, idx) => {
-                  const isWeight = item.sellBy === 'weight' || item.unitType === 'kg' || item.quantity % 1 !== 0;
-                  const qtyDisplay = isWeight ? `${item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(3)}kg` : item.quantity.toString();
+                  const isWeight = item.sellBy === 'weight' || item.unitType === 'kg' || (item.quantity || 0) % 1 !== 0;
+                  const qtyDisplay = isWeight ? `${(item.quantity || 0) % 1 === 0 ? (item.quantity || 0) : (item.quantity || 0).toFixed(3)}kg` : (item.quantity || 0).toString();
 
                   return (
                     <div key={idx} className="grid grid-cols-12 text-slate-900 text-[11px] py-0.5 items-center">
@@ -762,8 +762,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                         )}
                       </div>
                       <span className="col-span-2 text-center font-bold font-mono">{qtyDisplay}</span>
-                      <span className="col-span-2 text-right text-slate-600 font-mono">{curr} {item.price.toFixed(2)}</span>
-                      <span className="col-span-3 text-right font-extrabold text-slate-900 font-mono">{curr} {item.total.toFixed(2)}</span>
+                      <span className="col-span-2 text-right text-slate-600 font-mono">{curr} {(item.price || 0).toFixed(2)}</span>
+                      <span className="col-span-3 text-right font-extrabold text-slate-900 font-mono">{curr} {(item.total || 0).toFixed(2)}</span>
                     </div>
                   );
                 })}
@@ -779,11 +779,11 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                   <>
                     <div className="flex justify-between text-xs text-slate-600">
                       <span>Subtotal:</span>
-                      <span className="font-mono font-semibold">{curr} {(sale.subtotalAmount || (sale.totalAmount + sale.discountAmount)).toFixed(2)}</span>
+                      <span className="font-mono font-semibold">{curr} ${(sale.subtotalAmount || ((sale.totalAmount || 0) + (sale.discountAmount || 0))).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-xs font-bold text-emerald-700">
                       <span>Discount {sale.discountType === 'percentage' && sale.discountValue ? `(${sale.discountValue}%)` : ''}:</span>
-                      <span className="font-mono">-{curr} {sale.discountAmount.toFixed(2)}</span>
+                      <span className="font-mono">-{curr} {(sale.discountAmount || 0).toFixed(2)}</span>
                     </div>
                   </>
                 ) : null}
@@ -792,18 +792,18 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                   store?.receiptFormat === 'classic_detailed' ? 'border-t border-slate-400 text-base' : 'border-t border-slate-200'
                 }`}>
                   <span>GRAND TOTAL:</span>
-                  <span className="text-orange-700">{curr} {sale.totalAmount.toFixed(2)}</span>
+                  <span className="text-orange-700">{curr} {(sale.totalAmount || 0).toFixed(2)}</span>
                 </div>
 
                 {sale.paymentMethod === 'cash' && sale.cashReceived !== undefined && (
                   <>
                     <div className="flex justify-between text-xs font-semibold text-slate-600 pt-1">
                       <span>Cash Received:</span>
-                      <span className="font-mono">{curr} {sale.cashReceived.toFixed(2)}</span>
+                      <span className="font-mono">{curr} {(sale.cashReceived || 0).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-xs font-black text-emerald-700">
                       <span>Change Returned:</span>
-                      <span className="font-mono">{curr} {(sale.changeReturned || 0).toFixed(2)}</span>
+                      <span className="font-mono">{curr} ${(sale.changeReturned || 0).toFixed(2)}</span>
                     </div>
                   </>
                 )}

@@ -27,6 +27,7 @@ import { BatchProductRow } from '../lib/excelParser';
 import { getAllCategories, addCustomCategoryToStore } from '../lib/categories';
 import { generateNextShortcutCode } from '../utils/productShortcuts';
 import { 
+  Package,
   PackagePlus, 
   Barcode as BarcodeIcon, 
   Camera, 
@@ -1571,58 +1572,47 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
               </div>
             </div>
 
-            {/* Catalog Sub-header with Profit Margin and Filter Tabs */}
+            {/* Filter Tabs: All, By Weight, By Unit */}
             <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-200">
-              <div className="flex items-center gap-2 text-xs">
-                <span className="font-bold text-slate-700">Projected Margin:</span>
-                <span className="font-extrabold text-emerald-700 font-mono">
-                  {inventoryStats.overallMargin.toFixed(1)}%
-                </span>
-                <span className="text-slate-300">|</span>
-                <span className="text-slate-500 font-medium">
-                  Profit: <strong className="text-slate-900 font-mono">Rs. {inventoryStats.projectedProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong>
-                </span>
+              <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
+                <button
+                  type="button"
+                  onClick={() => setCatalogFilter('all')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    catalogFilter === 'all'
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  All Products ({products.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCatalogFilter('weight')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                    catalogFilter === 'weight'
+                      ? 'bg-orange-600 text-white shadow-sm'
+                      : 'bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-100'
+                  }`}
+                >
+                  <Scale className="w-3 h-3" /> Sold by Weight ({products.filter(p => p.sellBy === 'weight' || p.unitType === 'kg' || p.pricePerKg).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCatalogFilter('unit')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                    catalogFilter === 'unit'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100'
+                  }`}
+                >
+                  <Package className="w-3 h-3" /> Sold by Unit ({products.filter(p => p.sellBy !== 'weight' && p.unitType !== 'kg' && !p.pricePerKg).length})
+                </button>
               </div>
+
               <div className="text-[11px] text-slate-500 font-medium">
                 Showing {filteredCatalog.length} of {products.length} products
               </div>
-            </div>
-
-            {/* Filter Tabs: All, By Weight, By Unit */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1">
-              <button
-                type="button"
-                onClick={() => setCatalogFilter('all')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  catalogFilter === 'all'
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                All Products ({products.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setCatalogFilter('weight')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                  catalogFilter === 'weight'
-                    ? 'bg-orange-600 text-white shadow-sm'
-                    : 'bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-100'
-                }`}
-              >
-                <Scale className="w-3 h-3" /> Sold by Weight ({products.filter(p => p.sellBy === 'weight' || p.unitType === 'kg' || p.pricePerKg).length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setCatalogFilter('unit')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                  catalogFilter === 'unit'
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100'
-                }`}
-              >
-                <PackagePlus className="w-3 h-3" /> Sold by Unit ({products.filter(p => !(p.sellBy === 'weight' || p.unitType === 'kg' || p.pricePerKg)).length})
-              </button>
             </div>
 
             {filteredCatalog.length === 0 ? (
@@ -1726,23 +1716,23 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                           </td>
                           <td className="p-3.5 text-center font-mono">
                             <div className="font-black text-orange-600">
-                              Rs. {p.price.toFixed(2)}{isWeighted ? '/kg' : ''}
+                              Rs. {(p.price ?? 0).toFixed(2)}{isWeighted ? '/kg' : ''}
                             </div>
                             <div className="text-[11px] text-slate-500 font-semibold">
-                              Cost: Rs. {cost.toFixed(2)}
+                              Cost: Rs. {(cost || 0).toFixed(2)}
                             </div>
                           </td>
                           <td className="p-3.5 text-center font-mono">
                             <div className={`text-xs font-bold ${itemProfit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
-                              +Rs. {itemProfit.toFixed(2)}
+                              +Rs. {(itemProfit || 0).toFixed(2)}
                             </div>
                             <div className="text-[10px] text-slate-400 font-medium">
-                              ({itemMargin.toFixed(0)}% margin)
+                              ({(itemMargin || 0).toFixed(0)}% margin)
                             </div>
                           </td>
                           <td className="p-3.5 text-center font-black text-sm">
-                            <span className={p.stockQuantity <= 0 ? 'text-red-600 font-black' : p.stockQuantity <= 5 ? 'text-amber-600 font-bold' : 'text-emerald-600 font-black'}>
-                              {p.stockQuantity % 1 === 0 ? p.stockQuantity : p.stockQuantity.toFixed(3)} {isWeighted ? 'kg' : 'units'}
+                            <span className={(p.stockQuantity || 0) <= 0 ? 'text-red-600 font-black' : (p.stockQuantity || 0) <= 5 ? 'text-amber-600 font-bold' : 'text-emerald-600 font-black'}>
+                              {(p.stockQuantity || 0) % 1 === 0 ? (p.stockQuantity || 0) : (p.stockQuantity || 0).toFixed(3)} {isWeighted ? 'kg' : 'units'}
                             </span>
                           </td>
                           <td className="p-3.5 text-right">
@@ -1844,7 +1834,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                 <div><span className="font-bold">Barcode:</span> {productToDelete.barcode || 'N/A'}</div>
                 {productToDelete.serialNumber && <div><span className="font-bold">S/N:</span> {productToDelete.serialNumber}</div>}
                 {productToDelete.weight && <div><span className="font-bold">Weight:</span> {productToDelete.weight}</div>}
-                <div><span className="font-bold">Price:</span> Rs. {productToDelete.price.toFixed(2)}</div>
+                <div><span className="font-bold">Price:</span> Rs. {(productToDelete.price ?? 0).toFixed(2)}</div>
                 <div><span className="font-bold">Current Stock:</span> {productToDelete.stockQuantity} units</div>
               </div>
 

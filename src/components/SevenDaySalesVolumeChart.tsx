@@ -128,7 +128,7 @@ export const SevenDaySalesVolumeChart: React.FC<SevenDaySalesVolumeChartProps> =
           </div>
           <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">
             <span className="text-slate-600 font-medium">Daily Avg: </span>
-            <strong className="text-slate-900 font-bold">{stats.avgDailyUnits.toFixed(1)} units/day</strong>
+            <strong className="text-slate-900 font-bold">{(stats?.avgDailyUnits || 0).toFixed(1)} units/day</strong>
           </div>
         </div>
       </div>
@@ -160,7 +160,7 @@ export const SevenDaySalesVolumeChart: React.FC<SevenDaySalesVolumeChartProps> =
               fontSize={11} 
               tickLine={false} 
               axisLine={{ stroke: '#a7f3d0' }}
-              tickFormatter={(val) => val >= 1000 ? `${(val / 1000).toFixed(0)}k` : `${val}`}
+              tickFormatter={(val) => val >= 1000 ? `${((val || 0) / 1000).toFixed(0)}k` : `${val || 0}`}
             />
             <Tooltip
               content={({ active, payload, label }) => {
@@ -178,11 +178,11 @@ export const SevenDaySalesVolumeChart: React.FC<SevenDaySalesVolumeChartProps> =
                       <span className="flex items-center gap-1.5">
                         <ShoppingBag className="w-3.5 h-3.5 text-orange-400" /> Units Sold:
                       </span>
-                      <strong className="font-mono text-sm">{data.unitsSold.toLocaleString()} units</strong>
+                      <strong className="font-mono text-sm">{(data.unitsSold || 0).toLocaleString()} units</strong>
                     </div>
                     <div className="flex items-center justify-between text-emerald-300">
                       <span>Total Revenue:</span>
-                      <strong className="font-mono">Rs. {data.totalRevenue.toFixed(2)}</strong>
+                      <strong className="font-mono">Rs. {(data.totalRevenue || 0).toFixed(2)}</strong>
                     </div>
                     <div className="flex items-center justify-between text-slate-400 text-[11px] pt-1 border-t border-slate-800">
                       <span>Receipts / Invoices:</span>

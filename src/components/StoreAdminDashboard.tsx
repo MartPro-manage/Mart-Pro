@@ -1004,7 +1004,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                       Rs. {filteredNetProfit.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                     <span className="text-[10px] font-bold bg-white px-1.5 py-0.5 rounded border border-emerald-200">
-                      {filteredProfitMargin.toFixed(1)}% margin
+                      {(filteredProfitMargin || 0).toFixed(1)}% margin
                     </span>
                   </div>
                 </div>
@@ -1232,7 +1232,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                 filteredNetProfit >= 0 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'
               }`}>
                 <TrendingUp className="w-4 h-4" />
-                <span>{filteredProfitMargin.toFixed(1)}%</span>
+                <span>{(filteredProfitMargin || 0).toFixed(1)}%</span>
               </div>
             </div>
             <div className={`mt-3 text-2xl sm:text-3xl font-black font-mono ${
@@ -1241,9 +1241,9 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
               Rs. {filteredNetProfit.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
             <div className="text-[11px] text-slate-500 mt-1 flex flex-wrap items-center gap-1 font-medium">
-              <span className="text-slate-700 font-bold">Revenue: Rs. {filteredNetRevenue.toFixed(0)}</span>
+              <span className="text-slate-700 font-bold">Revenue: Rs. {(filteredNetRevenue || 0).toFixed(0)}</span>
               <span className="text-slate-400">•</span>
-              <span className="text-slate-600 font-semibold">Cost: Rs. {filteredCostOfGoods.toFixed(0)}</span>
+              <span className="text-slate-600 font-semibold">Cost: Rs. {(filteredCostOfGoods || 0).toFixed(0)}</span>
             </div>
           </motion.div>
 
@@ -1265,7 +1265,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
               Rs. {filteredNetRevenue.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
             <p className="text-[11px] text-slate-500 mt-1 font-medium">
-              Gross: Rs. {filteredGrossRevenue.toFixed(0)} {filteredRefundsTotal > 0 ? `• -Rs. ${filteredRefundsTotal.toFixed(0)} refunds` : ''}
+              Gross: Rs. {(filteredGrossRevenue || 0).toFixed(0)} {(filteredRefundsTotal || 0) > 0 ? `• -Rs. ${(filteredRefundsTotal || 0).toFixed(0)} refunds` : ''}
             </p>
           </motion.div>
 
@@ -1423,7 +1423,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                 Rs. {inventoryValuationStats.totalRetailValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
               </div>
               <div className="text-[11px] text-emerald-700 mt-0.5 font-bold flex items-center gap-1">
-                <span>{inventoryValuationStats.overallMargin.toFixed(1)}% Margin</span>
+                <span>{(inventoryValuationStats?.overallMargin || 0).toFixed(1)}% Margin</span>
                 <span className="text-slate-300">•</span>
                 <span className="text-slate-500 font-normal">Gross</span>
               </div>
@@ -1594,7 +1594,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                           </div>
                           <div className="text-right shrink-0">
                             <span className="text-xs font-black text-slate-900 font-mono">{p.netUnitsSold} units</span>
-                            <p className="text-[10px] text-emerald-600 font-bold">+Rs. {p.netRealizedProfit.toFixed(0)}</p>
+                            <p className="text-[10px] text-emerald-600 font-bold">+Rs. {(p.netRealizedProfit || 0).toFixed(0)}</p>
                           </div>
                         </div>
                       ))
@@ -1708,7 +1708,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
                             <span className="text-xs font-black text-orange-600 font-mono">
-                              Rs. {sale.totalAmount.toFixed(2)}
+                              Rs. {(sale.totalAmount || 0).toFixed(2)}
                             </span>
                             {onViewReceipt && (
                               <button
@@ -1970,14 +1970,14 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                               </td>
 
                               <td className="p-3.5 text-right font-medium text-slate-900 text-xs">
-                                <div className="font-bold">Rs. {daySummary.netRevenue.toFixed(2)}</div>
-                                {daySummary.totalRefunds > 0 && (
-                                  <div className="text-[10px] text-slate-400">Gross: Rs. {daySummary.grossRevenue.toFixed(0)}</div>
+                                <div className="font-bold">Rs. {(daySummary.netRevenue || 0).toFixed(2)}</div>
+                                {(daySummary.totalRefunds || 0) > 0 && (
+                                  <div className="text-[10px] text-slate-400">Gross: Rs. {(daySummary.grossRevenue || 0).toFixed(0)}</div>
                                 )}
                               </td>
 
                               <td className="p-3.5 text-right font-bold text-xs text-slate-600">
-                                Rs. {daySummary.netCost.toFixed(2)}
+                                Rs. {(daySummary.netCost || 0).toFixed(2)}
                               </td>
 
                               <td className="p-3.5 text-right">
@@ -1985,7 +1985,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                                   Rs. {daySummary.netProfit.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </div>
                                 <div className="text-[10px] font-bold text-slate-500 flex items-center justify-end gap-1">
-                                  <span>Margin: {daySummary.profitMargin.toFixed(1)}%</span>
+                                  <span>Margin: {(daySummary.profitMargin || 0).toFixed(1)}%</span>
                                 </div>
                               </td>
 
@@ -2032,10 +2032,10 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                                       </h4>
                                       <div className="flex items-center gap-3">
                                         <span className="text-xs font-semibold text-slate-500">
-                                          COGS: Rs. {daySummary.netCost.toFixed(2)}
+                                          COGS: Rs. {(daySummary.netCost || 0).toFixed(2)}
                                         </span>
                                         <span className="text-xs font-black text-emerald-600">
-                                          Net Day Profit: Rs. {daySummary.netProfit.toFixed(2)} ({daySummary.profitMargin.toFixed(1)}%)
+                                          Net Day Profit: Rs. {(daySummary.netProfit || 0).toFixed(2)} ({(daySummary.profitMargin || 0).toFixed(1)}%)
                                         </span>
                                       </div>
                                     </div>
@@ -2062,9 +2062,9 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
 
                                           <div className="flex items-center gap-2 shrink-0">
                                             <div className="text-right">
-                                              <div className="font-extrabold text-orange-600 text-xs">Rs. {sale.totalAmount.toFixed(2)}</div>
+                                              <div className="font-extrabold text-orange-600 text-xs">Rs. {(sale.totalAmount || 0).toFixed(2)}</div>
                                               {sale.discountAmount && sale.discountAmount > 0 ? (
-                                                <div className="text-[9px] text-amber-700 font-bold">-Rs. {sale.discountAmount.toFixed(0)} off</div>
+                                                <div className="text-[9px] text-amber-700 font-bold">-Rs. {(sale.discountAmount || 0).toFixed(0)} off</div>
                                               ) : null}
                                             </div>
                                             {onViewReceipt && (
@@ -2095,7 +2095,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                                                 <p className="text-[11px] text-red-800">{ret.productName} ({ret.quantity} {ret.quantity === 1 ? 'unit' : 'units'} restocked)</p>
                                               </div>
                                               <div className="text-right font-black text-red-700">
-                                                -Rs. {ret.refundAmount.toFixed(2)}
+                                                -Rs. {(ret.refundAmount || 0).toFixed(2)}
                                               </div>
                                             </div>
                                           ))}
@@ -2137,7 +2137,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
 
               <div className="flex items-center gap-3">
                 <span className="text-xs font-bold text-red-800 bg-red-50 px-3 py-1.5 rounded-xl border border-red-200">
-                  Total Refunded: Rs. {filteredRefundsTotal.toFixed(2)}
+                  Total Refunded: Rs. {(filteredRefundsTotal || 0).toFixed(2)}
                 </span>
                 <span className="text-xs font-bold text-slate-600 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
                   {filteredReturnsLog.length} Returns
@@ -2293,7 +2293,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                               Cost: Rs. {(sp.costPrice || 0).toFixed(2)}
                             </div>
                             <div className={`text-[10px] font-bold mt-0.5 ${unitProfit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
-                              +{unitProfit >= 0 ? '' : ''}Rs. {unitProfit.toFixed(2)}/u
+                              +{unitProfit >= 0 ? '' : ''}Rs. {(unitProfit || 0).toFixed(2)}/u
                             </div>
                           </td>
                           <td className="p-3.5 text-center">
@@ -2317,7 +2317,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                               Rs. {(sp.realizedProfit || 0).toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </div>
                             <div className="text-[10px] font-bold text-slate-500">
-                              {sp.profitMargin.toFixed(1)}% margin
+                              {(sp.profitMargin || 0).toFixed(1)}% margin
                             </div>
                           </td>
                         </tr>
@@ -2369,7 +2369,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
               <div className="bg-emerald-50/60 p-3.5 rounded-xl border border-emerald-200">
                 <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">Retail Value</span>
                 <span className="text-lg font-black text-emerald-700 font-mono mt-1 block truncate">Rs. {inventoryValuationStats.totalRetailValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-                <span className="text-[10px] text-emerald-700 font-medium font-mono">{inventoryValuationStats.overallMargin.toFixed(1)}% Gross Margin</span>
+                <span className="text-[10px] text-emerald-700 font-medium font-mono">{(inventoryValuationStats?.overallMargin || 0).toFixed(1)}% Gross Margin</span>
               </div>
               <div className={`p-3.5 rounded-xl border col-span-2 sm:col-span-1 ${
                 inventoryValuationStats.outOfStockCount > 0 || inventoryValuationStats.lowStockCount > 0
@@ -2513,11 +2513,11 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                           <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold ${
                             saleProfit >= 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
                           }`}>
-                            Profit: +Rs. {saleProfit.toFixed(2)} ({saleMargin.toFixed(0)}%)
+                            Profit: +Rs. {(saleProfit || 0).toFixed(2)} ({(saleMargin || 0).toFixed(0)}%)
                           </span>
                           {sale.discountAmount && sale.discountAmount > 0 ? (
                             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                              Discount -Rs. {sale.discountAmount.toFixed(2)}
+                              Discount -Rs. {(sale.discountAmount || 0).toFixed(2)}
                             </span>
                           ) : null}
                           {isSaleExpired(sale) ? (
@@ -2544,10 +2544,10 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                       <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0">
                         <div className="text-right">
                           <div className="text-lg font-extrabold text-orange-600 font-mono">
-                            Rs. {sale.totalAmount.toFixed(2)}
+                            Rs. {(sale.totalAmount || 0).toFixed(2)}
                           </div>
                           <div className="text-[10px] text-slate-500 font-semibold">
-                            Cost: Rs. {saleCost.toFixed(2)}
+                            Cost: Rs. {(saleCost || 0).toFixed(2)}
                           </div>
                         </div>
                         {onViewReceipt && (

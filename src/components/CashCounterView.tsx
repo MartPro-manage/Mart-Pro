@@ -295,7 +295,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
         showNotification('success', `Incremented "${found!.name}" in list (Qty: ${newQty})`);
         return updated;
       } else {
-        showNotification('success', `Matched & added "${found!.name}" to list (Rs. ${found!.price.toFixed(2)})`);
+        showNotification('success', `Matched & added "${found!.name}" to list (Rs. ${(found!.price || 0).toFixed(2)})`);
         return [
           ...prevCart,
           {

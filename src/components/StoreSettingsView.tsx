@@ -12,6 +12,7 @@ import {
 } from '../lib/firebase';
 import { Store, UserAccount } from '../types';
 import { speakMessage } from '../lib/speech';
+import { getAllCategories, DEFAULT_PRESET_CATEGORIES } from '../lib/categories';
 import { 
   Settings, 
   Receipt, 
@@ -28,7 +29,16 @@ import {
   PackageCheck,
   Check,
   Eye, 
-  EyeOff
+  EyeOff,
+  Upload,
+  Image,
+  Layout,
+  Trash2,
+  Plus,
+  Tag,
+  MapPin,
+  Store as StoreIcon,
+  FileText
 } from 'lucide-react';
 
 interface StoreSettingsViewProps {
@@ -44,11 +54,21 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
   storeUsers,
   onStoreUpdated
 }) => {
+  // Store Identity & Address
+  const [storeName, setStoreName] = useState(store.name || '');
+  const [storeAddress, setStoreAddress] = useState(store.address || '');
+
   // POS & Receipt Settings
   const [currencySymbol, setCurrencySymbol] = useState(store.currencySymbol || 'Rs.');
   const [receiptHeader, setReceiptHeader] = useState(store.receiptHeader || 'OFFICIAL SALES INVOICE');
   const [receiptFooter, setReceiptFooter] = useState(store.receiptFooter || 'THANK YOU FOR SHOPPING WITH US! Retain slip for returns.');
   const [returnPolicyDays, setReturnPolicyDays] = useState<number>(store.returnPolicyDays || 7);
+  const [receiptFormat, setReceiptFormat] = useState<'standard' | 'classic_detailed' | 'compact_eco'>(store.receiptFormat || 'standard');
+  const [logoUrl, setLogoUrl] = useState<string>(store.logoUrl || '');
+
+  // Category Management
+  const [customCategories, setCustomCategories] = useState<string[]>(store.customCategories || []);
+  const [newCatInput, setNewCatInput] = useState('');
 
   // Audio & Hardware Settings
   const [soundEffectsEnabled, setSoundEffectsEnabled] = useState<boolean>(store.soundEffectsEnabled !== false);
@@ -65,10 +85,15 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
 
   // Sync state if store prop changes
   useEffect(() => {
+    setStoreName(store.name || '');
+    setStoreAddress(store.address || '');
     setCurrencySymbol(store.currencySymbol || 'Rs.');
     setReceiptHeader(store.receiptHeader || 'OFFICIAL SALES INVOICE');
     setReceiptFooter(store.receiptFooter || 'THANK YOU FOR SHOPPING WITH US! Retain slip for returns.');
     setReturnPolicyDays(store.returnPolicyDays || 7);
+    setReceiptFormat(store.receiptFormat || 'standard');
+    setLogoUrl(store.logoUrl || '');
+    setCustomCategories(store.customCategories || []);
     setSoundEffectsEnabled(store.soundEffectsEnabled !== false);
     setLowStockAlertThreshold(store.lowStockAlertThreshold || 5);
   }, [store]);
@@ -78,12 +103,84 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
     setTimeout(() => setFeedbackMsg(null), 5000);
   };
 
+  // Convert uploaded image to Black and White for thermal printing
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      showNotification('error', 'Please upload a valid image file (PNG or JPG).');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new window.Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxW = 320;
+        const scale = Math.min(1, maxW / img.width);
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imgData.data;
+
+        // Convert to high-contrast Pure Black & White (optimal for thermal POS slips)
+        for (let i = 0; i < data.length; i += 4) {
+          const alpha = data[i + 3];
+          if (alpha < 60) {
+            data[i] = 255;
+            data[i + 1] = 255;
+            data[i + 2] = 255;
+            data[i + 3] = 255;
+          } else {
+            const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+            const bw = gray > 150 ? 255 : 0;
+            data[i] = bw;
+            data[i + 1] = bw;
+            data[i + 2] = bw;
+            data[i + 3] = 255;
+          }
+        }
+        ctx.putImageData(imgData, 0, 0);
+        const bwDataUrl = canvas.toDataURL('image/png');
+        setLogoUrl(bwDataUrl);
+        showNotification('success', 'Black & White logo processed! Remember to click "Save All Settings".');
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleAddCategory = () => {
+    const trimmed = newCatInput.trim();
+    if (!trimmed) return;
+    if (customCategories.includes(trimmed) || DEFAULT_PRESET_CATEGORIES.includes(trimmed)) {
+      showNotification('error', `Category "${trimmed}" already exists.`);
+      return;
+    }
+    setCustomCategories(prev => [...prev, trimmed]);
+    setNewCatInput('');
+    showNotification('success', `Category "${trimmed}" added! Remember to click "Save All Settings".`);
+  };
+
+  const handleRemoveCustomCategory = (catName: string) => {
+    setCustomCategories(prev => prev.filter(c => c !== catName));
+  };
+
   const handleTestVoice = () => {
     if (store.voiceAnnouncementEnabled === false) {
       showNotification('error', '⚠️ Voice generation is DISALLOWED by Super Admin policy for this store.');
       return;
     }
-    const storeLabel = store.name || 'our store';
+    const storeLabel = storeName || store.name || 'our store';
     speakMessage(`Total bill is 450 rupees. Thank you for shopping at ${storeLabel}!`);
     setVoiceTestMsg(`🔊 Playing voice test for "${storeLabel}"`);
     setTimeout(() => setVoiceTestMsg(null), 4000);
@@ -96,10 +193,15 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
     try {
       const storeRef = doc(db, 'stores', store.id);
       const updatePayload: Partial<Store> = {
+        name: storeName.trim() || store.name,
+        address: storeAddress.trim(),
         currencySymbol: currencySymbol.trim() || 'Rs.',
         receiptHeader: receiptHeader.trim(),
         receiptFooter: receiptFooter.trim(),
         returnPolicyDays: Number(returnPolicyDays) || 7,
+        receiptFormat: receiptFormat,
+        logoUrl: logoUrl || '',
+        customCategories: customCategories,
         soundEffectsEnabled: Boolean(soundEffectsEnabled),
         lowStockAlertThreshold: Number(lowStockAlertThreshold) || 5
       };
@@ -136,7 +238,7 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
         onStoreUpdated({ ...store, ...updatePayload });
       }
 
-      showNotification('success', '✅ Store settings and configuration updated successfully!');
+      showNotification('success', '✅ Store settings and receipt configuration updated successfully!');
     } catch (err: any) {
       console.error('Error saving store settings:', err);
       handleFirestoreError(err, OperationType.UPDATE, `stores/${store.id}`);
@@ -197,7 +299,302 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
       {/* Main Settings Grid */}
       <form onSubmit={handleSaveAllSettings} className="space-y-6">
         
-        {/* SECTION 1: Receipt & POS Billing Customization */}
+        {/* SECTION 0: Store Identity & Branding (Name, Address, B&W Logo) */}
+        <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-orange-50 text-orange-600 rounded-2xl">
+                <StoreIcon className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900">Store Identity & Receipt Branding</h3>
+                <p className="text-xs text-slate-500 font-medium">
+                  Update your official store name, physical address, and thermal receipt black & white logo.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                Store Name (Prints on all receipts)
+              </label>
+              <input
+                type="text"
+                value={storeName}
+                onChange={(e) => setStoreName(e.target.value)}
+                placeholder="e.g. SUPERMARKET PRO"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-xs font-bold focus:outline-none focus:border-orange-500 focus:bg-white transition-all shadow-xs"
+              />
+              <p className="text-[11px] text-slate-400 mt-1">Changes name displayed on POS terminals and receipts.</p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                Store Physical Address (Prints on receipts)
+              </label>
+              <input
+                type="text"
+                value={storeAddress}
+                onChange={(e) => setStoreAddress(e.target.value)}
+                placeholder="e.g. Shop #12, Commercial Market, Main Road"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-xs font-bold focus:outline-none focus:border-orange-500 focus:bg-white transition-all shadow-xs"
+              />
+              <p className="text-[11px] text-slate-400 mt-1">Shows at the top of printable & customer E-Receipts.</p>
+            </div>
+          </div>
+
+          {/* Black and White Logo Upload */}
+          <div className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider">
+                  Store Logo (Black & White Thermal Receipt Ready)
+                </label>
+                <p className="text-[11px] text-slate-500 font-medium">
+                  Upload your brand logo. It is automatically converted into high-contrast black & white for thermal slips.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs rounded-xl cursor-pointer flex items-center gap-1.5 transition-all shadow-xs">
+                  <Upload className="w-3.5 h-3.5" /> Upload Logo
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleLogoUpload}
+                    className="hidden"
+                  />
+                </label>
+
+                {logoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setLogoUrl('')}
+                    className="px-3 py-2 bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 font-bold text-xs rounded-xl flex items-center gap-1 cursor-pointer transition-all"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Remove
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {logoUrl ? (
+              <div className="pt-2 flex items-center gap-4">
+                <div className="p-3 bg-white border border-slate-200 rounded-xl shadow-2xs max-w-[160px] flex items-center justify-center">
+                  <img
+                    src={logoUrl}
+                    alt="Store B&W Logo"
+                    className="max-h-16 max-w-full object-contain filter grayscale contrast-200"
+                  />
+                </div>
+                <div className="text-xs text-slate-600 space-y-0.5">
+                  <span className="font-bold text-emerald-700 flex items-center gap-1">
+                    <CheckCircle className="w-3.5 h-3.5" /> High-Contrast B&W Logo Active
+                  </span>
+                  <p className="text-[11px] text-slate-500">
+                    This logo will print cleanly at the top of thermal slips.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-4 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 text-xs">
+                No logo uploaded yet. Upload a logo to personalize customer receipts.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* SECTION 1: 3 Receipt Format Templates */}
+        <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl">
+                <Layout className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900">Receipt Format Templates</h3>
+                <p className="text-xs text-slate-500 font-medium">
+                  Choose from 3 distinct receipt layout formats for thermal printing and digital copies.
+                </p>
+              </div>
+            </div>
+
+            <span className="text-[11px] font-bold px-3 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl uppercase">
+              Format: {receiptFormat.replace('_', ' ')}
+            </span>
+          </div>
+
+          {/* 3 Interactive Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Template 1: Modern Thermal (Standard) */}
+            <div
+              onClick={() => setReceiptFormat('standard')}
+              className={`p-5 rounded-2xl border-2 transition-all cursor-pointer space-y-3 relative ${
+                receiptFormat === 'standard'
+                  ? 'border-orange-500 bg-orange-50/20 shadow-md ring-2 ring-orange-400/20'
+                  : 'border-slate-200 hover:border-slate-300 bg-slate-50/50'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-extrabold text-slate-900 text-sm">1. Modern Thermal</span>
+                {receiptFormat === 'standard' && (
+                  <span className="w-5 h-5 rounded-full bg-orange-600 text-white flex items-center justify-center text-xs font-bold">✓</span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500">
+                Default clean layout. Crisp dashed lines, centered store name, scannable QR code, and neat itemized table.
+              </p>
+              <div className="bg-white p-3 rounded-xl border border-slate-200 font-mono text-[9px] text-slate-600 space-y-1">
+                <div className="text-center font-bold">{storeName || 'SUPERMARKET'}</div>
+                <div className="border-b border-dashed border-slate-300 my-1"></div>
+                <div className="flex justify-between"><span>Milk 1L</span><span>Rs. 150</span></div>
+                <div className="flex justify-between"><span>Bread</span><span>Rs. 90</span></div>
+                <div className="border-t border-dashed border-slate-300 pt-1 font-bold flex justify-between"><span>TOTAL:</span><span>Rs. 240</span></div>
+              </div>
+            </div>
+
+            {/* Template 2: Classic Detailed Retail */}
+            <div
+              onClick={() => setReceiptFormat('classic_detailed')}
+              className={`p-5 rounded-2xl border-2 transition-all cursor-pointer space-y-3 relative ${
+                receiptFormat === 'classic_detailed'
+                  ? 'border-orange-500 bg-orange-50/20 shadow-md ring-2 ring-orange-400/20'
+                  : 'border-slate-200 hover:border-slate-300 bg-slate-50/50'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-extrabold text-slate-900 text-sm">2. Classic Detailed</span>
+                {receiptFormat === 'classic_detailed' && (
+                  <span className="w-5 h-5 rounded-full bg-orange-600 text-white flex items-center justify-center text-xs font-bold">✓</span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500">
+                Traditional retail invoice format with double-line borders, prominent store address, cashier name, and tax breakdown.
+              </p>
+              <div className="bg-white p-3 rounded-xl border-2 border-slate-400 font-mono text-[9px] text-slate-700 space-y-1">
+                <div className="text-center font-black uppercase text-slate-900">{storeName || 'SUPERMARKET'}</div>
+                <div className="text-center text-[8px] text-slate-500">{storeAddress || 'Main Commercial Market'}</div>
+                <div className="border-b-2 border-slate-400 my-1"></div>
+                <div className="flex justify-between font-bold"><span>ITEM</span><span>QTY</span><span>TOTAL</span></div>
+                <div className="flex justify-between"><span>Rice 5kg</span><span>1</span><span>Rs. 950</span></div>
+                <div className="border-t-2 border-slate-400 pt-1 font-black flex justify-between text-slate-900"><span>NET PAYABLE:</span><span>Rs. 950</span></div>
+              </div>
+            </div>
+
+            {/* Template 3: Compact Minimalist Eco */}
+            <div
+              onClick={() => setReceiptFormat('compact_eco')}
+              className={`p-5 rounded-2xl border-2 transition-all cursor-pointer space-y-3 relative ${
+                receiptFormat === 'compact_eco'
+                  ? 'border-orange-500 bg-orange-50/20 shadow-md ring-2 ring-orange-400/20'
+                  : 'border-slate-200 hover:border-slate-300 bg-slate-50/50'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-extrabold text-slate-900 text-sm">3. Compact Eco</span>
+                {receiptFormat === 'compact_eco' && (
+                  <span className="w-5 h-5 rounded-full bg-orange-600 text-white flex items-center justify-center text-xs font-bold">✓</span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500">
+                High-density paper saver layout. Condensed line heights, minimal padding, saves up to 40% thermal paper roll.
+              </p>
+              <div className="bg-white p-2.5 rounded-xl border border-slate-200 font-mono text-[8px] text-slate-700 space-y-0.5">
+                <div className="font-bold flex justify-between"><span>{storeName || 'MART'}</span><span>#0492</span></div>
+                <div className="flex justify-between border-t border-slate-200 pt-0.5"><span>Oil 1L x 2</span><span>Rs. 800</span></div>
+                <div className="flex justify-between font-bold border-t border-slate-300 pt-0.5"><span>TOT:</span><span>Rs. 800</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* SECTION 2: Product Category Management */}
+        <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl">
+                <Tag className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900">Product Categories Management</h3>
+                <p className="text-xs text-slate-500 font-medium">
+                  Add new categories for Product Register staff to organize and classify stock.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {/* Add New Category Input */}
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="Enter new category name (e.g. Frozen Foods, Stationery, Beverages)..."
+                value={newCatInput}
+                onChange={(e) => setNewCatInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddCategory(); } }}
+                className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-orange-500 focus:bg-white"
+              />
+              <button
+                type="button"
+                onClick={handleAddCategory}
+                className="px-4 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <Plus className="w-4 h-4" /> Add Category
+              </button>
+            </div>
+
+            {/* Custom Categories List */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                Custom Store Categories ({customCategories.length})
+              </label>
+              {customCategories.length === 0 ? (
+                <p className="text-xs text-slate-400 italic">No custom categories added yet. All default supermarket categories are enabled below.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {customCategories.map((cat) => (
+                    <span
+                      key={cat}
+                      className="px-3 py-1.5 bg-orange-50 text-orange-800 border border-orange-200 rounded-xl text-xs font-bold flex items-center gap-2 shadow-2xs"
+                    >
+                      <span>{cat}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveCustomCategory(cat)}
+                        className="text-orange-400 hover:text-rose-600 cursor-pointer"
+                        title="Remove category"
+                      >
+                        &times;
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Built-in Presets */}
+            <div className="pt-2">
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                Standard Supermarket Presets (Active)
+              </label>
+              <div className="flex flex-wrap gap-1.5 opacity-80">
+                {DEFAULT_PRESET_CATEGORIES.map((cat) => (
+                  <span
+                    key={cat}
+                    className="px-2.5 py-1 bg-slate-100 text-slate-600 rounded-lg text-[11px] font-medium border border-slate-200"
+                  >
+                    {cat}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* SECTION 3: Additional Receipt Options */}
         <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6">
           <div className="flex items-center justify-between border-b border-slate-100 pb-4">
             <div className="flex items-center gap-3">
@@ -205,9 +602,9 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
                 <Receipt className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-base font-extrabold text-slate-900">1. POS Receipts & Invoice Customization</h3>
+                <h3 className="text-base font-extrabold text-slate-900">Receipt Details & Policy</h3>
                 <p className="text-xs text-slate-500 font-medium">
-                  Customize thermal print receipts, headers, thank-you notes, and returns policies.
+                  Customize headers, return period, and thank-you notes.
                 </p>
               </div>
             </div>

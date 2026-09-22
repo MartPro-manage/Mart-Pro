@@ -676,10 +676,31 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
         {/* STANDARD PRINTABLE RECEIPT CARD */}
             <div 
               id="printable-receipt" 
-              className="bg-slate-50 text-slate-900 p-5 sm:p-6 rounded-2xl shadow-inner font-mono text-xs space-y-4 overflow-y-auto overscroll-contain max-h-[44vh] border border-slate-200 custom-scrollbar"
+              className={`text-slate-900 overflow-y-auto overscroll-contain max-h-[44vh] custom-scrollbar ${
+                store?.receiptFormat === 'classic_detailed'
+                  ? 'bg-white p-5 sm:p-6 rounded-2xl border-4 border-double border-slate-800 font-mono text-xs space-y-3 shadow-md'
+                  : store?.receiptFormat === 'compact_eco'
+                  ? 'bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 font-mono text-[10px] space-y-2 leading-tight shadow-inner'
+                  : 'bg-slate-50 p-5 sm:p-6 rounded-2xl shadow-inner font-mono text-xs space-y-4 border border-slate-200'
+              }`}
             >
+              {/* Optional Black & White Store Logo */}
+              {store?.logoUrl && (
+                <div className="flex justify-center pb-1">
+                  <img
+                    src={store.logoUrl}
+                    alt={store.name || 'Store Logo'}
+                    className="max-h-16 max-w-[200px] object-contain filter grayscale contrast-200"
+                  />
+                </div>
+              )}
+
               {/* Receipt Header */}
-              <div className="text-center space-y-1 pb-3 border-b border-dashed border-slate-300">
+              <div className={`text-center space-y-1 pb-3 ${
+                store?.receiptFormat === 'classic_detailed' 
+                  ? 'border-b-2 border-slate-800' 
+                  : 'border-b border-dashed border-slate-300'
+              }`}>
                 <div className="font-extrabold text-base tracking-tight text-slate-900 uppercase">
                   {store?.name || 'SUPERMARKET'}
                 </div>
@@ -687,7 +708,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                   {receiptSubHeader}
                 </div>
                 {store?.address && (
-                  <div className="text-[10px] text-slate-500 font-medium">{store.address}</div>
+                  <div className="text-[10px] text-slate-600 font-medium">{store.address}</div>
                 )}
                 {store?.phone && (
                   <div className="text-[10px] text-slate-500 font-medium">Tel: {store.phone}</div>
@@ -704,7 +725,11 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               </div>
 
               {/* Transaction Metadata */}
-              <div className="grid grid-cols-2 text-[10px] text-slate-600 pb-2 border-b border-dashed border-slate-300 gap-y-1">
+              <div className={`grid grid-cols-2 text-[10px] text-slate-600 pb-2 gap-y-1 ${
+                store?.receiptFormat === 'classic_detailed'
+                  ? 'border-b border-slate-400'
+                  : 'border-b border-dashed border-slate-300'
+              }`}>
                 <div>Counter: <span className="font-bold text-slate-800">{sale.counterName}</span></div>
                 <div className="text-right">Cashier: <span className="font-bold text-slate-800">{sale.cashierUsername}</span></div>
                 <div>Payment Method:</div>
@@ -713,7 +738,11 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
               {/* Items Table */}
               <div className="space-y-2 py-1">
-                <div className="grid grid-cols-12 font-bold text-[10px] text-slate-500 uppercase border-b pb-1">
+                <div className={`grid grid-cols-12 font-bold text-[10px] uppercase pb-1 ${
+                  store?.receiptFormat === 'classic_detailed'
+                    ? 'border-b-2 border-slate-700 text-slate-800'
+                    : 'border-b border-slate-300 text-slate-500'
+                }`}>
                   <span className="col-span-5">Product Name</span>
                   <span className="col-span-2 text-center">Qty</span>
                   <span className="col-span-2 text-right">Price</span>
@@ -741,7 +770,11 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               </div>
 
               {/* Totals */}
-              <div className="pt-3 border-t-2 border-slate-900 space-y-1">
+              <div className={`pt-3 space-y-1 ${
+                store?.receiptFormat === 'classic_detailed'
+                  ? 'border-t-2 border-slate-800'
+                  : 'border-t-2 border-slate-900'
+              }`}>
                 {sale.discountAmount && sale.discountAmount > 0 ? (
                   <>
                     <div className="flex justify-between text-xs text-slate-600">
@@ -755,7 +788,9 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                   </>
                 ) : null}
 
-                <div className="flex justify-between text-sm font-black text-slate-900 pt-1 border-t border-slate-200">
+                <div className={`flex justify-between text-sm font-black text-slate-900 pt-1 ${
+                  store?.receiptFormat === 'classic_detailed' ? 'border-t border-slate-400 text-base' : 'border-t border-slate-200'
+                }`}>
                   <span>GRAND TOTAL:</span>
                   <span className="text-orange-700">{curr} {sale.totalAmount.toFixed(2)}</span>
                 </div>
@@ -775,8 +810,15 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               </div>
 
               {/* Footer message */}
-              <div className="text-center pt-4 border-t border-dashed border-slate-300 text-[10px] text-slate-500 space-y-1">
+              <div className={`text-center pt-4 text-[10px] text-slate-500 space-y-1 ${
+                store?.receiptFormat === 'classic_detailed'
+                  ? 'border-t-2 border-slate-800'
+                  : 'border-t border-dashed border-slate-300'
+              }`}>
                 <p className="font-bold text-slate-800">{receiptFooterText}</p>
+                {store?.address && (
+                  <p className="text-[9px] text-slate-400">{store.address}</p>
+                )}
               </div>
             </div>
 

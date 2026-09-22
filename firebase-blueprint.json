@@ -82,6 +82,20 @@
         "returnSlipNumber": { "type": "string", "description": "Unique return voucher/slip reference" },
         "timestamp": { "type": "string", "description": "ISO date string of return transaction" }
       }
+    },
+    "expenses": {
+      "description": "Store operational expenses, utility bills, rent, packaging, and overhead costs recorded by admins",
+      "fields": {
+        "storeId": { "type": "string", "description": "Associated store ID" },
+        "name": { "type": "string", "description": "Expense title or item name" },
+        "amount": { "type": "number", "description": "Expense pricing / cost amount" },
+        "category": { "type": "string", "description": "Category e.g. utilities, rent, packaging, staff, maintenance, etc." },
+        "date": { "type": "string", "description": "Date of expense YYYY-MM-DD" },
+        "paymentMethod": { "type": "string", "description": "'cash' or 'online'" },
+        "recordedBy": { "type": "string", "description": "Admin username or name who logged the expense" },
+        "notes": { "type": "string", "description": "Optional notes, reference numbers or invoice details" },
+        "timestamp": { "type": "string", "description": "ISO date string when logged" }
+      }
     }
   }
 }

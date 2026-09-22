@@ -7,12 +7,14 @@ import {
   query, 
   where, 
   doc, 
+  setDoc,
+  deleteDoc,
   runTransaction,
   handleFirestoreError,
   OperationType,
   cleanFirestoreData
 } from '../lib/firebase';
-import { Product, Store, UserAccount, CartItem, Sale, SaleItem, ProductReturn } from '../types';
+import { Product, Store, UserAccount, CartItem, Sale, SaleItem, ProductReturn, HeldBill } from '../types';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
 import { ReceiptModal } from './ReceiptModal';
 import { ReturnProductModal } from './ReturnProductModal';
@@ -20,6 +22,10 @@ import { ReturnSlipModal } from './ReturnSlipModal';
 import { HardwarePermissionsBar } from './HardwarePermissionsBar';
 import { CashPaymentModal } from './CashPaymentModal';
 import { WeightPromptModal } from './WeightPromptModal';
+import { HeldBillsModal } from './HeldBillsModal';
+import { ProductShortcutsModal } from './ProductShortcutsModal';
+import { UniversalBackButton } from './UniversalBackButton';
+import { findProductByShortcutOrBarcode } from '../utils/productShortcuts';
 import { speakMessage } from '../lib/speech';
 import { playScanSuccessBeep, playScanErrorBeep } from '../lib/sound';
 import { cleanupExpiredReceipts, isSaleExpired, getReceiptRemainingDays } from '../lib/salesCleanup';
@@ -53,19 +59,28 @@ import {
   Maximize2,
   Minimize2,
   ArrowLeft,
-  Package
+  Package,
+  PauseCircle,
+  Hash,
+  Keyboard
 } from 'lucide-react';
 
 interface CashCounterViewProps {
   store: Store;
   currentUser: UserAccount;
+  onBack?: () => void;
 }
 
-export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, currentUser }) => {
+export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, currentUser, onBack }) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [recentSales, setRecentSales] = useState<Sale[]>([]);
   const [recentReturns, setRecentReturns] = useState<ProductReturn[]>([]);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
+
+  // Held Bills State
+  const [heldBills, setHeldBills] = useState<HeldBill[]>([]);
+  const [isHeldBillsModalOpen, setIsHeldBillsModalOpen] = useState(false);
+  const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
 
   // Inbuilt Camera Scanner and Voice Announcements are controlled by Super Admin per store
   const isCameraScannerAllowed = store?.cameraScannerEnabled !== false;
@@ -184,44 +199,51 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     setBarcodeInput('');
   }, [isVoiceAllowed, voiceEnabled]);
 
-  // Add Product to Cart by Full Barcode, Serial Number, or Code (Hands-free automatic support)
+  // Add Product to Cart by Full Barcode, Serial Number, or 4-digit Shortcut Code (Hands-free automatic support)
   const handleAddByBarcode = useCallback((targetBarcodeOrSerial: string, isExternalScanner: boolean = false) => {
     const rawCode = targetBarcodeOrSerial ? targetBarcodeOrSerial.replace(/[\r\n\t]/g, '').trim() : '';
     if (!rawCode) return;
 
-    const targetCode = cleanCode(rawCode);
-    const targetName = cleanName(rawCode);
+    // 0. Check 4-digit shortcut code or exact barcode / serial match first
+    let found = findProductByShortcutOrBarcode(rawCode, products);
 
-    // 1. Direct exact full match on barcode, serial number, ID, or full name
-    let found = products.find(p => {
-      const pBarcode = cleanCode(p.barcode);
-      const pSerial = cleanCode(p.serialNumber);
-      const pId = cleanCode(p.id);
-      const pName = cleanName(p.name);
-
-      if (pBarcode && pBarcode === targetCode) return true;
-      if (pSerial && pSerial === targetCode) return true;
-      if (pId && pId === targetCode) return true;
-      if (pName && pName === targetName) return true;
-      return false;
-    });
-
-    // 2. Fallback for leading-zero variations in standard barcode formats (e.g. UPC/EAN)
     if (!found) {
-      const targetDigitsNoZero = targetCode.replace(/^0+/, '');
-      if (targetDigitsNoZero.length >= 3) {
-        found = products.find(p => {
-          const pBarcodeDigits = cleanCode(p.barcode).replace(/^0+/, '');
-          const pSerialDigits = cleanCode(p.serialNumber).replace(/^0+/, '');
-          return (pBarcodeDigits && pBarcodeDigits === targetDigitsNoZero) ||
-                 (pSerialDigits && pSerialDigits === targetDigitsNoZero);
-        });
+      const targetCode = cleanCode(rawCode);
+      const targetName = cleanName(rawCode);
+
+      // 1. Direct exact full match on barcode, serial number, ID, or full name
+      found = products.find(p => {
+        const pBarcode = cleanCode(p.barcode);
+        const pSerial = cleanCode(p.serialNumber);
+        const pId = cleanCode(p.id);
+        const pName = cleanName(p.name);
+        const pShortcut = cleanCode(p.shortcutCode);
+
+        if (pShortcut && pShortcut === targetCode) return true;
+        if (pBarcode && pBarcode === targetCode) return true;
+        if (pSerial && pSerial === targetCode) return true;
+        if (pId && pId === targetCode) return true;
+        if (pName && pName === targetName) return true;
+        return false;
+      });
+
+      // 2. Fallback for leading-zero variations in standard barcode formats (e.g. UPC/EAN)
+      if (!found) {
+        const targetDigitsNoZero = targetCode.replace(/^0+/, '');
+        if (targetDigitsNoZero.length >= 3) {
+          found = products.find(p => {
+            const pBarcodeDigits = cleanCode(p.barcode).replace(/^0+/, '');
+            const pSerialDigits = cleanCode(p.serialNumber).replace(/^0+/, '');
+            return (pBarcodeDigits && pBarcodeDigits === targetDigitsNoZero) ||
+                   (pSerialDigits && pSerialDigits === targetDigitsNoZero);
+          });
+        }
       }
     }
 
     if (!found) {
       playScanErrorBeep();
-      showNotification('error', `No product matches barcode "${rawCode}". Barcode must match completely.`);
+      showNotification('error', `No product matches "${rawCode}". Check barcode or 4-digit shortcut code.`);
       setBarcodeInput('');
       return;
     }
@@ -413,16 +435,34 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
       handleFirestoreError(err, OperationType.GET, 'returns');
     });
 
+    // 4. Held Bills (Real-time parked bills queue)
+    const qHeld = query(
+      collection(db, 'held_bills'),
+      where('storeId', '==', store.id)
+    );
+
+    const unsubHeld = onSnapshot(qHeld, (snapshot) => {
+      const list: HeldBill[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() } as HeldBill);
+      });
+      list.sort((a, b) => new Date(b.heldAt).getTime() - new Date(a.heldAt).getTime());
+      setHeldBills(list);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, 'held_bills');
+    });
+
     return () => {
       unsubProducts();
       unsubSales();
       unsubReturns();
+      unsubHeld();
     };
   }, [store?.id]);
 
   // Add product from click
   const handleAddProductClick = (product: Product) => {
-    handleAddByBarcode(product.barcode || product.serialNumber || product.name || product.id);
+    handleAddByBarcode(product.shortcutCode || product.barcode || product.serialNumber || product.name || product.id);
   };
 
   // Quantity Change Handler (COMPULSORY QUANTITY SELECTION)
@@ -486,6 +526,153 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
   const cartTotal = useMemo(() => {
     return Math.max(0, cartSubtotal - discountAmount);
   }, [cartSubtotal, discountAmount]);
+
+  // Hold Active Bill (H + D)
+  const handleHoldBill = useCallback(async () => {
+    if (cart.length === 0) {
+      showNotification('error', 'Cart is empty. Add products before holding bill.');
+      return;
+    }
+
+    try {
+      const heldId = `held_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const payload: HeldBill = {
+        id: heldId,
+        storeId: store.id,
+        counterId: currentUser.counterNumber?.toString() || '1',
+        counterName: `Counter #${currentUser.counterNumber || 1}`,
+        cashierUsername: currentUser.username,
+        items: [...cart],
+        subtotal: cartSubtotal,
+        discountType: discountType,
+        discountValue: typeof discountValue === 'number' ? discountValue : 0,
+        discountAmount: discountAmount,
+        total: cartTotal,
+        heldAt: new Date().toISOString()
+      };
+
+      await setDoc(doc(db, 'held_bills', heldId), payload);
+      setCart([]);
+      setDiscountValue(0);
+      playScanSuccessBeep();
+      showNotification('success', `Bill held successfully (${payload.items.length} items)! Press A+S to resume.`);
+      if (isVoiceAllowed && voiceEnabled) {
+        speakMessage('Bill held');
+      }
+    } catch (err: any) {
+      console.error('Error holding bill:', err);
+      showNotification('error', 'Failed to hold bill: ' + err.message);
+    }
+  }, [cart, cartSubtotal, discountType, discountValue, discountAmount, cartTotal, store.id, currentUser, isVoiceAllowed, voiceEnabled]);
+
+  // Restore Parked Bill to Active Cart
+  const handleRestoreBill = useCallback(async (bill: HeldBill) => {
+    try {
+      setCart(bill.items);
+      if (bill.discountType) setDiscountType(bill.discountType);
+      if (typeof bill.discountValue === 'number') setDiscountValue(bill.discountValue);
+
+      await deleteDoc(doc(db, 'held_bills', bill.id));
+      playScanSuccessBeep();
+      showNotification('success', `Restored held bill with ${bill.items.length} items!`);
+      if (isVoiceAllowed && voiceEnabled) {
+        speakMessage('Bill restored');
+      }
+    } catch (err: any) {
+      console.error('Error restoring held bill:', err);
+      showNotification('error', 'Failed to resume held bill: ' + err.message);
+    }
+  }, [isVoiceAllowed, voiceEnabled]);
+
+  // Discard / Delete Held Bill
+  const handleDeleteHeldBill = useCallback(async (billId: string) => {
+    try {
+      await deleteDoc(doc(db, 'held_bills', billId));
+      showNotification('success', 'Held bill discarded.');
+    } catch (err: any) {
+      console.error(err);
+      showNotification('error', 'Failed to delete held bill: ' + err.message);
+    }
+  }, []);
+
+  // Keyboard Shortcuts: H+D (Hold Bill), A+S (Held Receipts), S+K (Product Shortcuts)
+  useEffect(() => {
+    const pressedKeys = new Set<string>();
+    let lastKey = '';
+    let lastKeyTime = 0;
+
+    const handleKeyDownCombo = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      const tagName = activeEl?.tagName?.toUpperCase();
+      const isInputActive = tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT';
+
+      // If typing in another input (other than barcode input), skip key shortcuts
+      if (isInputActive && activeEl !== barcodeInputRef.current && activeEl !== fullScreenScanInputRef.current) {
+        return;
+      }
+
+      const keyUpper = e.key.toUpperCase();
+      pressedKeys.add(keyUpper);
+
+      // Check simultaneous key presses:
+      if (pressedKeys.has('H') && pressedKeys.has('D')) {
+        e.preventDefault();
+        pressedKeys.clear();
+        handleHoldBill();
+        return;
+      }
+      if (pressedKeys.has('A') && pressedKeys.has('S')) {
+        e.preventDefault();
+        pressedKeys.clear();
+        setIsHeldBillsModalOpen(true);
+        return;
+      }
+      if (pressedKeys.has('S') && pressedKeys.has('K')) {
+        e.preventDefault();
+        pressedKeys.clear();
+        setIsShortcutsModalOpen(true);
+        return;
+      }
+
+      // Check rapid sequential key presses (within 700ms)
+      const now = Date.now();
+      if (now - lastKeyTime < 700) {
+        const combo = lastKey + keyUpper;
+        if (combo === 'HD') {
+          e.preventDefault();
+          handleHoldBill();
+          lastKey = '';
+          return;
+        }
+        if (combo === 'AS') {
+          e.preventDefault();
+          setIsHeldBillsModalOpen(true);
+          lastKey = '';
+          return;
+        }
+        if (combo === 'SK') {
+          e.preventDefault();
+          setIsShortcutsModalOpen(true);
+          lastKey = '';
+          return;
+        }
+      }
+
+      lastKey = keyUpper;
+      lastKeyTime = now;
+    };
+
+    const handleKeyUpCombo = (e: KeyboardEvent) => {
+      pressedKeys.delete(e.key.toUpperCase());
+    };
+
+    window.addEventListener('keydown', handleKeyDownCombo);
+    window.addEventListener('keyup', handleKeyUpCombo);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDownCombo);
+      window.removeEventListener('keyup', handleKeyUpCombo);
+    };
+  }, [handleHoldBill]);
 
   // Handle Checkout Process
   const handleCheckout = () => {
@@ -701,6 +888,9 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-orange-100/40 via-amber-50/20 to-transparent rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
 
           <div className="flex items-center gap-3 z-10">
+            {onBack && (
+              <UniversalBackButton onBack={onBack} label="Back to Dashboard" />
+            )}
             <motion.div 
               whileHover={{ rotate: 5, scale: 1.05 }}
               className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 text-emerald-700 border border-emerald-200 flex items-center justify-center font-bold shadow-xs"
@@ -792,6 +982,75 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           voiceAllowed={isVoiceAllowed}
           cameraScannerEnabled={isCameraScannerAllowed}
         />
+
+        {/* Rapid POS Actions & Keyboard Shortcut Triggers Bar */}
+        <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            {onBack && (
+              <UniversalBackButton onBack={onBack} label="Back to Dashboard" />
+            )}
+
+            {/* Hold Current Bill (H + D) */}
+            <motion.button
+              type="button"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={handleHoldBill}
+              id="btn-trigger-hold-bill"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-orange-50 hover:bg-orange-100 border border-orange-200 text-orange-900 text-xs font-bold transition-all cursor-pointer shadow-2xs"
+              title="Temporarily hold current bill to attend next customer (Shortcut: H + D)"
+            >
+              <PauseCircle className="w-3.5 h-3.5 text-orange-600" />
+              <span>Hold Bill</span>
+              <span className="px-1.5 py-0.2 rounded-md bg-orange-200 text-orange-900 text-[10px] font-mono font-black">
+                H+D
+              </span>
+            </motion.button>
+
+            {/* View Held Receipts (A + S) */}
+            <motion.button
+              type="button"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setIsHeldBillsModalOpen(true)}
+              id="btn-trigger-held-receipts"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-900 text-xs font-bold transition-all cursor-pointer shadow-2xs"
+              title="View and resume parked receipts (Shortcut: A + S)"
+            >
+              <Receipt className="w-3.5 h-3.5 text-purple-600" />
+              <span>Held Receipts</span>
+              {heldBills.length > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-purple-600 text-white text-[10px] font-mono font-bold">
+                  {heldBills.length}
+                </span>
+              )}
+              <span className="px-1.5 py-0.2 rounded-md bg-purple-200 text-purple-900 text-[10px] font-mono font-black">
+                A+S
+              </span>
+            </motion.button>
+
+            {/* Product Shortcuts Overview (S + K) */}
+            <motion.button
+              type="button"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setIsShortcutsModalOpen(true)}
+              id="btn-trigger-shortcuts-dir"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-900 text-xs font-bold transition-all cursor-pointer shadow-2xs"
+              title="View all 4-digit product shortcut codes (Shortcut: S + K)"
+            >
+              <Hash className="w-3.5 h-3.5 text-blue-600" />
+              <span>4-Digit Shortcuts</span>
+              <span className="px-1.5 py-0.2 rounded-md bg-blue-200 text-blue-900 text-[10px] font-mono font-black">
+                S+K
+              </span>
+            </motion.button>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            <span className="hidden sm:inline">Type 4-digit code (e.g. <strong>1001</strong>) + Enter to add</span>
+          </div>
+        </div>
 
         {/* Global Notifications */}
         <AnimatePresence>
@@ -1470,6 +1729,23 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           }}
           product={weightPromptProduct}
           onConfirm={handleConfirmWeight}
+        />
+
+        {/* Held Receipts & Parked Bills Modal (A + S) */}
+        <HeldBillsModal
+          isOpen={isHeldBillsModalOpen}
+          onClose={() => setIsHeldBillsModalOpen(false)}
+          heldBills={heldBills}
+          onRestoreBill={handleRestoreBill}
+          onDeleteBill={handleDeleteHeldBill}
+        />
+
+        {/* 4-Digit Product Shortcuts Modal (S + K) */}
+        <ProductShortcutsModal
+          isOpen={isShortcutsModalOpen}
+          onClose={() => setIsShortcutsModalOpen(false)}
+          products={products}
+          onSelectProduct={handleAddProductClick}
         />
 
         {/* FULL SCREEN CART OVERLAY */}

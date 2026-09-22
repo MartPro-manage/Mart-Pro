@@ -73,8 +73,8 @@ export async function parseExcelProductFile(file: File): Promise<BatchProductRow
     // Skip empty dummy rows
     if (!name) return;
 
-    // Identify barcode or serial number
-    let barcode = String(
+    // Identify barcode or serial number - only set if explicitly provided
+    const barcode = String(
       normalized['barcode'] ||
       normalized['code'] ||
       normalized['sku'] ||
@@ -85,10 +85,6 @@ export async function parseExcelProductFile(file: File): Promise<BatchProductRow
       normalized['serialnumber'] ||
       ''
     ).trim();
-
-    if (!barcode) {
-      barcode = generateRandomBarcode();
-    }
 
     // Identify unit type (kg, liter, piece, weight)
     const unitStr = String(

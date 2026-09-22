@@ -12,6 +12,8 @@ export interface Store {
   address?: string;
   receiptHeader?: string;
   receiptFooter?: string;
+  logoUrl?: string; // Black & white store logo (data URL or image URL)
+  receiptFormat?: 'standard' | 'classic_detailed' | 'compact_eco'; // 3 distinct receipt templates
   taxRegistrationNumber?: string;
   lowStockAlertThreshold?: number;
   currencySymbol?: string;
@@ -20,6 +22,35 @@ export interface Store {
   customCategories?: string[];
   createdAt: string;
 }
+
+export interface Expense {
+  id: string;
+  storeId: string;
+  name: string;
+  amount: number;
+  category?: string;
+  notes?: string;
+  date: string; // YYYY-MM-DD
+  paymentMethod?: 'cash' | 'online';
+  timestamp: string; // ISO string
+  recordedBy?: string;
+}
+
+export interface StaffSessionLog {
+  id: string;
+  storeId: string;
+  userId: string;
+  userName: string;
+  username: string;
+  role: UserRole;
+  counterNumber?: string;
+  loginTime: string; // ISO string
+  logoutTime?: string | null; // ISO string
+  status: 'online' | 'offline';
+  lastActive?: string;
+}
+
+export type StaffSession = StaffSessionLog;
 
 export interface UserAccount {
   id: string;
@@ -37,6 +68,7 @@ export interface Product {
   id: string;
   storeId: string;
   barcode: string;
+  shortcutCode?: string; // 4-digit unique shortcut code e.g. "1001"
   serialNumber?: string;
   name: string;
   imageUrl?: string; // Product picture URL or base64 data URI
@@ -65,6 +97,7 @@ export interface CartItem {
 export interface SaleItem {
   productId: string;
   barcode: string;
+  shortcutCode?: string;
   serialNumber?: string;
   name: string;
   costPrice?: number; // Purchase/Cost price at time of sale
@@ -74,6 +107,52 @@ export interface SaleItem {
   sellBy?: 'unit' | 'weight';
   unitType?: string;
   weightInfo?: string;
+}
+
+export interface HeldBill {
+  id: string;
+  storeId: string;
+  counterId?: string;
+  counterName?: string;
+  cashierUsername?: string;
+  customerName?: string;
+  notes?: string;
+  items: CartItem[];
+  subtotal: number;
+  discountType?: 'percentage' | 'fixed';
+  discountValue?: number;
+  discountAmount?: number;
+  total: number;
+  heldAt: string; // ISO string
+}
+
+export interface SupplierOrderItem {
+  id: string;
+  productId?: string;
+  name: string;
+  category?: string;
+  barcode?: string;
+  shortcutCode?: string;
+  currentStock?: number;
+  orderQuantity: number;
+  unitType?: string;
+  costPrice?: number;
+  estimatedTotal?: number;
+  checked?: boolean;
+}
+
+export interface SupplierOrder {
+  id: string;
+  storeId: string;
+  supplierName: string;
+  contactNumber: string;
+  items: SupplierOrderItem[];
+  status: 'pending' | 'ordered' | 'delivered';
+  notes?: string;
+  totalEstimatedAmount?: number;
+  createdAt: string;
+  updatedAt: string;
+  deliveredAt?: string;
 }
 
 export interface Sale {

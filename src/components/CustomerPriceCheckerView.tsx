@@ -10,6 +10,7 @@ import {
 } from '../lib/firebase';
 import { Product, Store, UserAccount, Sale } from '../types';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
+import { UniversalBackButton } from './UniversalBackButton';
 import { speakMessage } from '../lib/speech';
 import { playScanSuccessBeep, playScanErrorBeep } from '../lib/sound';
 import { processStoreAiQuery, AiQueryResult } from '../lib/storeAiEngine';
@@ -41,9 +42,10 @@ import { motion, AnimatePresence } from 'motion/react';
 interface CustomerPriceCheckerViewProps {
   store: Store;
   currentUser: UserAccount;
+  onBack?: () => void;
 }
 
-export const CustomerPriceCheckerView: React.FC<CustomerPriceCheckerViewProps> = ({ store, currentUser }) => {
+export const CustomerPriceCheckerView: React.FC<CustomerPriceCheckerViewProps> = ({ store, currentUser, onBack }) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [barcodeInput, setBarcodeInput] = useState('');
@@ -343,6 +345,9 @@ export const CustomerPriceCheckerView: React.FC<CustomerPriceCheckerViewProps> =
       <header className="relative z-10 px-4 sm:px-6 py-2.5 border-b border-slate-800 bg-slate-950/80 backdrop-blur-md shrink-0">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
+            {onBack && (
+              <UniversalBackButton onBack={onBack} label="Back to Main Panel" />
+            )}
             <div className="w-10 h-10 rounded-xl bg-orange-600/20 border border-orange-500/40 text-orange-400 flex items-center justify-center font-bold shadow-md shadow-orange-600/10 shrink-0">
               <ScanLine className="w-5 h-5 animate-pulse" />
             </div>

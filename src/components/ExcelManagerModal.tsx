@@ -23,6 +23,7 @@ import { Product, Store } from '../types';
 import { BatchProductRow, parseExcelProductFile, generateRandomBarcode } from '../lib/excelParser';
 import { getAllCategories, saveNewCategoryToStore, DEFAULT_PRESET_CATEGORIES } from '../lib/categories';
 import { playScanSuccessBeep } from '../lib/sound';
+import { ScannableBarcodePreview } from './ScannableBarcodePreview';
 
 export interface SpreadsheetRowItem {
   id: string;
@@ -43,11 +44,13 @@ interface ExcelManagerModalProps {
   onOpenBatchModal?: () => void;
 }
 
+const DEFAULT_EXISTING_PRODUCTS: Product[] = [];
+
 export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
   isOpen,
   onClose,
   store,
-  existingProducts = [],
+  existingProducts = DEFAULT_EXISTING_PRODUCTS,
   onSendToAi,
   onDirectRegisterSuccess,
   onProductsSaved,
@@ -62,13 +65,13 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
   const [isAddingNewCat, setIsAddingNewCat] = useState(false);
   const [newCatRowTargetIndex, setNewCatRowTargetIndex] = useState<number | null>(null);
 
-  // Rows for In-App Spreadsheet Creator
+  // Rows for In-App Spreadsheet Creator - no default barcodes unless entered
   const [rows, setRows] = useState<SpreadsheetRowItem[]>([
-    { id: 'row-1', name: '', price: '', category: 'Grain', barcode: generateRandomBarcode() },
-    { id: 'row-2', name: '', price: '', category: 'Oil', barcode: generateRandomBarcode() },
-    { id: 'row-3', name: '', price: '', category: 'Biscuit', barcode: generateRandomBarcode() },
-    { id: 'row-4', name: '', price: '', category: 'Ghee', barcode: generateRandomBarcode() },
-    { id: 'row-5', name: '', price: '', category: 'Tea', barcode: generateRandomBarcode() },
+    { id: 'row-1', name: '', price: '', category: 'Grain', barcode: '' },
+    { id: 'row-2', name: '', price: '', category: 'Oil', barcode: '' },
+    { id: 'row-3', name: '', price: '', category: 'Biscuit', barcode: '' },
+    { id: 'row-4', name: '', price: '', category: 'Ghee', barcode: '' },
+    { id: 'row-5', name: '', price: '', category: 'Tea', barcode: '' },
   ]);
 
   // Uploading status
@@ -85,7 +88,7 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
       setCategoriesList(getAllCategories(store, existingProducts));
       setUploadError(null);
     }
-  }, [isOpen, store, existingProducts]);
+  }, [isOpen, store?.id, existingProducts.length]);
 
   if (!isOpen) return null;
 
@@ -95,7 +98,7 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
     const defaultCat = categoriesList[0] || 'General';
     setRows(prev => [
       ...prev,
-      { id: newId, name: '', price: '', category: defaultCat, barcode: generateRandomBarcode() }
+      { id: newId, name: '', price: '', category: defaultCat, barcode: '' }
     ]);
   };
 
@@ -109,7 +112,7 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
         name: '',
         price: '',
         category: defaultCat,
-        barcode: generateRandomBarcode()
+        barcode: ''
       });
     }
     setRows(prev => [...prev, ...newRows]);
@@ -119,7 +122,7 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
   const handleDeleteRow = (id: string) => {
     if (rows.length <= 1) {
       // Clear instead of removing last row
-      setRows([{ id: 'row-1', name: '', price: '', category: 'General', barcode: generateRandomBarcode() }]);
+      setRows([{ id: 'row-1', name: '', price: '', category: 'General', barcode: '' }]);
       return;
     }
     setRows(prev => prev.filter(r => r.id !== id));
@@ -134,33 +137,88 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
     });
   };
 
-  // Keydown handler: when user clicks ENTER in a row cell (especially barcode or any cell), move to next row!
+  // 4-Way Arrow Key & Enter Navigation for Excel spreadsheet cells (Up, Down, Left, Right, Enter)
+  const columnOrder: Array<'name' | 'price' | 'category' | 'barcode'> = ['name', 'price', 'category', 'barcode'];
+
   const handleCellKeyDown = (
     e: React.KeyboardEvent<HTMLInputElement | HTMLSelectElement>,
     rowIndex: number,
     fieldName: 'name' | 'price' | 'category' | 'barcode'
   ) => {
+    const target = e.currentTarget;
+    const isInput = target.tagName === 'INPUT';
+    const inputEl = isInput ? (target as HTMLInputElement) : null;
+    const colIdx = columnOrder.indexOf(fieldName);
+
+    // 1. ARROW UP: Move to the cell directly above in the same column
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (rowIndex > 0) {
+        cellRefs.current[`${rowIndex - 1}-${fieldName}`]?.focus();
+      }
+      return;
+    }
+
+    // 2. ARROW DOWN: Move to the cell directly below in the same column
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (rowIndex < rows.length - 1) {
+        cellRefs.current[`${rowIndex + 1}-${fieldName}`]?.focus();
+      } else {
+        // Last row: automatically append a new row and focus the same column
+        const newId = `row-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        const defaultCat = rows[rowIndex]?.category || 'General';
+        setRows(prev => [
+          ...prev,
+          { id: newId, name: '', price: '', category: defaultCat, barcode: '' }
+        ]);
+        setTimeout(() => {
+          cellRefs.current[`${rowIndex + 1}-${fieldName}`]?.focus();
+        }, 50);
+      }
+      return;
+    }
+
+    // 3. ARROW LEFT: Move to previous column if cursor at beginning or for select
+    if (e.key === 'ArrowLeft') {
+      const atStart = !inputEl || (inputEl.selectionStart === 0 && inputEl.selectionEnd === 0);
+      if (atStart && colIdx > 0) {
+        e.preventDefault();
+        const prevCol = columnOrder[colIdx - 1];
+        cellRefs.current[`${rowIndex}-${prevCol}`]?.focus();
+        return;
+      }
+    }
+
+    // 4. ARROW RIGHT: Move to next column if cursor at end or for select
+    if (e.key === 'ArrowRight') {
+      const atEnd = !inputEl || (inputEl.selectionStart === inputEl.value.length);
+      if (atEnd && colIdx < columnOrder.length - 1) {
+        e.preventDefault();
+        const nextCol = columnOrder[colIdx + 1];
+        cellRefs.current[`${rowIndex}-${nextCol}`]?.focus();
+        return;
+      }
+    }
+
+    // 5. ENTER: Move down to the next row's first column (Name)
     if (e.key === 'Enter') {
       e.preventDefault();
-
-      // If user is on barcode, or presses enter, move down to second/next row!
       const nextRowIndex = rowIndex + 1;
 
       if (nextRowIndex < rows.length) {
-        // Move to existing next row's Product Name
         setTimeout(() => {
           cellRefs.current[`${nextRowIndex}-name`]?.focus();
         }, 10);
       } else {
-        // It's the last row! Automatically create a new row and focus it
+        // Last row: automatically create a new row and focus it
         const newId = `row-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-        const defaultCat = rows[rowIndex].category || 'General';
+        const defaultCat = rows[rowIndex]?.category || 'General';
         setRows(prev => [
           ...prev,
-          { id: newId, name: '', price: '', category: defaultCat, barcode: generateRandomBarcode() }
+          { id: newId, name: '', price: '', category: defaultCat, barcode: '' }
         ]);
 
-        // Focus the new row's name after re-render
         setTimeout(() => {
           cellRefs.current[`${nextRowIndex}-name`]?.focus();
         }, 50);
@@ -202,13 +260,13 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
 
       playScanSuccessBeep();
 
-      // Convert parsed rows to spreadsheet rows so user can see them in table
+      // Convert parsed rows to spreadsheet rows - do not generate barcode unless user entered it
       const convertedRows: SpreadsheetRowItem[] = parsed.map((p, idx) => ({
         id: `upload-${Date.now()}-${idx}`,
         name: p.name,
         price: p.price,
         category: p.category || 'General',
-        barcode: p.barcode || generateRandomBarcode()
+        barcode: p.barcode ? p.barcode.trim() : ''
       }));
 
       setRows(convertedRows);
@@ -243,7 +301,7 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
         price: pPrice,
         costPrice: Math.round(pPrice * 0.8), // estimated cost or 0
         category: r.category.trim() || 'General',
-        barcode: r.barcode.trim() || generateRandomBarcode(),
+        barcode: r.barcode.trim(),
         sellBy: 'unit',
         unitType: 'piece',
         quantity: 10
@@ -525,26 +583,43 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
                           </div>
                         </td>
 
-                        {/* 4. Barcode */}
-                        <td className="py-2.5 px-3">
-                          <div className="relative flex items-center gap-1">
-                            <input
-                              ref={el => cellRefs.current[`${index}-barcode`] = el}
-                              type="text"
-                              value={row.barcode}
-                              onChange={(e) => handleUpdateCell(index, 'barcode', e.target.value)}
-                              onKeyDown={(e) => handleCellKeyDown(e, index, 'barcode')}
-                              placeholder="Barcode / EAN"
-                              className="w-full px-3 py-1.5 bg-slate-50 focus:bg-white border border-slate-200 focus:border-orange-500 rounded-lg text-xs font-mono font-medium text-slate-800 focus:outline-none transition-all"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleUpdateCell(index, 'barcode', generateRandomBarcode())}
-                              className="p-1.5 text-slate-400 hover:text-orange-600 rounded-md hover:bg-slate-100 transition-colors"
-                              title="Generate random barcode"
-                            >
-                              <RefreshCw className="w-3.5 h-3.5" />
-                            </button>
+                        {/* 4. Barcode with Automatic Scannable Preview */}
+                        <td className="py-2.5 px-3 min-w-[200px]">
+                          <div className="space-y-1.5">
+                            <div className="relative flex items-center gap-1">
+                              <input
+                                ref={el => cellRefs.current[`${index}-barcode`] = el}
+                                type="text"
+                                value={row.barcode}
+                                onChange={(e) => handleUpdateCell(index, 'barcode', e.target.value)}
+                                onKeyDown={(e) => handleCellKeyDown(e, index, 'barcode')}
+                                placeholder="Barcode / EAN"
+                                className="w-full px-3 py-1.5 bg-slate-50 focus:bg-white border border-slate-200 focus:border-orange-500 rounded-lg text-xs font-mono font-bold text-slate-800 focus:outline-none transition-all"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateCell(index, 'barcode', generateRandomBarcode())}
+                                className="p-1.5 text-slate-400 hover:text-orange-600 rounded-md hover:bg-slate-100 transition-colors shrink-0 cursor-pointer"
+                                title="Generate fresh barcode"
+                              >
+                                <RefreshCw className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+
+                            {/* Automatic Scannable Barcode Display */}
+                            {row.barcode?.trim() ? (
+                              <div className="bg-white p-1 rounded-md border border-slate-200/80 shadow-2xs flex items-center justify-center">
+                                <ScannableBarcodePreview value={row.barcode} compact={true} />
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateCell(index, 'barcode', generateRandomBarcode())}
+                                className="text-[10px] font-bold text-orange-600 hover:text-orange-700 underline flex items-center gap-1 cursor-pointer"
+                              >
+                                ⚡ Generate Scannable Barcode
+                              </button>
+                            )}
                           </div>
                         </td>
 

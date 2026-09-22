@@ -21,9 +21,11 @@ import { HardwarePermissionsBar } from './HardwarePermissionsBar';
 import { MultiProductBatchModal } from './MultiProductBatchModal';
 import { ExcelManagerModal } from './ExcelManagerModal';
 import { StoreAiAssistantModal } from './StoreAiAssistantModal';
+import { UniversalBackButton } from './UniversalBackButton';
 import { downloadBarcodeForProduct } from '../lib/barcodeDownload';
 import { BatchProductRow } from '../lib/excelParser';
 import { getAllCategories, addCustomCategoryToStore } from '../lib/categories';
+import { generateNextShortcutCode } from '../utils/productShortcuts';
 import { 
   PackagePlus, 
   Barcode as BarcodeIcon, 
@@ -63,9 +65,10 @@ import {
 interface ProductRegisterViewProps {
   store: Store;
   currentUser: UserAccount;
+  onBack?: () => void;
 }
 
-export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store, currentUser }) => {
+export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store, currentUser, onBack }) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isGeneratorOpen, setIsGeneratorOpen] = useState(false);
@@ -239,7 +242,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     const trimmedSerial = serialNumber.trim().toLowerCase();
 
     if (!trimmedBarcode && !trimmedSerial) {
-      setExistingProduct(null);
+      setExistingProduct(prev => prev !== null ? null : prev);
       return;
     }
 
@@ -249,23 +252,33 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     );
 
     if (found) {
-      setExistingProduct(found);
-      if (!barcode && found.barcode) setBarcode(found.barcode);
-      if (!serialNumber && found.serialNumber) setSerialNumber(found.serialNumber || '');
-      setName(found.name);
-      setImageUrl(found.imageUrl || '');
-      setWeight(found.weight || '');
-      setCategory(found.category || 'General');
-      setCostPrice(found.costPrice !== undefined ? found.costPrice : '');
-      setPrice(found.price);
-      setMinStockLevel(found.minStockLevel || 5);
-      setSellBy(found.sellBy || (found.unitType === 'kg' ? 'weight' : 'unit'));
-      setUnitType((found.unitType as any) || (found.sellBy === 'weight' ? 'kg' : 'piece'));
-      setWeightPerUnit(found.weightPerUnit !== undefined ? found.weightPerUnit : '');
-      setStockAdjustmentMode('keep');
-      setStockQuantityToAdd('');
+      setExistingProduct(prev => {
+        if (prev?.id === found.id) return prev;
+        return found;
+      });
+      // Only set form values if switching to a new found product
+      setExistingProduct(prev => {
+        if (prev?.id !== found.id) {
+          if (!barcode && found.barcode) setBarcode(found.barcode);
+          if (!serialNumber && found.serialNumber) setSerialNumber(found.serialNumber || '');
+          setName(found.name);
+          setImageUrl(found.imageUrl || '');
+          setWeight(found.weight || '');
+          setCategory(found.category || 'General');
+          setCostPrice(found.costPrice !== undefined ? found.costPrice : '');
+          setPrice(found.price);
+          setMinStockLevel(found.minStockLevel || 5);
+          setSellBy(found.sellBy || (found.unitType === 'kg' ? 'weight' : 'unit'));
+          setUnitType((found.unitType as any) || (found.sellBy === 'weight' ? 'kg' : 'piece'));
+          setWeightPerUnit(found.weightPerUnit !== undefined ? found.weightPerUnit : '');
+          setStockAdjustmentMode('keep');
+          setStockQuantityToAdd('');
+          return found;
+        }
+        return prev;
+      });
     } else {
-      setExistingProduct(null);
+      setExistingProduct(prev => prev !== null ? null : prev);
     }
   }, [barcode, serialNumber, products]);
 
@@ -477,9 +490,11 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
       if (targetProduct) {
         // UPDATE EXISTING PRODUCT
         const productDocRef = doc(db, 'products', targetProduct.id);
+        const shortcutCode = targetProduct.shortcutCode || generateNextShortcutCode(products);
 
         await updateDoc(productDocRef, cleanFirestoreData({
           barcode: trimmedBarcode || '',
+          shortcutCode,
           serialNumber: trimmedSerial || '',
           name: trimmedName,
           imageUrl: imageUrl.trim() || undefined,
@@ -498,15 +513,18 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
 
         showNotification(
           'success',
-          `Updated "${trimmedName}"${codeInfo ? ` (${codeInfo})` : ''}! Price: Rs. ${numericPrice.toFixed(2)}${sellBy === 'weight' ? '/kg' : ''} • ${stockSummaryText}`
+          `Updated "${trimmedName}"${codeInfo ? ` (${codeInfo})` : ''} [Code: ${shortcutCode}]! Price: Rs. ${numericPrice.toFixed(2)}${sellBy === 'weight' ? '/kg' : ''} • ${stockSummaryText}`
         );
       } else {
-        // REGISTER NEW PRODUCT
+        // REGISTER NEW PRODUCT with automated 4-digit shortcut code
         const productDocRef = doc(collection(db, 'products'));
+        const shortcutCode = generateNextShortcutCode(products);
+
         const newProduct: Product = {
           id: productDocRef.id,
           storeId: store.id,
           barcode: trimmedBarcode || '',
+          shortcutCode,
           serialNumber: trimmedSerial || '',
           name: trimmedName,
           imageUrl: imageUrl.trim() || undefined,
@@ -528,7 +546,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
 
         showNotification(
           'success',
-          `Registered new product "${trimmedName}"${codeInfo ? ` (${codeInfo})` : ''} at Rs. ${numericPrice.toFixed(2)}${sellBy === 'weight' ? '/kg' : ''} • ${stockSummaryText}`
+          `Registered new product "${trimmedName}" [4-Digit Shortcut: ${shortcutCode}]${codeInfo ? ` (${codeInfo})` : ''} at Rs. ${numericPrice.toFixed(2)}${sellBy === 'weight' ? '/kg' : ''} • ${stockSummaryText}`
         );
       }
 
@@ -571,10 +589,12 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
       showNotification('success', `Updated stock for "${productData.name}" (Total Stock: ${newStock}) at Rs. ${productData.price.toFixed(2)}`);
     } else {
       const newDocRef = doc(collection(db, 'products'));
+      const shortcutCode = generateNextShortcutCode(products);
       const newProd: Product = {
         id: newDocRef.id,
         storeId: store.id,
         barcode: productData.uniqueNumber || '',
+        shortcutCode,
         name: productData.name,
         weight: productData.weight || '',
         category: productData.category || 'General',
@@ -586,7 +606,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
         updatedAt: new Date().toISOString()
       };
       await setDoc(newDocRef, cleanFirestoreData(newProd));
-      showNotification('success', `Created & registered barcode for "${productData.name}" with ${productData.stockQuantity || 50} units at Rs. ${productData.price.toFixed(2)}`);
+      showNotification('success', `Created & registered product "${productData.name}" [Code: ${shortcutCode}] with ${productData.stockQuantity || 50} units at Rs. ${productData.price.toFixed(2)}`);
     }
   };
 
@@ -747,6 +767,11 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
           className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-5 relative overflow-hidden"
         >
           <div className="space-y-1.5 z-10">
+            {onBack && (
+              <div className="mb-2">
+                <UniversalBackButton onBack={onBack} label="Back to Dashboard" />
+              </div>
+            )}
             <div className="flex flex-wrap items-center gap-2">
               <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-orange-50 text-orange-700 border border-orange-200 flex items-center gap-1.5 shadow-2xs">
                 <PackagePlus className="w-3.5 h-3.5 text-orange-600" /> Product Register & Stock

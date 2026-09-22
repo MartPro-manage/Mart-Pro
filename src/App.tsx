@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { AuthState, Store, Sale } from './types';
-import { ensureSuperAdminExists } from './lib/firebase';
+import { ensureSuperAdminExists, db, doc, updateDoc } from './lib/firebase';
 import { Login } from './components/Login';
-import { Navbar } from './components/Navbar';
+import { Navbar, AppNavView } from './components/Navbar';
 import { SuperAdminDashboard } from './components/SuperAdminDashboard';
 import { StoreAdminDashboard } from './components/StoreAdminDashboard';
 import { ProductRegisterView } from './components/ProductRegisterView';
 import { CashCounterView } from './components/CashCounterView';
 import { CustomerPriceCheckerView } from './components/CustomerPriceCheckerView';
+import { SupplierManagementView } from './components/SupplierManagementView';
+import { StaffSessionsView } from './components/StaffSessionsView';
 import { ReceiptModal } from './components/ReceiptModal';
 import { PublicReceiptView } from './components/PublicReceiptView';
 
@@ -39,9 +41,9 @@ export default function App() {
     return null;
   });
 
-  // Admin temporary view overrides (e.g. if Store Admin or Super Admin switches view)
-  const [activeOverrideView, setActiveOverrideView] = useState<'default' | 'pos' | 'inventory'>('default');
-  
+  // Dynamic Interface Switching state - Clicking any navbar button will instantly display only that interface
+  const [activeNavView, setActiveNavView] = useState<AppNavView>('dashboard');
+
   // Inspected store for Super Admin
   const [inspectedStore, setInspectedStore] = useState<Store | null>(null);
 
@@ -82,13 +84,35 @@ export default function App() {
 
   const handleLoginSuccess = (newAuth: AuthState) => {
     setAuth(newAuth);
-    setActiveOverrideView('default');
     setInspectedStore(newAuth.store);
+    
+    // Set initial view according to role
+    if (newAuth.user?.role === 'cash_counter') {
+      setActiveNavView('pos');
+    } else if (newAuth.user?.role === 'product_register') {
+      setActiveNavView('inventory');
+    } else if (newAuth.user?.role === 'customer_price_checker') {
+      setActiveNavView('price_checker');
+    } else {
+      setActiveNavView('dashboard');
+    }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const activeSessionId = localStorage.getItem('martpro_current_session_id');
+    if (activeSessionId) {
+      try {
+        await updateDoc(doc(db, 'staff_sessions', activeSessionId), {
+          logoutTime: new Date().toISOString(),
+          status: 'offline'
+        });
+      } catch (err) {
+        console.warn('Could not record logout time:', err);
+      }
+      localStorage.removeItem('martpro_current_session_id');
+    }
     setAuth({ user: null, store: null });
-    setActiveOverrideView('default');
+    setActiveNavView('dashboard');
     setInspectedStore(null);
   };
 
@@ -105,107 +129,137 @@ export default function App() {
   const userRole = auth.user.role;
   const activeStore = inspectedStore || auth.store;
 
+  // Universal return action: returns back to main panel / default view
+  const handleUniversalReturn = () => {
+    if (userRole === 'cash_counter') {
+      setActiveNavView('pos');
+    } else if (userRole === 'product_register') {
+      setActiveNavView('inventory');
+    } else if (userRole === 'customer_price_checker') {
+      setActiveNavView('price_checker');
+    } else {
+      setActiveNavView('dashboard');
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-orange-500 selection:text-white">
-      {/* Top Navbar */}
-      <Navbar auth={auth} onLogout={handleLogout} />
+    <div className="h-screen flex flex-col overflow-hidden bg-slate-50 text-slate-900 font-sans selection:bg-orange-500 selection:text-white">
+      {/* Top Navbar with Dynamic Interface Switching - Moves separately from page interface */}
+      <Navbar 
+        auth={auth} 
+        activeView={activeNavView}
+        onSelectView={(view) => setActiveNavView(view)}
+        onLogout={handleLogout} 
+      />
 
-      {/* Main Content Body */}
-      <main className="flex-1">
-        
-        {/* VIEW ROUTING BASED ON ROLE */}
+      {/* Main Content Body - Dynamically renders ONLY the selected view and scrolls separately */}
+      <main className="flex-1 overflow-y-auto min-h-0">
 
-        {/* 1. SUPER ADMIN ROLE */}
-        {userRole === 'super_admin' && (
-          <div>
-            {inspectedStore ? (
-              <div>
-                <div className="bg-orange-50 border-b border-orange-200 px-6 py-2 flex items-center justify-between text-xs text-orange-950 font-medium">
-                  <span className="font-bold text-orange-700">
-                    Inspecting Store: {inspectedStore.name}
-                  </span>
-                  <button
-                    onClick={() => setInspectedStore(null)}
-                    className="px-3 py-1 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-lg cursor-pointer transition-colors shadow-sm"
-                  >
-                    ← Back to Super Admin Control
-                  </button>
-                </div>
-
-                <StoreAdminDashboard
-                  store={inspectedStore}
-                  currentUser={auth.user}
-                  onNavigateToPOS={() => setActiveOverrideView('pos')}
-                  onNavigateToInventory={() => setActiveOverrideView('inventory')}
-                  onViewReceipt={handleViewReceipt}
-                />
-              </div>
-            ) : (
-              <SuperAdminDashboard
-                onSelectStoreToManage={(store) => setInspectedStore(store)}
-              />
-            )}
-          </div>
+        {/* 1. SUPPLIER MODULE (Explicitly in Main Navigation) */}
+        {activeNavView === 'suppliers' && activeStore && (
+          <SupplierManagementView 
+            store={activeStore} 
+            currentUser={auth.user} 
+            onBack={handleUniversalReturn}
+          />
         )}
 
-        {/* 2. STORE ADMIN ROLE */}
-        {userRole === 'admin' && activeStore && (
+        {/* 2. STAFF SESSIONS & LIVE MONITORING */}
+        {activeNavView === 'staff' && activeStore && (
+          <StaffSessionsView 
+            store={activeStore} 
+            currentUser={auth.user} 
+            onBack={handleUniversalReturn}
+          />
+        )}
+
+        {/* 3. CASH COUNTER POINT OF SALE (POS) */}
+        {activeNavView === 'pos' && activeStore && (
+          <CashCounterView 
+            store={activeStore} 
+            currentUser={auth.user} 
+            onBack={handleUniversalReturn}
+          />
+        )}
+
+        {/* 4. PRODUCT REGISTER & STOCK IN */}
+        {activeNavView === 'inventory' && activeStore && (
+          <ProductRegisterView 
+            store={activeStore} 
+            currentUser={auth.user} 
+            onBack={handleUniversalReturn}
+          />
+        )}
+
+        {/* 5. CUSTOMER PRICE CHECKER KIOSK */}
+        {activeNavView === 'price_checker' && activeStore && (
+          <CustomerPriceCheckerView 
+            store={activeStore} 
+            currentUser={auth.user} 
+            onBack={handleUniversalReturn}
+          />
+        )}
+
+        {/* 6. PRIMARY DASHBOARD / MAIN PANEL */}
+        {activeNavView === 'dashboard' && (
           <div>
-            {activeOverrideView === 'pos' && (
-              <div>
-                <div className="bg-orange-50 border-b border-orange-200 px-6 py-2 flex items-center justify-between text-xs text-slate-700">
-                  <span className="font-bold text-orange-700">Store Admin Mode: Cash Counter POS</span>
-                  <button
-                    onClick={() => setActiveOverrideView('default')}
-                    className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-lg cursor-pointer transition-colors shadow-sm"
-                  >
-                    ← Back to Store Admin Dashboard
-                  </button>
-                </div>
-                <CashCounterView store={activeStore} currentUser={auth.user} />
-              </div>
-            )}
+            {userRole === 'super_admin' ? (
+              inspectedStore ? (
+                <div>
+                  <div className="bg-orange-50 border-b border-orange-200 px-6 py-2.5 flex items-center justify-between text-xs text-orange-950 font-medium">
+                    <span className="font-bold text-orange-700">
+                      Inspecting Store: {inspectedStore.name}
+                    </span>
+                    <button
+                      onClick={() => setInspectedStore(null)}
+                      className="px-3 py-1 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-lg cursor-pointer transition-colors shadow-sm"
+                    >
+                      ← Back to Central Super Admin
+                    </button>
+                  </div>
 
-            {activeOverrideView === 'inventory' && (
-              <div>
-                <div className="bg-blue-50 border-b border-blue-200 px-6 py-2 flex items-center justify-between text-xs text-slate-700">
-                  <span className="font-bold text-blue-700">Store Admin Mode: Stock In & Product Register</span>
-                  <button
-                    onClick={() => setActiveOverrideView('default')}
-                    className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-lg cursor-pointer transition-colors shadow-sm"
-                  >
-                    ← Back to Store Admin Dashboard
-                  </button>
+                  <StoreAdminDashboard
+                    store={inspectedStore}
+                    currentUser={auth.user}
+                    onNavigateToPOS={() => setActiveNavView('pos')}
+                    onNavigateToInventory={() => setActiveNavView('inventory')}
+                    onNavigateToSuppliers={() => setActiveNavView('suppliers')}
+                    onNavigateToLiveSessions={() => setActiveNavView('staff')}
+                    onViewReceipt={handleViewReceipt}
+                  />
                 </div>
-                <ProductRegisterView store={activeStore} currentUser={auth.user} />
-              </div>
-            )}
-
-            {activeOverrideView === 'default' && (
+              ) : (
+                <SuperAdminDashboard
+                  onSelectStoreToManage={(store) => setInspectedStore(store)}
+                />
+              )
+            ) : userRole === 'admin' && activeStore ? (
               <StoreAdminDashboard
                 store={activeStore}
                 currentUser={auth.user}
-                onNavigateToPOS={() => setActiveOverrideView('pos')}
-                onNavigateToInventory={() => setActiveOverrideView('inventory')}
+                onNavigateToPOS={() => setActiveNavView('pos')}
+                onNavigateToInventory={() => setActiveNavView('inventory')}
+                onNavigateToSuppliers={() => setActiveNavView('suppliers')}
+                onNavigateToLiveSessions={() => setActiveNavView('staff')}
                 onViewReceipt={handleViewReceipt}
               />
-            )}
+            ) : userRole === 'cash_counter' && activeStore ? (
+              <CashCounterView 
+                store={activeStore} 
+                currentUser={auth.user} 
+              />
+            ) : userRole === 'product_register' && activeStore ? (
+              <ProductRegisterView 
+                store={activeStore} 
+                currentUser={auth.user} 
+              />
+            ) : userRole === 'customer_price_checker' && activeStore ? (
+              <CustomerPriceCheckerView 
+                store={activeStore} 
+                currentUser={auth.user} 
+              />
+            ) : null}
           </div>
-        )}
-
-        {/* 3. PRODUCT REGISTER ROLE */}
-        {userRole === 'product_register' && activeStore && (
-          <ProductRegisterView store={activeStore} currentUser={auth.user} />
-        )}
-
-        {/* 4. CASH COUNTER ROLE */}
-        {userRole === 'cash_counter' && activeStore && (
-          <CashCounterView store={activeStore} currentUser={auth.user} />
-        )}
-
-        {/* 5. CUSTOMER PRICE CHECKER KIOSK ROLE */}
-        {userRole === 'customer_price_checker' && activeStore && (
-          <CustomerPriceCheckerView store={activeStore} currentUser={auth.user} />
         )}
 
       </main>

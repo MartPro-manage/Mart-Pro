@@ -47,13 +47,15 @@ const COMMON_REASONS = [
   'Billing error / Duplicate charge'
 ];
 
+const DEFAULT_RECENT_SALES: Sale[] = [];
+
 export const ReturnProductModal: React.FC<ReturnProductModalProps> = ({
   isOpen,
   onClose,
   products,
   store,
   currentUser,
-  recentSales = [],
+  recentSales = DEFAULT_RECENT_SALES,
   voiceEnabled = true,
   isCameraScannerAllowed = false,
   onReturnProcessed

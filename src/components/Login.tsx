@@ -8,6 +8,7 @@ import {
   where, 
   doc, 
   getDoc,
+  addDoc,
   SUPER_ADMIN_USERNAME,
   SUPER_ADMIN_PASSWORD 
 } from '../lib/firebase';
@@ -136,6 +137,26 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             setLoading(false);
             return;
           }
+        }
+      }
+
+      // Record real-time staff login activity
+      if (targetUser.storeId && targetUser.storeId !== 'all') {
+        try {
+          const sessionRef = await addDoc(collection(db, 'staff_sessions'), {
+            storeId: targetUser.storeId,
+            userId: targetUser.id,
+            userName: targetUser.name || targetUser.username,
+            username: targetUser.username,
+            role: targetUser.role,
+            counterNumber: targetUser.counterNumber || '',
+            loginTime: new Date().toISOString(),
+            logoutTime: null,
+            status: 'online'
+          });
+          localStorage.setItem('martpro_current_session_id', sessionRef.id);
+        } catch (sessErr) {
+          console.warn('Could not record staff session:', sessErr);
         }
       }
 

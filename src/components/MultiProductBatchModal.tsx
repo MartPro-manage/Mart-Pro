@@ -17,9 +17,14 @@ import {
   ArrowRight,
   Download
 } from 'lucide-react';
-import { BatchProductRow, parseExcelProductFile, generateRandomBarcode } from '../lib/excelParser';
+import { BatchProductRow, parseExcelProductFile } from '../lib/excelParser';
 import { Product, Store } from '../types';
 import { db, collection, setDoc, doc } from '../lib/firebase';
+import { generateNextShortcutCode } from '../utils/productShortcuts';
+
+const generateRandomBarcode = (): string => {
+  return Math.floor(100000000000 + Math.random() * 900000000000).toString();
+};
 
 interface MultiProductBatchModalProps {
   store: Store;
@@ -39,7 +44,7 @@ export const MultiProductBatchModal: React.FC<MultiProductBatchModalProps> = ({
   const [rows, setRows] = useState<BatchProductRow[]>([
     {
       id: 'row-1',
-      barcode: generateRandomBarcode(),
+      barcode: '',
       name: '',
       category: 'General',
       sellBy: 'unit',
@@ -50,7 +55,7 @@ export const MultiProductBatchModal: React.FC<MultiProductBatchModalProps> = ({
     },
     {
       id: 'row-2',
-      barcode: generateRandomBarcode(),
+      barcode: '',
       name: '',
       category: 'General',
       sellBy: 'weight',
@@ -70,13 +75,13 @@ export const MultiProductBatchModal: React.FC<MultiProductBatchModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Add empty row
+  // Add empty row - no default barcode
   const handleAddRow = (sellBy: 'unit' | 'weight' = 'unit', unitType: 'piece' | 'kg' | 'liter' = 'piece') => {
     setRows(prev => [
       ...prev,
       {
         id: `row-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        barcode: generateRandomBarcode(),
+        barcode: '',
         name: '',
         category: 'General',
         sellBy,
@@ -88,13 +93,13 @@ export const MultiProductBatchModal: React.FC<MultiProductBatchModalProps> = ({
     ]);
   };
 
-  // Add 5 rows
+  // Add 5 rows - no default barcodes
   const handleAdd5Rows = () => {
     const newRows: BatchProductRow[] = [];
     for (let i = 0; i < 5; i++) {
       newRows.push({
         id: `row-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
-        barcode: generateRandomBarcode(),
+        barcode: '',
         name: '',
         category: 'General',
         sellBy: 'unit',
@@ -172,10 +177,10 @@ export const MultiProductBatchModal: React.FC<MultiProductBatchModalProps> = ({
     setErrorMsg(null);
     setSuccessMsg(null);
 
-    // Validation
-    const invalidRows = rows.filter(r => !r.name.trim() || !r.barcode.trim() || r.price <= 0);
+    // Validation: only product name and retail price > 0 are strictly required
+    const invalidRows = rows.filter(r => !r.name.trim() || r.price <= 0);
     if (invalidRows.length > 0) {
-      setErrorMsg(`Please fill in Product Name, Barcode, and Retail Price (>0) for all rows. ${invalidRows.length} row(s) need attention.`);
+      setErrorMsg(`Please fill in Product Name and Retail Selling Price (>0) for all rows. ${invalidRows.length} row(s) need attention.`);
       return;
     }
 
@@ -183,22 +188,29 @@ export const MultiProductBatchModal: React.FC<MultiProductBatchModalProps> = ({
     let savedCount = 0;
 
     try {
-      // Build map of existing products by barcode for updates
+      // Build map of existing products by barcode or ID for updates
       const barcodeMap = new Map<string, Product>();
       (existingProducts || []).forEach(p => {
         if (p.barcode) barcodeMap.set(p.barcode, p);
       });
 
+      const assignedShortcutsPool = [...existingProducts];
+
       for (const row of rows) {
-        const barcodeTrimmed = row.barcode.trim();
-        const existing = barcodeMap.get(barcodeTrimmed);
+        const barcodeTrimmed = row.barcode ? row.barcode.trim() : '';
+        const existing = barcodeTrimmed ? barcodeMap.get(barcodeTrimmed) : undefined;
         const productId = existing ? existing.id : `prod_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+        // Assign or preserve unique 4-digit shortcut code
+        const shortcutCode = existing?.shortcutCode || generateNextShortcutCode(assignedShortcutsPool);
+        assignedShortcutsPool.push({ shortcutCode } as Product);
 
         const productPayload: Partial<Product> = {
           id: productId,
           storeId: store.id,
           barcode: barcodeTrimmed,
-          serialNumber: row.serialNumber?.trim() || barcodeTrimmed,
+          shortcutCode,
+          serialNumber: row.serialNumber?.trim() || barcodeTrimmed || shortcutCode,
           name: row.name.trim(),
           category: row.category.trim() || 'General',
           sellBy: row.sellBy,
@@ -220,7 +232,7 @@ export const MultiProductBatchModal: React.FC<MultiProductBatchModalProps> = ({
         savedCount++;
       }
 
-      setSuccessMsg(`Success! Saved ${savedCount} products into ${store.name} inventory.`);
+      setSuccessMsg(`Success! Saved ${savedCount} products into ${store.name} inventory with automated 4-digit shortcuts.`);
       setTimeout(() => {
         onSuccess(savedCount);
         onClose();
@@ -318,7 +330,7 @@ export const MultiProductBatchModal: React.FC<MultiProductBatchModalProps> = ({
             <thead>
               <tr className="bg-slate-100 text-slate-600 font-bold uppercase tracking-wider border-b border-slate-200">
                 <th className="p-2.5 text-center w-12">#</th>
-                <th className="p-2.5 w-44">Barcode / Sr No.</th>
+                <th className="p-2.5 w-44">Barcode (Optional)</th>
                 <th className="p-2.5 min-w-[200px]">Product Name *</th>
                 <th className="p-2.5 w-32">Category</th>
                 <th className="p-2.5 w-32">Unit / Pricing Type</th>

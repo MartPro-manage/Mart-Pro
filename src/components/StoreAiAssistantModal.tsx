@@ -55,13 +55,17 @@ interface StoreAiAssistantModalProps {
   initialSpreadsheetProducts?: BatchProductRow[] | null;
 }
 
+const DEFAULT_PRODUCTS: Product[] = [];
+const DEFAULT_SALES: Sale[] = [];
+const DEFAULT_RETURNS: ProductReturn[] = [];
+
 export const StoreAiAssistantModal: React.FC<StoreAiAssistantModalProps> = ({
   isOpen,
   onClose,
   store,
-  products = [],
-  sales = [],
-  returns = [],
+  products = DEFAULT_PRODUCTS,
+  sales = DEFAULT_SALES,
+  returns = DEFAULT_RETURNS,
   currentUser,
   onOpenBatchRegister,
   initialProductToEdit,

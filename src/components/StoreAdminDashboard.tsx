@@ -68,7 +68,10 @@ import {
   ShieldCheck,
   ArrowRight,
   ReceiptText,
-  Truck
+  Truck,
+  Boxes,
+  PackagePlus,
+  CheckCircle2
 } from 'lucide-react';
 
 interface StoreAdminDashboardProps {
@@ -655,6 +658,46 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
 
     return Object.values(summaryMap).sort((a, b) => b.realizedProfit - a.realizedProfit);
   }, [filteredSalesByDate, filteredReturnsByDate, products]);
+
+  // Store inventory valuation and stock health analytics (migrated from Product Register)
+  const inventoryValuationStats = useMemo(() => {
+    let totalCostValue = 0;
+    let totalRetailValue = 0;
+    let totalUnitsCount = 0;
+    let lowStockCount = 0;
+    let outOfStockCount = 0;
+
+    (products || []).forEach((p) => {
+      const qty = p.stockQuantity || 0;
+      const effectiveSellPrice = p.price || p.pricePerKg || 0;
+      const effectiveCostPrice = p.costPrice || 0;
+      const minLevel = p.minStockLevel ?? 5;
+
+      totalUnitsCount += qty;
+      totalCostValue += effectiveCostPrice * qty;
+      totalRetailValue += effectiveSellPrice * qty;
+
+      if (qty <= 0) {
+        outOfStockCount++;
+      } else if (qty <= minLevel) {
+        lowStockCount++;
+      }
+    });
+
+    const projectedProfit = totalRetailValue - totalCostValue;
+    const overallMargin = totalRetailValue > 0 ? (projectedProfit / totalRetailValue) * 100 : 0;
+
+    return {
+      totalProductsCount: (products || []).length,
+      totalUnitsCount,
+      totalCostValue,
+      totalRetailValue,
+      projectedProfit,
+      overallMargin,
+      lowStockCount,
+      outOfStockCount
+    };
+  }, [products]);
 
   // Low stock products count
   const lowStockCount = useMemo(() => {
@@ -1292,6 +1335,144 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             </p>
           </motion.div>
 
+        </motion.div>
+
+        {/* Centralized Inventory & Valuation Analytics Section (Migrated from Product Register) */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25, delay: 0.15 }}
+          className="space-y-3"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-orange-100 text-orange-700 flex items-center justify-center font-bold">
+                <Boxes className="w-4 h-4" />
+              </div>
+              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                Store Inventory & Valuation Analytics
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('stock_remaining')}
+              className="text-xs text-orange-600 hover:text-orange-700 font-bold flex items-center gap-1 cursor-pointer"
+            >
+              View Detailed Stock List <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {/* Card 1: Total SKUs */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs hover:border-orange-300 transition-all">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total SKUs</span>
+                <div className="w-7 h-7 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center border border-orange-100">
+                  <PackagePlus className="w-3.5 h-3.5" />
+                </div>
+              </div>
+              <div className="text-xl sm:text-2xl font-black text-slate-900 font-mono mt-1.5">
+                {inventoryValuationStats.totalProductsCount}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-0.5 font-medium">
+                Cataloged products
+              </div>
+            </div>
+
+            {/* Card 2: Stock On Hand */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs hover:border-blue-300 transition-all">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Stock On Hand</span>
+                <div className="w-7 h-7 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
+                  <Boxes className="w-3.5 h-3.5" />
+                </div>
+              </div>
+              <div className="text-xl sm:text-2xl font-black text-blue-700 font-mono mt-1.5">
+                {inventoryValuationStats.totalUnitsCount.toLocaleString()}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-0.5 font-medium">
+                Physical units on shelves
+              </div>
+            </div>
+
+            {/* Card 3: Wholesale Cost */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs hover:border-slate-300 transition-all">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Wholesale Investment</span>
+                <div className="w-7 h-7 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center border border-slate-200">
+                  <Coins className="w-3.5 h-3.5" />
+                </div>
+              </div>
+              <div className="text-lg sm:text-xl font-black text-slate-900 font-mono mt-1.5 truncate" title={`Rs. ${inventoryValuationStats.totalCostValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}>
+                Rs. {inventoryValuationStats.totalCostValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-0.5 font-medium">
+                Inventory purchase cost
+              </div>
+            </div>
+
+            {/* Card 4: Retail Stock Value */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs hover:border-emerald-300 transition-all">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Retail Stock Value</span>
+                <div className="w-7 h-7 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
+                  <Tag className="w-3.5 h-3.5" />
+                </div>
+              </div>
+              <div className="text-lg sm:text-xl font-black text-emerald-700 font-mono mt-1.5 truncate" title={`Rs. ${inventoryValuationStats.totalRetailValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}>
+                Rs. {inventoryValuationStats.totalRetailValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </div>
+              <div className="text-[11px] text-emerald-700 mt-0.5 font-bold flex items-center gap-1">
+                <span>{inventoryValuationStats.overallMargin.toFixed(1)}% Margin</span>
+                <span className="text-slate-300">•</span>
+                <span className="text-slate-500 font-normal">Gross</span>
+              </div>
+            </div>
+
+            {/* Card 5: Stock Health / Alert */}
+            <div className={`p-4 rounded-2xl border shadow-2xs transition-all col-span-2 sm:col-span-1 ${
+              inventoryValuationStats.outOfStockCount > 0 || inventoryValuationStats.lowStockCount > 0
+                ? 'bg-amber-50/70 border-amber-200 hover:border-amber-300'
+                : 'bg-emerald-50/70 border-emerald-200 hover:border-emerald-300'
+            }`}>
+              <div className="flex items-center justify-between">
+                <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                  inventoryValuationStats.outOfStockCount > 0 || inventoryValuationStats.lowStockCount > 0
+                    ? 'text-amber-900'
+                    : 'text-emerald-900'
+                }`}>
+                  Stock Health
+                </span>
+                <div className={`w-7 h-7 rounded-xl flex items-center justify-center border ${
+                  inventoryValuationStats.outOfStockCount > 0 || inventoryValuationStats.lowStockCount > 0
+                    ? 'bg-amber-100 text-amber-700 border-amber-200'
+                    : 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                }`}>
+                  {inventoryValuationStats.outOfStockCount > 0 || inventoryValuationStats.lowStockCount > 0 ? (
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                  ) : (
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                  )}
+                </div>
+              </div>
+              <div className="text-lg sm:text-xl font-black font-mono mt-1.5 flex items-center gap-2">
+                {inventoryValuationStats.outOfStockCount > 0 ? (
+                  <span className="text-red-700">{inventoryValuationStats.outOfStockCount} Out of Stock</span>
+                ) : inventoryValuationStats.lowStockCount > 0 ? (
+                  <span className="text-amber-800">{inventoryValuationStats.lowStockCount} Low Stock</span>
+                ) : (
+                  <span className="text-emerald-800">All Stocked</span>
+                )}
+              </div>
+              <div className="text-[11px] mt-0.5 font-medium text-slate-600">
+                {inventoryValuationStats.outOfStockCount > 0
+                  ? `${inventoryValuationStats.lowStockCount} items below min threshold`
+                  : inventoryValuationStats.lowStockCount > 0
+                  ? `Min threshold: 5 units`
+                  : 'All products at healthy levels'}
+              </div>
+            </div>
+          </div>
         </motion.div>
           </>
         )}
@@ -2155,7 +2336,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25 }}
-            className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4"
+            className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-5"
           >
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <div>
@@ -2165,6 +2346,43 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                 <p className="text-xs text-slate-600 font-medium">
                   Live inventory levels. When cashiers make sales or product registers add stock, numbers update automatically.
                 </p>
+              </div>
+            </div>
+
+            {/* Inventory Valuation & Health KPI Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Total SKUs</span>
+                <span className="text-xl font-black text-slate-900 font-mono mt-1 block">{inventoryValuationStats.totalProductsCount}</span>
+                <span className="text-[10px] text-slate-500 font-medium">Catalog items</span>
+              </div>
+              <div className="bg-blue-50/60 p-3.5 rounded-xl border border-blue-200">
+                <span className="text-[10px] font-bold text-blue-800 uppercase tracking-wider block">Stock On Hand</span>
+                <span className="text-xl font-black text-blue-700 font-mono mt-1 block">{inventoryValuationStats.totalUnitsCount.toLocaleString()}</span>
+                <span className="text-[10px] text-blue-600 font-medium">Units in store</span>
+              </div>
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Wholesale Cost</span>
+                <span className="text-lg font-black text-slate-900 font-mono mt-1 block truncate">Rs. {inventoryValuationStats.totalCostValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                <span className="text-[10px] text-slate-500 font-medium">Purchase cost</span>
+              </div>
+              <div className="bg-emerald-50/60 p-3.5 rounded-xl border border-emerald-200">
+                <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">Retail Value</span>
+                <span className="text-lg font-black text-emerald-700 font-mono mt-1 block truncate">Rs. {inventoryValuationStats.totalRetailValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                <span className="text-[10px] text-emerald-700 font-medium font-mono">{inventoryValuationStats.overallMargin.toFixed(1)}% Gross Margin</span>
+              </div>
+              <div className={`p-3.5 rounded-xl border col-span-2 sm:col-span-1 ${
+                inventoryValuationStats.outOfStockCount > 0 || inventoryValuationStats.lowStockCount > 0
+                  ? 'bg-amber-50/80 border-amber-200 text-amber-900'
+                  : 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
+              }`}>
+                <span className="text-[10px] font-bold uppercase tracking-wider block">Stock Health</span>
+                <span className="text-lg font-black font-mono mt-1 block">
+                  {inventoryValuationStats.outOfStockCount > 0 ? `${inventoryValuationStats.outOfStockCount} Out of Stock` : inventoryValuationStats.lowStockCount > 0 ? `${inventoryValuationStats.lowStockCount} Low Stock` : 'All Stocked'}
+                </span>
+                <span className="text-[10px] font-medium opacity-80 block">
+                  {inventoryValuationStats.outOfStockCount > 0 ? 'Urgent restock needed' : 'Healthy inventory'}
+                </span>
               </div>
             </div>
 

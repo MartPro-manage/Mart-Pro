@@ -29,6 +29,7 @@ export interface SpreadsheetRowItem {
   id: string;
   name: string;
   price: number | '';
+  quantity: number | '';
   category: string;
   barcode: string;
 }
@@ -65,18 +66,19 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
   const [isAddingNewCat, setIsAddingNewCat] = useState(false);
   const [newCatRowTargetIndex, setNewCatRowTargetIndex] = useState<number | null>(null);
 
-  // Rows for In-App Spreadsheet Creator - no default barcodes unless entered
+  // Rows for In-App Spreadsheet Creator - quantity is now explicitly required
   const [rows, setRows] = useState<SpreadsheetRowItem[]>([
-    { id: 'row-1', name: '', price: '', category: 'Grain', barcode: '' },
-    { id: 'row-2', name: '', price: '', category: 'Oil', barcode: '' },
-    { id: 'row-3', name: '', price: '', category: 'Biscuit', barcode: '' },
-    { id: 'row-4', name: '', price: '', category: 'Ghee', barcode: '' },
-    { id: 'row-5', name: '', price: '', category: 'Tea', barcode: '' },
+    { id: 'row-1', name: '', price: '', quantity: '', category: 'Grain', barcode: '' },
+    { id: 'row-2', name: '', price: '', quantity: '', category: 'Oil', barcode: '' },
+    { id: 'row-3', name: '', price: '', quantity: '', category: 'Biscuit', barcode: '' },
+    { id: 'row-4', name: '', price: '', quantity: '', category: 'Ghee', barcode: '' },
+    { id: 'row-5', name: '', price: '', quantity: '', category: 'Tea', barcode: '' },
   ]);
 
   // Uploading status
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // References to input elements for precise Enter key navigation
@@ -87,6 +89,7 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
     if (isOpen) {
       setCategoriesList(getAllCategories(store, existingProducts));
       setUploadError(null);
+      setHasAttemptedSubmit(false);
     }
   }, [isOpen, store?.id, existingProducts.length]);
 
@@ -98,7 +101,7 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
     const defaultCat = categoriesList[0] || 'General';
     setRows(prev => [
       ...prev,
-      { id: newId, name: '', price: '', category: defaultCat, barcode: '' }
+      { id: newId, name: '', price: '', quantity: '', category: defaultCat, barcode: '' }
     ]);
   };
 
@@ -111,6 +114,7 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
         id: `row-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
         name: '',
         price: '',
+        quantity: '',
         category: defaultCat,
         barcode: ''
       });
@@ -122,7 +126,7 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
   const handleDeleteRow = (id: string) => {
     if (rows.length <= 1) {
       // Clear instead of removing last row
-      setRows([{ id: 'row-1', name: '', price: '', category: 'General', barcode: '' }]);
+      setRows([{ id: 'row-1', name: '', price: '', quantity: '', category: 'General', barcode: '' }]);
       return;
     }
     setRows(prev => prev.filter(r => r.id !== id));
@@ -135,15 +139,18 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
       updated[index] = { ...updated[index], [field]: value };
       return updated;
     });
+    if (uploadError) {
+      setUploadError(null);
+    }
   };
 
   // 4-Way Arrow Key & Enter Navigation for Excel spreadsheet cells (Up, Down, Left, Right, Enter)
-  const columnOrder: Array<'name' | 'price' | 'category' | 'barcode'> = ['name', 'price', 'category', 'barcode'];
+  const columnOrder: Array<'name' | 'price' | 'quantity' | 'category' | 'barcode'> = ['name', 'price', 'quantity', 'category', 'barcode'];
 
   const handleCellKeyDown = (
     e: React.KeyboardEvent<HTMLInputElement | HTMLSelectElement>,
     rowIndex: number,
-    fieldName: 'name' | 'price' | 'category' | 'barcode'
+    fieldName: 'name' | 'price' | 'quantity' | 'category' | 'barcode'
   ) => {
     const target = e.currentTarget;
     const isInput = target.tagName === 'INPUT';
@@ -170,7 +177,7 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
         const defaultCat = rows[rowIndex]?.category || 'General';
         setRows(prev => [
           ...prev,
-          { id: newId, name: '', price: '', category: defaultCat, barcode: '' }
+          { id: newId, name: '', price: '', quantity: '', category: defaultCat, barcode: '' }
         ]);
         setTimeout(() => {
           cellRefs.current[`${rowIndex + 1}-${fieldName}`]?.focus();
@@ -201,7 +208,7 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
       }
     }
 
-    // 5. ENTER: Move down to the next row's first column (Name)
+    // 5. ENTER: Move to next field or jump down to the next row's first column (Name)
     if (e.key === 'Enter') {
       e.preventDefault();
       const nextRowIndex = rowIndex + 1;
@@ -216,7 +223,7 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
         const defaultCat = rows[rowIndex]?.category || 'General';
         setRows(prev => [
           ...prev,
-          { id: newId, name: '', price: '', category: defaultCat, barcode: '' }
+          { id: newId, name: '', price: '', quantity: '', category: defaultCat, barcode: '' }
         ]);
 
         setTimeout(() => {
@@ -260,11 +267,12 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
 
       playScanSuccessBeep();
 
-      // Convert parsed rows to spreadsheet rows - do not generate barcode unless user entered it
+      // Convert parsed rows to spreadsheet rows
       const convertedRows: SpreadsheetRowItem[] = parsed.map((p, idx) => ({
         id: `upload-${Date.now()}-${idx}`,
         name: p.name,
         price: p.price,
+        quantity: p.quantity ?? 1,
         category: p.category || 'General',
         barcode: p.barcode ? p.barcode.trim() : ''
       }));
@@ -280,21 +288,44 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
     }
   };
 
-  // Handle "Send to AI" button click
+  // Handle "Send to AI" button click with STRICT VALIDATION
   const handleSendToAi = () => {
+    setHasAttemptedSubmit(true);
     setUploadError(null);
 
-    // Filter valid rows (must have product name)
-    const validRows = rows.filter(r => r.name.trim().length > 0);
+    // Identify rows that have ANY content
+    const rowsWithData = rows.filter(r => 
+      r.name.trim().length > 0 || 
+      r.price !== '' || 
+      r.quantity !== '' || 
+      r.barcode.trim().length > 0
+    );
 
-    if (validRows.length === 0) {
-      setUploadError('Please enter at least one product name before sending to AI.');
+    if (rowsWithData.length === 0) {
+      setUploadError('Please fill in product details (Name, Price, and Quantity) for at least one item before proceeding.');
+      return;
+    }
+
+    // STRICT VALIDATION: Without filling Name, Price (>0), and Quantity (>=0), we CANNOT proceed to next!
+    const incompleteRows = rowsWithData.filter(r => {
+      const hasName = r.name.trim().length > 0;
+      const numPrice = typeof r.price === 'number' ? r.price : parseFloat(String(r.price));
+      const hasValidPrice = !isNaN(numPrice) && numPrice > 0;
+      const numQty = typeof r.quantity === 'number' ? r.quantity : parseFloat(String(r.quantity));
+      const hasValidQty = r.quantity !== '' && !isNaN(numQty) && numQty >= 0;
+      
+      return !hasName || !hasValidPrice || !hasValidQty;
+    });
+
+    if (incompleteRows.length > 0) {
+      setUploadError(`Cannot proceed: ${incompleteRows.length} product row(s) are missing required fields. Every product must have a Name, Selling Price (> 0), and Quantity (≥ 0).`);
       return;
     }
 
     // Convert to BatchProductRow format
-    const batchProducts: BatchProductRow[] = validRows.map((r, idx) => {
+    const batchProducts: BatchProductRow[] = rowsWithData.map((r, idx) => {
       const pPrice = typeof r.price === 'number' ? r.price : parseFloat(String(r.price)) || 0;
+      const pQty = typeof r.quantity === 'number' ? r.quantity : parseFloat(String(r.quantity)) || 0;
       return {
         id: r.id || `batch-${idx}`,
         name: r.name.trim(),
@@ -304,7 +335,7 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
         barcode: r.barcode.trim(),
         sellBy: 'unit',
         unitType: 'piece',
-        quantity: 10
+        quantity: pQty
       };
     });
 
@@ -503,18 +534,27 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
                   <thead>
                     <tr className="bg-slate-900 text-white text-[11px] uppercase tracking-wider font-extrabold border-b border-slate-800">
                       <th className="py-3 px-3 w-12 text-center">#</th>
-                      <th className="py-3 px-3 min-w-[200px]">Name of Product *</th>
-                      <th className="py-3 px-3 w-36">Price (Rs.) *</th>
-                      <th className="py-3 px-3 w-48">Choose Category</th>
-                      <th className="py-3 px-3 min-w-[180px]">Barcode</th>
+                      <th className="py-3 px-3 min-w-[190px]">Name of Product *</th>
+                      <th className="py-3 px-3 w-32">Price (Rs.) *</th>
+                      <th className="py-3 px-3 w-28">Quantity *</th>
+                      <th className="py-3 px-3 w-40">Choose Category</th>
+                      <th className="py-3 px-3 min-w-[170px]">Barcode</th>
                       <th className="py-3 px-3 w-12 text-center"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-150">
-                    {rows.map((row, index) => (
+                    {rows.map((row, index) => {
+                      const hasRowData = row.name.trim().length > 0 || row.price !== '' || row.quantity !== '' || row.barcode.trim().length > 0;
+                      const isNameInvalid = hasAttemptedSubmit && hasRowData && row.name.trim().length === 0;
+                      const isPriceInvalid = hasAttemptedSubmit && hasRowData && (row.price === '' || isNaN(Number(row.price)) || Number(row.price) <= 0);
+                      const isQtyInvalid = hasAttemptedSubmit && hasRowData && (row.quantity === '' || isNaN(Number(row.quantity)) || Number(row.quantity) < 0);
+
+                      return (
                       <tr 
                         key={row.id}
-                        className="hover:bg-orange-50/30 transition-colors group"
+                        className={`transition-colors group ${
+                          (isNameInvalid || isPriceInvalid || isQtyInvalid) ? 'bg-red-50/60' : 'hover:bg-orange-50/30'
+                        }`}
                       >
                         {/* Row Number */}
                         <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-xs">
@@ -530,7 +570,9 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
                             onChange={(e) => handleUpdateCell(index, 'name', e.target.value)}
                             onKeyDown={(e) => handleCellKeyDown(e, index, 'name')}
                             placeholder="e.g. Zeera Plus Biscuit, Dalda Oil..."
-                            className="w-full px-3 py-1.5 bg-slate-50 focus:bg-white border border-slate-200 focus:border-orange-500 rounded-lg text-xs sm:text-sm font-medium focus:outline-none transition-all"
+                            className={`w-full px-3 py-1.5 bg-slate-50 focus:bg-white border rounded-lg text-xs sm:text-sm font-medium focus:outline-none transition-all ${
+                              isNameInvalid ? 'border-red-500 bg-red-50 focus:border-red-600' : 'border-slate-200 focus:border-orange-500'
+                            }`}
                           />
                         </td>
 
@@ -549,12 +591,33 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
                               onChange={(e) => handleUpdateCell(index, 'price', e.target.value === '' ? '' : parseFloat(e.target.value))}
                               onKeyDown={(e) => handleCellKeyDown(e, index, 'price')}
                               placeholder="0.00"
-                              className="w-full pl-8 pr-3 py-1.5 bg-slate-50 focus:bg-white border border-slate-200 focus:border-orange-500 rounded-lg text-xs sm:text-sm font-mono font-bold text-slate-900 focus:outline-none transition-all"
+                              className={`w-full pl-8 pr-3 py-1.5 bg-slate-50 focus:bg-white border rounded-lg text-xs sm:text-sm font-mono font-bold text-slate-900 focus:outline-none transition-all ${
+                                isPriceInvalid ? 'border-red-500 bg-red-50 focus:border-red-600' : 'border-slate-200 focus:border-orange-500'
+                              }`}
                             />
                           </div>
                         </td>
 
-                        {/* 3. Choose Category */}
+                        {/* 3. Quantity of Product */}
+                        <td className="py-2.5 px-3">
+                          <div className="relative">
+                            <input
+                              ref={el => cellRefs.current[`${index}-quantity`] = el}
+                              type="number"
+                              step="any"
+                              min="0"
+                              value={row.quantity}
+                              onChange={(e) => handleUpdateCell(index, 'quantity', e.target.value === '' ? '' : parseFloat(e.target.value))}
+                              onKeyDown={(e) => handleCellKeyDown(e, index, 'quantity')}
+                              placeholder="e.g. 10"
+                              className={`w-full px-3 py-1.5 bg-slate-50 focus:bg-white border rounded-lg text-xs sm:text-sm font-mono font-bold text-slate-900 focus:outline-none transition-all ${
+                                isQtyInvalid ? 'border-red-500 bg-red-50 focus:border-red-600' : 'border-slate-200 focus:border-orange-500'
+                              }`}
+                            />
+                          </div>
+                        </td>
+
+                        {/* 4. Choose Category */}
                         <td className="py-2.5 px-3">
                           <div className="flex items-center gap-1">
                             <select
@@ -583,8 +646,8 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
                           </div>
                         </td>
 
-                        {/* 4. Barcode with Automatic Scannable Preview */}
-                        <td className="py-2.5 px-3 min-w-[200px]">
+                        {/* 5. Barcode with Automatic Scannable Preview */}
+                        <td className="py-2.5 px-3 min-w-[170px]">
                           <div className="space-y-1.5">
                             <div className="relative flex items-center gap-1">
                               <input
@@ -635,7 +698,8 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
                           </button>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

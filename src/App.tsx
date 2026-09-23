@@ -152,8 +152,8 @@ export default function App() {
         onLogout={handleLogout} 
       />
 
-      {/* Main Content Body - Dynamically renders ONLY the selected view and scrolls separately */}
-      <main className="flex-1 overflow-y-auto min-h-0">
+      {/* Main Content Body - Dynamically renders ONLY the selected view and scrolls separately (scroll slide bar hidden for super admin) */}
+      <main className={`flex-1 min-h-0 ${userRole === 'super_admin' ? 'overflow-y-auto scrollbar-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'overflow-y-auto'}`}>
 
         {/* 1. SUPPLIER MODULE (Explicitly in Main Navigation) */}
         {activeNavView === 'suppliers' && activeStore && (

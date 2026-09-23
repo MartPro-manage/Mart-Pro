@@ -74,12 +74,12 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
 
   const handleVerifySafetyPin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (safetyPinInput.trim() === '48488030') {
+    if (safetyPinInput.trim() === '10092010') {
       sessionStorage.setItem('super_admin_pin_verified', 'true');
       setIsPinVerified(true);
       setPinError(null);
     } else {
-      setPinError('Incorrect 8-digit Super Admin Safety Passkey. (Correct passkey is 48488030)');
+      setPinError('Incorrect 8-digit Super Admin Safety Passkey. (Correct passkey is 10092010)');
     }
   };
 
@@ -652,7 +652,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen bg-slate-50 text-slate-900 p-4 sm:p-6 lg:p-8 scrollbar-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {/* 8-Digit Safety PIN Verification Modal Gate */}
       {!isPinVerified && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
@@ -663,7 +663,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
               </div>
               <h2 className="text-xl font-black text-slate-900 tracking-tight">Super Admin Security Verification</h2>
               <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                Please enter your 8-digit Super Admin Safety Passkey (<code className="font-mono bg-slate-100 px-1.5 py-0.5 rounded font-bold text-amber-700">48488030</code>) to unlock Master Control.
+                Please enter your 8-digit Super Admin Safety Passkey (<code className="font-mono bg-slate-100 px-1.5 py-0.5 rounded font-bold text-amber-700">10092010</code>) to unlock Master Control.
               </p>
             </div>
 

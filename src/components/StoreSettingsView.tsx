@@ -170,20 +170,35 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
     reader.readAsDataURL(file);
   };
 
-  const handleAddCategory = () => {
+  const handleAddCategory = async () => {
     const trimmed = newCatInput.trim();
     if (!trimmed) return;
     if (customCategories.includes(trimmed) || DEFAULT_PRESET_CATEGORIES.includes(trimmed)) {
       showNotification('error', `Category "${trimmed}" already exists.`);
       return;
     }
-    setCustomCategories(prev => [...prev, trimmed]);
+    const updated = [...customCategories, trimmed];
+    setCustomCategories(updated);
     setNewCatInput('');
-    showNotification('success', `Category "${trimmed}" added! Remember to click "Save All Settings".`);
+    try {
+      const storeRef = doc(db, 'stores', store.id);
+      await updateDoc(storeRef, { customCategories: updated });
+      showNotification('success', `Category "${trimmed}" added and saved!`);
+    } catch (err: any) {
+      showNotification('error', `Failed to save category: ${err?.message || 'Error'}`);
+    }
   };
 
-  const handleRemoveCustomCategory = (catName: string) => {
-    setCustomCategories(prev => prev.filter(c => c !== catName));
+  const handleRemoveCustomCategory = async (catName: string) => {
+    const updated = customCategories.filter(c => c !== catName);
+    setCustomCategories(updated);
+    try {
+      const storeRef = doc(db, 'stores', store.id);
+      await updateDoc(storeRef, { customCategories: updated });
+      showNotification('success', `Category "${catName}" removed!`);
+    } catch (err: any) {
+      showNotification('error', `Failed to remove category: ${err?.message || 'Error'}`);
+    }
   };
 
   const handleTestVoice = () => {

@@ -3,6 +3,8 @@ export type UserRole = 'super_admin' | 'admin' | 'cash_counter' | 'product_regis
 export interface Store {
   id: string;
   name: string;
+  specialStoreId?: string; // Special assigned Store ID
+  isLinked?: boolean; // Interconnected status
   adminUsername: string;
   adminPassword?: string;
   status?: 'active' | 'disabled';

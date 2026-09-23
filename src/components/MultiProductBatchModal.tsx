@@ -18,6 +18,7 @@ import {
   Download
 } from 'lucide-react';
 import { BatchProductRow, parseExcelProductFile } from '../lib/excelParser';
+import { saveNewCategoryToStore, getAllCategories } from '../lib/categories';
 import { Product, Store } from '../types';
 import { db, collection, setDoc, doc } from '../lib/firebase';
 import { generateNextShortcutCode } from '../utils/productShortcuts';
@@ -118,6 +119,15 @@ export const MultiProductBatchModal: React.FC<MultiProductBatchModalProps> = ({
       if (row.id !== id) return row;
       const updated = { ...row, [field]: value };
       
+      // Auto pricing calculation
+      if (field === 'costPrice') {
+        const cost = Number(value);
+        const sell = Number(updated.price);
+        if (cost > 0 && sell > 0) {
+          // preserve sell price
+        }
+      }
+
       // Keep sellBy in sync with unitType
       if (field === 'unitType') {
         if (value === 'kg' || value === 'g' || value === 'liter') {
@@ -177,10 +187,10 @@ export const MultiProductBatchModal: React.FC<MultiProductBatchModalProps> = ({
     setErrorMsg(null);
     setSuccessMsg(null);
 
-    // Validation: only product name and retail price > 0 are strictly required
-    const invalidRows = rows.filter(r => !r.name.trim() || r.price <= 0);
+    // Validation: Product name, Cost Price (>0), and Retail Selling Price (>0) are mandatory
+    const invalidRows = rows.filter(r => !r.name.trim() || !r.costPrice || Number(r.costPrice) <= 0 || !r.price || Number(r.price) <= 0);
     if (invalidRows.length > 0) {
-      setErrorMsg(`Please fill in Product Name and Retail Selling Price (>0) for all rows. ${invalidRows.length} row(s) need attention.`);
+      setErrorMsg(`Both Cost Price (>0) and Retail Selling Price (>0) are mandatory for all product rows. ${invalidRows.length} row(s) need attention.`);
       return;
     }
 
@@ -230,6 +240,18 @@ export const MultiProductBatchModal: React.FC<MultiProductBatchModalProps> = ({
         const productDocRef = doc(db, 'products', productId);
         await setDoc(productDocRef, productPayload, { merge: true });
         savedCount++;
+      }
+
+      // Persist any newly added custom categories to store customCategories in Firestore
+      const batchCategories = new Set<string>();
+      rows.forEach(r => {
+        if (r.category && r.category.trim()) batchCategories.add(r.category.trim());
+      });
+      let currentCustomCats = [...(store.customCategories || [])];
+      for (const cat of batchCategories) {
+        if (!currentCustomCats.some(c => c.toLowerCase() === cat.toLowerCase())) {
+          currentCustomCats = await saveNewCategoryToStore(store.id, currentCustomCats, cat);
+        }
       }
 
       setSuccessMsg(`Success! Saved ${savedCount} products into ${store.name} inventory with automated 4-digit shortcuts.`);

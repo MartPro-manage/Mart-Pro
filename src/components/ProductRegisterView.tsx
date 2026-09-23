@@ -25,7 +25,7 @@ import { UniversalBackButton } from './UniversalBackButton';
 import { DiscountManagerModal } from './DiscountManagerModal';
 import { downloadBarcodeForProduct } from '../lib/barcodeDownload';
 import { BatchProductRow } from '../lib/excelParser';
-import { getAllCategories, addCustomCategoryToStore } from '../lib/categories';
+import { getAllCategories, addCustomCategoryToStore, saveNewCategoryToStore } from '../lib/categories';
 import { generateNextShortcutCode } from '../utils/productShortcuts';
 import { getProductDiscountInfo } from '../utils/discountUtils';
 import { 
@@ -100,6 +100,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   const [weightPerUnit, setWeightPerUnit] = useState<number | ''>('');
   const [category, setCategory] = useState('General');
   const [costPrice, setCostPrice] = useState<number | ''>('');
+  const [marginPercent, setMarginPercent] = useState<number | ''>('');
   const [price, setPrice] = useState<number | ''>('');
   const [discountActive, setDiscountActive] = useState<boolean>(false);
   const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage');
@@ -303,6 +304,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     setWeightPerUnit('');
     setCategory('General');
     setCostPrice('');
+    setMarginPercent('');
     setPrice('');
     setDiscountActive(false);
     setDiscountType('percentage');
@@ -323,8 +325,14 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     setImageUrl(p.imageUrl || '');
     setWeight(p.weight || '');
     setCategory(p.category || 'General');
-    setCostPrice(p.costPrice !== undefined ? p.costPrice : '');
+    const cPrice = p.costPrice !== undefined ? p.costPrice : '';
+    setCostPrice(cPrice);
     setPrice(p.price);
+    if (typeof cPrice === 'number' && cPrice > 0 && typeof p.price === 'number' && p.price > 0) {
+      setMarginPercent(Math.round(((p.price - cPrice) / cPrice) * 100 * 10) / 10);
+    } else {
+      setMarginPercent('');
+    }
     setDiscountActive(p.discountActive || false);
     setDiscountType(p.discountType || 'percentage');
     setDiscountValue(p.discountValue !== undefined && p.discountValue > 0 ? p.discountValue : '');
@@ -491,6 +499,12 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     }
 
     setLoading(true);
+
+    // Auto-save new custom category to store in Firestore if not already present
+    const finalCat = category.trim() || 'General';
+    if (finalCat && !availableCategories.some(c => c.toLowerCase() === finalCat.toLowerCase())) {
+      saveNewCategoryToStore(store.id, store.customCategories || [], finalCat).catch(e => console.warn('Category sync:', e));
+    }
 
     try {
       const codeInfo = [
@@ -1429,58 +1443,116 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                 )}
 
                 {/* Pricing & Cost Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* Cost / Purchase Price (Rs.) */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                      <span>{sellBy === 'weight' ? 'Cost Price / KG *' : 'Cost Price (Buy) *'}</span>
-                      <span className="text-[10px] text-rose-600 font-bold bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">Required</span>
+                <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1">
+                      <Coins className="w-4 h-4 text-orange-600" />
+                      <span>Pricing & Profit Margin</span>
                     </label>
-                    <div className="relative">
-                      <span className="text-xs font-black text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2">
-                        Rs.
-                      </span>
-                      <input
-                        type="number"
-                        step="any"
-                        min="0"
-                        required
-                        placeholder={sellBy === 'weight' ? 'e.g. 220.00' : 'e.g. 180.00'}
-                        value={costPrice}
-                        onChange={(e) => setCostPrice(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                        className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-bold text-slate-800 transition-all font-mono"
-                      />
-                    </div>
-                    <p className="text-[10px] text-slate-500 mt-1 font-medium">
-                      Mandatory. Wholesale cost price is required to calculate store profit.
-                    </p>
+                    <span className="text-[10px] text-rose-600 font-extrabold bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
+                      Cost & Sell Price Mandatory
+                    </span>
                   </div>
 
-                  {/* Selling Price (Rs.) */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                      <span>{sellBy === 'weight' ? 'Sell Price / KG *' : 'Selling Price *'}</span>
-                      <span className="text-[10px] text-orange-600 font-bold">Checkout Rate</span>
-                    </label>
-                    <div className="relative">
-                      <span className="text-xs font-black text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2">
-                        Rs.
-                      </span>
-                      <input
-                        type="number"
-                        step="any"
-                        min="0"
-                        required
-                        placeholder={sellBy === 'weight' ? '300.00 / kg' : '250.00'}
-                        value={price}
-                        onChange={(e) => setPrice(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                        className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-black text-orange-600 transition-all font-mono"
-                      />
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {/* 1. Cost / Purchase Price (Rs.) */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                        Cost Price *
+                      </label>
+                      <div className="relative">
+                        <span className="text-xs font-black text-slate-400 absolute left-3 top-1/2 -translate-y-1/2">
+                          Rs.
+                        </span>
+                        <input
+                          type="number"
+                          step="any"
+                          min="0"
+                          required
+                          placeholder="e.g. 100.00"
+                          value={costPrice}
+                          onChange={(e) => {
+                            const val = e.target.value === '' ? '' : parseFloat(e.target.value);
+                            setCostPrice(val);
+                            if (typeof val === 'number' && val > 0 && typeof marginPercent === 'number') {
+                              const calcSell = Math.round(val * (1 + marginPercent / 100) * 100) / 100;
+                              setPrice(calcSell);
+                            } else if (typeof val === 'number' && val > 0 && typeof price === 'number' && price > 0) {
+                              setMarginPercent(Math.round(((price - val) / val) * 100 * 10) / 10);
+                            }
+                          }}
+                          className="w-full pl-9 pr-2.5 py-2 bg-white border border-slate-300 rounded-xl text-slate-900 text-xs sm:text-sm focus:outline-none focus:border-rose-500 font-bold font-mono transition-all"
+                        />
+                      </div>
                     </div>
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      {existingProduct ? 'Update selling price.' : 'Customer billing rate.'}
-                    </p>
+
+                    {/* 2. Margin Percentage (% Margin) */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-amber-800 uppercase tracking-wider mb-1 flex items-center justify-between">
+                        <span>Margin %</span>
+                        <span className="text-[9px] text-amber-600">Auto-sets Sell</span>
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="any"
+                          placeholder="e.g. 20"
+                          value={marginPercent}
+                          onChange={(e) => {
+                            const mVal = e.target.value === '' ? '' : parseFloat(e.target.value);
+                            setMarginPercent(mVal);
+                            if (typeof mVal === 'number' && typeof costPrice === 'number' && costPrice > 0) {
+                              const calcSell = Math.round(costPrice * (1 + mVal / 100) * 100) / 100;
+                              setPrice(calcSell);
+                            }
+                          }}
+                          className="w-full pl-3 pr-7 py-2 bg-amber-50/60 border border-amber-300 rounded-xl text-amber-950 text-xs sm:text-sm focus:outline-none focus:border-amber-500 font-mono font-black transition-all"
+                        />
+                        <span className="text-xs font-black text-amber-600 absolute right-2.5 top-1/2 -translate-y-1/2">
+                          %
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* 3. Selling Price (Rs.) */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                        Selling Price *
+                      </label>
+                      <div className="relative">
+                        <span className="text-xs font-black text-slate-400 absolute left-3 top-1/2 -translate-y-1/2">
+                          Rs.
+                        </span>
+                        <input
+                          type="number"
+                          step="any"
+                          min="0"
+                          required
+                          placeholder="e.g. 120.00"
+                          value={price}
+                          onChange={(e) => {
+                            const pVal = e.target.value === '' ? '' : parseFloat(e.target.value);
+                            setPrice(pVal);
+                            if (typeof pVal === 'number' && pVal > 0 && typeof costPrice === 'number' && costPrice > 0) {
+                              setMarginPercent(Math.round(((pVal - costPrice) / costPrice) * 100 * 10) / 10);
+                            }
+                          }}
+                          className="w-full pl-9 pr-2.5 py-2 bg-white border border-slate-300 rounded-xl text-slate-900 text-xs sm:text-sm focus:outline-none focus:border-emerald-500 font-black text-emerald-700 font-mono transition-all"
+                        />
+                      </div>
+                    </div>
                   </div>
+
+                  {typeof costPrice === 'number' && typeof price === 'number' && costPrice > 0 && price > 0 && (
+                    <div className="p-2.5 bg-white rounded-xl border border-slate-200 text-xs flex items-center justify-between font-medium">
+                      <span className="text-slate-500">
+                        Profit / Unit: <strong className="text-emerald-700 font-mono">Rs. {(price - costPrice).toFixed(2)}</strong>
+                      </span>
+                      <span className="text-amber-800 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200 text-[11px]">
+                        Profit Margin: {(((price - costPrice) / costPrice) * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Product Discount Configuration */}

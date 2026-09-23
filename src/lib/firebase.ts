@@ -103,7 +103,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 // Default Super Admin credentials constant
 export const SUPER_ADMIN_USERNAME = 'supermarketmanage@gmail.com';
 export const SUPER_ADMIN_PASSWORD = 'Hashir@56';
-export const SUPER_ADMIN_SAFETY_PIN = '48488030'; // 8-digit master 2FA safety security passkey
+export const SUPER_ADMIN_SAFETY_PIN = '10092010'; // 8-digit master 2FA safety security passkey
 
 // Seed initial super admin if not present
 export async function ensureSuperAdminExists(): Promise<void> {

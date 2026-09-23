@@ -79,52 +79,55 @@ export const Navbar: React.FC<NavbarProps> = ({
   const RoleIcon = roleInfo.icon;
 
   // Single unified navigation options list - Dashboard is explicitly the first option
+  // Super Admin has centralized master control and does not use store-level interface slide bar
+  const isSuperAdmin = user?.role === 'super_admin';
+
   const navItems = [
     {
       id: 'dashboard' as AppNavView,
       label: 'Dashboard',
       shortLabel: 'Dashboard',
       icon: LayoutDashboard,
-      roles: ['super_admin', 'admin']
+      roles: ['admin']
     },
     {
       id: 'pos' as AppNavView,
       label: 'Cash Counter POS',
       shortLabel: 'POS',
       icon: Calculator,
-      roles: ['super_admin', 'admin', 'cash_counter']
+      roles: ['admin', 'cash_counter']
     },
     {
       id: 'inventory' as AppNavView,
       label: 'Product Register',
       shortLabel: 'Register',
       icon: PackagePlus,
-      roles: ['super_admin', 'admin', 'product_register']
+      roles: ['admin', 'product_register']
     },
     {
       id: 'suppliers' as AppNavView,
       label: 'Supplier',
       shortLabel: 'Supplier',
       icon: Truck,
-      roles: ['super_admin', 'admin']
+      roles: ['admin']
     },
     {
       id: 'staff' as AppNavView,
       label: 'Staff Sessions',
       shortLabel: 'Staff',
       icon: Users,
-      roles: ['super_admin', 'admin']
+      roles: ['admin']
     },
     {
       id: 'price_checker' as AppNavView,
       label: 'Price Checker',
       shortLabel: 'Kiosk',
       icon: ScanLine,
-      roles: ['super_admin', 'admin', 'customer_price_checker']
+      roles: ['admin', 'customer_price_checker']
     }
   ];
 
-  const visibleNavItems = navItems.filter(item => 
+  const visibleNavItems = isSuperAdmin ? [] : navItems.filter(item => 
     !user?.role || item.roles.includes(user.role)
   );
 
@@ -154,34 +157,36 @@ export const Navbar: React.FC<NavbarProps> = ({
           )}
         </div>
 
-        {/* Center: Dedicated Navigation Tabs - Clicking any tab renders ONLY that interface */}
-        <nav 
-          aria-label="Interface Selector" 
-          className="flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-none"
-        >
-          {visibleNavItems.map((item) => {
-            const isActive = activeView === item.id;
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.id}
-                id={`nav-btn-${item.id}`}
-                type="button"
-                onClick={() => onSelectView(item.id)}
-                className={`px-3 py-2 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
-                  isActive
-                    ? 'bg-orange-600 text-white shadow-sm shadow-orange-600/30 ring-2 ring-orange-500/20'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900'
-                }`}
-                title={`Switch to ${item.label}`}
-              >
-                <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-600'}`} />
-                <span className="hidden md:inline">{item.label}</span>
-                <span className="md:hidden">{item.shortLabel}</span>
-              </button>
-            );
-          })}
-        </nav>
+        {/* Center: Dedicated Navigation Tabs - Hidden for Super Admin to remove slide bar */}
+        {visibleNavItems.length > 0 && (
+          <nav 
+            aria-label="Interface Selector" 
+            className="flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-none"
+          >
+            {visibleNavItems.map((item) => {
+              const isActive = activeView === item.id;
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  id={`nav-btn-${item.id}`}
+                  type="button"
+                  onClick={() => onSelectView(item.id)}
+                  className={`px-3 py-2 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+                    isActive
+                      ? 'bg-orange-600 text-white shadow-sm shadow-orange-600/30 ring-2 ring-orange-500/20'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900'
+                  }`}
+                  title={`Switch to ${item.label}`}
+                >
+                  <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-600'}`} />
+                  <span className="hidden md:inline">{item.label}</span>
+                  <span className="md:hidden">{item.shortLabel}</span>
+                </button>
+              );
+            })}
+          </nav>
+        )}
 
         {/* Right: Cloud Connection, User Role Badge & Logout */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">

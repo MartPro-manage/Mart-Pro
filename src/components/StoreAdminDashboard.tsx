@@ -164,24 +164,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
     const unsubStore = onSnapshot(storeRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
-        setLiveStore(prev => {
-          if (
-            prev.id === snapshot.id &&
-            prev.name === data.name &&
-            prev.address === data.address &&
-            prev.status === data.status &&
-            prev.currencySymbol === data.currencySymbol &&
-            prev.lowStockAlertThreshold === data.lowStockAlertThreshold &&
-            prev.receiptHeader === data.receiptHeader &&
-            prev.receiptFooter === data.receiptFooter &&
-            prev.returnPolicyDays === data.returnPolicyDays &&
-            prev.receiptFormat === data.receiptFormat &&
-            prev.logoUrl === data.logoUrl
-          ) {
-            return prev;
-          }
-          return { id: snapshot.id, ...data } as Store;
-        });
+        setLiveStore({ id: snapshot.id, ...data } as Store);
       }
     }, (err) => {
       console.warn('Store snapshot sync warning:', err);

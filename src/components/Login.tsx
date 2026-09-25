@@ -15,6 +15,8 @@ import {
 } from '../lib/firebase';
 import { UserAccount, Store, AuthState } from '../types';
 import { Logo } from './Logo';
+import { usePWAInstall } from '../hooks/usePWAInstall';
+import { DownloadAppModal } from './DownloadAppModal';
 import { 
   Lock, 
   User, 
@@ -36,7 +38,8 @@ import {
   Wifi,
   Flame,
   KeyRound,
-  ShieldAlert
+  ShieldAlert,
+  Download
 } from 'lucide-react';
 
 interface LoginProps {
@@ -50,6 +53,23 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [focusedField, setFocusedField] = useState<'username' | 'password' | null>(null);
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+  const { isInstallable, isInstalled, install } = usePWAInstall();
+
+  const handleDownloadClick = async () => {
+    if (isInstallable) {
+      try {
+        const res = await install();
+        if (res !== 'accepted') {
+          setIsDownloadModalOpen(true);
+        }
+      } catch {
+        setIsDownloadModalOpen(true);
+      }
+    } else {
+      setIsDownloadModalOpen(true);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -246,39 +266,71 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             transition={{ duration: 0.7, ease: "easeOut" }}
             className="lg:col-span-6 space-y-6 text-center lg:text-left"
           >
-            {/* Brand Header */}
-            <div className="flex items-center justify-center lg:justify-start gap-3">
-              <motion.div
-                whileHover={{ rotate: [0, -8, 8, 0], scale: 1.08 }}
-                transition={{ duration: 0.5 }}
-                className="relative"
-              >
-                <div className="absolute -inset-1 bg-gradient-to-r from-orange-500 to-amber-400 rounded-2xl blur-xs opacity-60 animate-pulse" />
-                <div className="relative bg-white p-2 rounded-2xl border border-slate-200 shadow-sm">
-                  <Logo size="lg" lightMode={true} />
+            {/* Brand Header & Full-Width Branding Feature Banner */}
+            <div className="bg-white/90 backdrop-blur-md p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4 text-center lg:text-left relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-orange-500/10 to-amber-500/5 rounded-full blur-2xl pointer-events-none" />
+              
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <motion.div
+                    whileHover={{ rotate: [0, -8, 8, 0], scale: 1.08 }}
+                    transition={{ duration: 0.5 }}
+                    className="relative"
+                  >
+                    <div className="absolute -inset-1 bg-gradient-to-r from-orange-500 to-amber-400 rounded-2xl blur-xs opacity-60 animate-pulse" />
+                    <div className="relative bg-white p-2.5 rounded-2xl border border-slate-200 shadow-sm">
+                      <Logo size="lg" lightMode={true} />
+                    </div>
+                  </motion.div>
+                  <div className="text-left">
+                    <h1 className="text-2xl sm:text-3xl font-black tracking-tight leading-none text-slate-900">
+                      Mart <span className="text-orange-500">Pro</span>
+                    </h1>
+                    <p className="text-[11px] font-bold text-orange-600 uppercase tracking-widest flex items-center gap-1 mt-1">
+                      Supermarket Management & POS Suite
+                    </p>
+                  </div>
                 </div>
-              </motion.div>
-              <div>
-                <h1 className="text-3xl sm:text-4xl font-black tracking-tight leading-none">
-                  <span className="text-slate-900">Mart</span> <span className="text-orange-500">Pro</span>
-                </h1>
-                <p className="text-[11px] font-bold text-orange-600 uppercase tracking-widest flex items-center gap-1 mt-1 justify-center lg:justify-start">
-                  Retail & Supermarket Terminal
-                </p>
-              </div>
-            </div>
 
-            {/* Headline */}
-            <div className="space-y-2">
-              <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight leading-tight">
-                Next-Gen Retail & <br className="hidden sm:inline" />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 via-amber-600 to-amber-500">
-                  Self-Service POS Terminal
-                </span>
-              </h2>
-              <p className="text-slate-600 text-xs sm:text-sm leading-relaxed max-w-md mx-auto lg:mx-0 font-normal">
-                Multi-tier role authentication for Super Admin, Store Managers, Fast Cash Counters, Product Cataloging, and Kiosk Customer Price Checkers.
-              </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleDownloadClick}
+                    className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs font-black flex items-center gap-1.5 shadow-xs transition-all cursor-pointer hover:scale-[1.02]"
+                    title="Download & Install Mart Pro Web App for Desktop or Mobile"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download App</span>
+                    <span className="text-[10px] bg-white/20 px-1.5 py-0.2 rounded font-mono">
+                      {isInstalled ? 'Installed' : 'PWA'}
+                    </span>
+                  </button>
+
+                  <span className="hidden sm:inline-flex px-3 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold items-center gap-1.5 shadow-2xs">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" /> System Live
+                  </span>
+                </div>
+              </div>
+
+              {/* Sub-banner area utilizing the full place under the logo and branding */}
+              <div className="pt-3 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-4 gap-3 text-left">
+                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Checkout POS</div>
+                  <div className="text-xs font-extrabold text-slate-800 mt-0.5">Fast Barcode Scan</div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Inventory</div>
+                  <div className="text-xs font-extrabold text-slate-800 mt-0.5">Realtime Stock</div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Receipts</div>
+                  <div className="text-xs font-extrabold text-slate-800 mt-0.5">QR & Print Slips</div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Analytics</div>
+                  <div className="text-xs font-extrabold text-slate-800 mt-0.5">Profit & Trends</div>
+                </div>
+              </div>
             </div>
 
             {/* HIGH-TECH INTERACTIVE LASER SCANNER HOLOGRAM CARD */}
@@ -414,7 +466,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                   Account Sign In
                 </h3>
                 <p className="text-xs text-slate-500 font-medium">
-                  Enter your terminal credentials to access your designated workspace.
+                  Enter your credentials to access your designated workspace.
                 </p>
               </div>
 
@@ -512,7 +564,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                         transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
                         className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full" 
                       />
-                      <span>Authenticating Terminal...</span>
+                      <span>Authenticating Account...</span>
                     </>
                   ) : (
                     <>
@@ -524,11 +576,21 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                 </motion.button>
               </form>
 
-              {/* Bottom Security Footer */}
-              <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+              {/* Bottom Security & Download Footer */}
+              <div className="mt-6 pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-slate-500">
                 <span className="flex items-center gap-1">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Cloud Firestore Sync
                 </span>
+                
+                <button
+                  type="button"
+                  onClick={handleDownloadClick}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 font-bold text-xs border border-orange-200 transition-colors cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download App (Desktop & Mobile)</span>
+                </button>
+
                 <span className="font-mono text-slate-400">v2.4 Pro</span>
               </div>
 
@@ -538,6 +600,11 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
       </div>
 
+      {/* Download Web App Modal */}
+      <DownloadAppModal 
+        isOpen={isDownloadModalOpen} 
+        onClose={() => setIsDownloadModalOpen(false)} 
+      />
     </div>
   );
 };

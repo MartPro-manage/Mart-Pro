@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Store } from '../types';
+import { usePWAInstall } from '../hooks/usePWAInstall';
+import { DownloadAppModal } from './DownloadAppModal';
 import { 
   LayoutDashboard, 
   CalendarDays, 
@@ -7,6 +9,7 @@ import {
   TrendingUp, 
   Package, 
   Tag, 
+  Percent,
   Receipt, 
   Undo2, 
   Users, 
@@ -26,7 +29,13 @@ import {
   Calendar,
   Layers,
   DollarSign,
-  Truck
+  Truck,
+  CreditCard,
+  Banknote,
+  Smartphone,
+  Wallet,
+  Download,
+  CheckCircle2
 } from 'lucide-react';
 
 export type StoreAdminTab = 
@@ -37,7 +46,9 @@ export type StoreAdminTab =
   | 'returns' 
   | 'sold_products' 
   | 'stock_remaining' 
+  | 'promotions'
   | 'sales_history' 
+  | 'payment_methods'
   | 'expenses'
   | 'suppliers'
   | 'staff' 
@@ -58,11 +69,17 @@ interface StoreAdminSidebarProps {
     totalProducts: number;
     lowStockCount: number;
     soldProductsCount: number;
+    discountedCount?: number;
     receiptsCount: number;
     returnsCount: number;
     staffCount: number;
     expensesCount?: number;
     monthlyExpensesTotal?: number;
+    cashPaymentTotal?: number;
+    onlinePaymentTotal?: number;
+    totalTransactionsCount?: number;
+    cashPercent?: number;
+    onlinePercent?: number;
   };
   expenseFilterMode?: ExpenseFilterMode;
   onSelectExpenseFilterMode?: (mode: ExpenseFilterMode) => void;
@@ -88,6 +105,24 @@ export const StoreAdminSidebar: React.FC<StoreAdminSidebarProps> = ({
   onOpenExcel,
   onOpenAi
 }) => {
+  const { isInstallable, isInstalled, install } = usePWAInstall();
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+
+  const handleDownloadClick = async () => {
+    if (isInstallable) {
+      try {
+        const res = await install();
+        if (res !== 'accepted') {
+          setIsDownloadModalOpen(true);
+        }
+      } catch {
+        setIsDownloadModalOpen(true);
+      }
+    } else {
+      setIsDownloadModalOpen(true);
+    }
+  };
+
   const handleTabClick = (tab: StoreAdminTab) => {
     onSelectTab(tab);
     onCloseMobile();
@@ -147,6 +182,13 @@ export const StoreAdminSidebar: React.FC<StoreAdminSidebarProps> = ({
           badgeColor: stats.lowStockCount > 0 ? 'bg-amber-500 text-white font-black' : 'bg-slate-800 text-slate-300'
         },
         {
+          id: 'promotions' as StoreAdminTab,
+          label: 'Item Discounts',
+          icon: Percent,
+          badge: stats.discountedCount && stats.discountedCount > 0 ? `${stats.discountedCount} Active` : null,
+          badgeColor: 'bg-rose-500 text-white font-black animate-pulse'
+        },
+        {
           id: 'sold_products' as StoreAdminTab,
           label: 'Sold Products',
           icon: Tag,
@@ -168,8 +210,15 @@ export const StoreAdminSidebar: React.FC<StoreAdminSidebarProps> = ({
       ]
     },
     {
-      group: 'Expenses & Finance',
+      group: 'Finance & Payments',
       items: [
+        {
+          id: 'payment_methods' as StoreAdminTab,
+          label: 'Payment Methods',
+          icon: CreditCard,
+          badge: stats.cashPercent !== undefined ? `${stats.cashPercent}% Cash` : null,
+          badgeColor: 'bg-emerald-950 text-emerald-400 border border-emerald-800/80 font-black'
+        },
         {
           id: 'expenses' as StoreAdminTab,
           label: 'Expenses & Outflows',
@@ -191,7 +240,7 @@ export const StoreAdminSidebar: React.FC<StoreAdminSidebarProps> = ({
         },
         {
           id: 'staff' as StoreAdminTab,
-          label: 'Staff & Live Sessions',
+          label: 'Staff & Salaries',
           icon: Users,
           badge: `${stats.staffCount}`
         },
@@ -207,24 +256,23 @@ export const StoreAdminSidebar: React.FC<StoreAdminSidebarProps> = ({
 
   return (
     <>
-      {/* Mobile Drawer Backdrop Overlay */}
+      {/* Drawer Backdrop Overlay */}
       {isOpenMobile && (
         <div 
-          className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-40 lg:hidden transition-opacity"
+          className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-40 transition-opacity"
           onClick={onCloseMobile}
           aria-hidden="true"
         />
       )}
 
-      {/* Sidebar Container */}
+      {/* Sidebar Container (Slide-over drawer overlaying above interface) */}
       <aside
         className={`
-          fixed inset-y-0 left-0 z-50 lg:static lg:z-auto
-          h-screen sticky top-0
+          fixed inset-y-0 left-0 z-50
+          h-screen w-72
           bg-slate-900 text-slate-100 flex flex-col border-r border-slate-800/80
-          transition-all duration-200 ease-in-out shrink-0 select-none
-          ${isOpenMobile ? 'translate-x-0 w-72 shadow-2xl' : '-translate-x-full lg:translate-x-0'}
-          ${isCollapsed ? 'lg:w-20' : 'lg:w-72'}
+          transition-transform duration-300 ease-in-out shrink-0 select-none shadow-2xl
+          ${isOpenMobile ? 'translate-x-0' : '-translate-x-full'}
         `}
       >
         {/* Top Branding Section */}
@@ -233,34 +281,23 @@ export const StoreAdminSidebar: React.FC<StoreAdminSidebarProps> = ({
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center text-white shadow-md shrink-0">
               <StoreIcon className="w-5 h-5" />
             </div>
-            {!isCollapsed && (
-              <div className="min-w-0">
-                <div className="text-xs font-black text-orange-400 uppercase tracking-wider flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5 inline text-orange-400" /> Store Admin
-                </div>
-                <h2 className="text-sm font-black text-white truncate" title={store.name}>
-                  {store.name}
-                </h2>
+            <div className="min-w-0">
+              <div className="text-xs font-black text-orange-400 uppercase tracking-wider flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5 inline text-orange-400" /> Store Admin
               </div>
-            )}
+              <h2 className="text-sm font-black text-white truncate" title={store.name}>
+                {store.name}
+              </h2>
+            </div>
           </div>
 
-          {/* Mobile close button */}
+          {/* Close button */}
           <button
             onClick={onCloseMobile}
-            className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white lg:hidden cursor-pointer"
-            title="Close Sidebar"
+            className="p-2 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+            title="Close Sidebar Navigation"
           >
             <X className="w-5 h-5" />
-          </button>
-
-          {/* Desktop collapse toggle */}
-          <button
-            onClick={onToggleCollapse}
-            className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white hidden lg:flex cursor-pointer transition-colors"
-            title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-          >
-            {isCollapsed ? <PanelLeftOpen className="w-5 h-5 text-orange-400" /> : <PanelLeftClose className="w-5 h-5" />}
           </button>
         </div>
 
@@ -361,17 +398,43 @@ export const StoreAdminSidebar: React.FC<StoreAdminSidebarProps> = ({
                         </div>
                       </div>
                     )}
+
+                    {/* Payment Method Quick Mini-Split Pill in Sidebar */}
+                    {item.id === 'payment_methods' && !isCollapsed && stats.cashPaymentTotal !== undefined && (
+                      <div className="px-3 py-1.5 bg-slate-950/50 rounded-xl border border-slate-800/80 my-1 text-[10px] space-y-1">
+                        <div className="flex items-center justify-between font-bold">
+                          <span className="text-emerald-400 flex items-center gap-1">
+                            <Banknote className="w-3 h-3 text-emerald-400" /> Cash:
+                          </span>
+                          <span className="text-emerald-300 font-mono">
+                            {stats.cashPercent !== undefined ? `${stats.cashPercent}%` : ''}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between font-bold">
+                          <span className="text-blue-400 flex items-center gap-1">
+                            <Smartphone className="w-3 h-3 text-blue-400" /> Online:
+                          </span>
+                          <span className="text-blue-300 font-mono">
+                            {stats.onlinePercent !== undefined ? `${stats.onlinePercent}%` : ''}
+                          </span>
+                        </div>
+                        <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden flex">
+                          <div className="bg-emerald-500 h-full" style={{ width: `${stats.cashPercent || 0}%` }} />
+                          <div className="bg-blue-500 h-full" style={{ width: `${stats.onlinePercent || 0}%` }} />
+                        </div>
+                      </div>
+                    )}
                   </React.Fragment>
                 );
               })}
             </div>
           ))}
 
-          {/* Quick Terminal & Tools Section */}
+          {/* Quick Tools & Access Section */}
           <div className="pt-2 border-t border-slate-800 space-y-1">
             {!isCollapsed && (
               <div className="px-3 text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-2">
-                Quick Terminals & Tools
+                Quick Tools & Access
               </div>
             )}
 

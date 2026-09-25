@@ -96,6 +96,24 @@
         "notes": { "type": "string", "description": "Optional notes, reference numbers or invoice details" },
         "timestamp": { "type": "string", "description": "ISO date string when logged" }
       }
+    },
+    "staff_attendance": {
+      "description": "Staff attendance logs marked by Branch Admin with daily status, check-in, check-out and notes",
+      "fields": {
+        "storeId": { "type": "string", "description": "Branch store ID" },
+        "parentStoreId": { "type": "string", "description": "Parent store chain ID" },
+        "staffId": { "type": "string", "description": "UserAccount ID of staff member" },
+        "staffName": { "type": "string", "description": "Staff member display name" },
+        "staffUsername": { "type": "string", "description": "Staff member username" },
+        "staffRole": { "type": "string", "description": "Staff member role" },
+        "date": { "type": "string", "description": "Attendance date YYYY-MM-DD" },
+        "status": { "type": "string", "description": "Attendance status: present, absent, late, half_day, leave" },
+        "checkInTime": { "type": "string", "description": "Optional check-in time" },
+        "checkOutTime": { "type": "string", "description": "Optional check-out time" },
+        "notes": { "type": "string", "description": "Optional notes or reason for leave" },
+        "markedByUsername": { "type": "string", "description": "Username of branch admin who marked attendance" },
+        "timestamp": { "type": "string", "description": "ISO date string" }
+      }
     }
   }
 }

@@ -25,10 +25,12 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { Product, Sale, ProductReturn, Store, UserAccount } from '../types';
-import { BatchProductRow, parseExcelProductFile } from '../lib/excelParser';
-import { db, doc, setDoc } from '../lib/firebase';
+import { BatchProductRow, parseExcelProductFile, generateRandomBarcode } from '../lib/excelParser';
+import { db, doc, setDoc, cleanFirestoreData } from '../lib/firebase';
 import { AiProductEditorCard, ProductEditDraft } from './AiProductEditorCard';
 import { processStoreAiQuery } from '../lib/storeAiEngine';
+import { generateNextShortcutCode } from '../utils/productShortcuts';
+import { playScanSuccessBeep } from '../lib/sound';
 
 interface Message {
   id: string;
@@ -250,6 +252,120 @@ export const StoreAiAssistantModal: React.FC<StoreAiAssistantModalProps> = ({
       }
     };
     setMessages(prev => [...prev, editMsg]);
+  };
+
+  // Helper function to parse natural language instructions to ADD a new product with 4-digit shortcut code
+  const parseAddNewProductInstruction = (queryText: string, allProducts: Product[]) => {
+    const q = queryText.trim();
+    const lower = q.toLowerCase();
+
+    // Check if user is asking to add/create/register a new product
+    const isAddQuery = /\b(add|create|register|insert|new)\s+(?:new\s+)?(?:product|item|good)\b/i.test(lower) ||
+      /\b(?:add|insert)\s+([a-zA-Z0-9\s\-]+?)\s+(?:to\s+(?:store|inventory|catalog)|with\s+price|price|rate)/i.test(lower);
+
+    if (!isAddQuery) {
+      return { isAddIntent: false };
+    }
+
+    // Check if it's purely adding stock delta to an existing product (e.g. "add 20 stock to Milk")
+    if (/\b(?:add|increase)\s+[0-9.]+\s*(?:units?|items?|stock|qty|kg|liters?)?\s*(?:to|for|in)\s+/i.test(lower)) {
+      return { isAddIntent: false };
+    }
+
+    // Extract product name
+    let name = '';
+    // Pattern A: "add [new] product [name] price [N] ..."
+    const nameMatch1 = queryText.match(/(?:add|create|register|insert|new)\s+(?:new\s+)?(?:product|item|item\s+called|product\s+called)?\s+["']?([^"'\n]+?)["']?\s+(?:with\s+)?(?:price|rate|cost|stock|quantity|qty|category|barcode|per|at|for)\s+/i);
+    if (nameMatch1) {
+      name = nameMatch1[1].replace(/^(product|item|called)\s+/i, '').trim();
+    } else {
+      // Pattern B: "add [name] price [N]"
+      const nameMatch2 = queryText.match(/(?:add|create|register)\s+["']?([^"'\n]+?)["']?\s+(?:price|rate|at\s+rs|cost)\s+/i);
+      if (nameMatch2) {
+        name = nameMatch2[1].trim();
+      }
+    }
+
+    // Fallback name if simple "add product Mango"
+    if (!name) {
+      const simpleMatch = queryText.match(/(?:add|create|register)\s+(?:new\s+)?(?:product|item)\s+["']?([^"'\n]+)["']?$/i);
+      if (simpleMatch) {
+        name = simpleMatch[1].trim();
+      }
+    }
+
+    if (!name) {
+      return { isAddIntent: false };
+    }
+
+    // Clean up name
+    name = name.replace(/^(the|a|an)\s+/i, '').trim();
+
+    // Extract Price
+    let price = 0;
+    const priceMatch = lower.match(/(?:price|rate|selling\s*price|at|for|is)\s*(?:of|is|:|=|to)?\s*(?:rs\.?|pkr)?\s*([0-9.]+)/i);
+    if (priceMatch) {
+      price = parseFloat(priceMatch[1]);
+    }
+
+    // Extract Cost Price
+    let costPrice = 0;
+    const costMatch = lower.match(/(?:cost|cost\s*price|buying\s*price|purchase\s*price)\s*(?:of|is|:|=|to)?\s*(?:rs\.?|pkr)?\s*([0-9.]+)/i);
+    if (costMatch) {
+      costPrice = parseFloat(costMatch[1]);
+    } else if (price > 0) {
+      costPrice = Math.round(price * 0.8 * 100) / 100;
+    }
+
+    // Extract Stock Quantity
+    let stockQuantity = 50;
+    const stockMatch = lower.match(/(?:stock|quantity|qty|units?)\s*(?:of|is|:|=|to)?\s*([0-9.]+)/i);
+    if (stockMatch) {
+      stockQuantity = parseFloat(stockMatch[1]);
+    }
+
+    // Extract Category
+    let category = 'General';
+    const catMatch = lower.match(/(?:category|dept|department)\s*(?:of|is|:|=|to)?\s*["']?([a-zA-Z0-9\s]+?)["']?(?:\s+(?:with|and|price|stock)|$)/i);
+    if (catMatch) {
+      category = catMatch[1].trim();
+    }
+
+    // Extract Sell By / Weight
+    let sellBy: 'unit' | 'weight' = 'unit';
+    let unitType: 'piece' | 'kg' | 'liter' = 'piece';
+    if (/\b(per\s*kg|kg|kilogram|kilo|per\s*kilo)\b/i.test(lower)) {
+      sellBy = 'weight';
+      unitType = 'kg';
+    } else if (/\b(per\s*liter|per\s*litre|liter|litre|ltr)\b/i.test(lower)) {
+      sellBy = 'weight';
+      unitType = 'liter';
+    }
+
+    // Extract or generate barcode
+    let barcode = '';
+    const barcodeMatch = lower.match(/barcode\s*(?:of|is|:|=|to)?\s*([0-9a-zA-Z]+)/i);
+    if (barcodeMatch) {
+      barcode = barcodeMatch[1].trim();
+    } else {
+      barcode = generateRandomBarcode();
+    }
+
+    // Generate unique 4-digit POS shortcut code
+    const shortcutCode = generateNextShortcutCode(allProducts);
+
+    return {
+      isAddIntent: true,
+      name,
+      price: isNaN(price) ? 100 : price,
+      costPrice: isNaN(costPrice) ? 80 : costPrice,
+      stockQuantity: isNaN(stockQuantity) ? 50 : stockQuantity,
+      category,
+      sellBy,
+      unitType,
+      barcode,
+      shortcutCode
+    };
   };
 
   // Helper function to parse natural language product editing instructions
@@ -558,10 +674,88 @@ export const StoreAiAssistantModal: React.FC<StoreAiAssistantModalProps> = ({
     setInput('');
     setIsProcessing(true);
 
-    setTimeout(() => {
+    setTimeout(async () => {
       const safeProducts = products || [];
 
-      // Check for product editing commands first
+      // Check for ADD NEW PRODUCT intent first (e.g. "Add product Mango price 300 stock 50")
+      const addResult = parseAddNewProductInstruction(questionText, safeProducts);
+      if (addResult.isAddIntent && addResult.name) {
+        const prodId = `prod_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        const newProductObj: Product = {
+          id: prodId,
+          storeId: store.id,
+          name: addResult.name,
+          price: addResult.price,
+          pricePerKg: addResult.sellBy === 'weight' ? addResult.price : undefined,
+          costPrice: addResult.costPrice,
+          stockQuantity: addResult.stockQuantity,
+          minStockLevel: 5,
+          category: addResult.category,
+          barcode: addResult.barcode,
+          shortcutCode: addResult.shortcutCode,
+          serialNumber: addResult.barcode,
+          sellBy: addResult.sellBy,
+          unitType: addResult.unitType,
+          weight: addResult.sellBy === 'weight' ? (addResult.unitType === 'kg' ? '1 kg' : '1 Liter') : undefined,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+
+        try {
+          // Write to Firestore
+          await setDoc(doc(db, 'products', prodId), cleanFirestoreData(newProductObj), { merge: true });
+          playScanSuccessBeep();
+          if (onProductUpdated) onProductUpdated(newProductObj);
+
+          const replyText = `🎉 **Successfully Added & Registered New Product to "${store.name}"!**\n\n` +
+            `• **Product Name:** **${addResult.name}**\n` +
+            `• **🔢 4-Digit POS Shortcut Code:** **#${addResult.shortcutCode}**\n` +
+            `  *(Cashiers can type \`${addResult.shortcutCode}\` anywhere at the Cash Counter POS to instantly add to cart!)*\n` +
+            `• **Retail Selling Price:** Rs. ${addResult.price.toFixed(2)}${addResult.sellBy === 'weight' ? ` per ${addResult.unitType}` : ''}\n` +
+            `• **Wholesale Cost Price:** Rs. ${addResult.costPrice.toFixed(2)}\n` +
+            `• **Stock Quantity:** ${addResult.stockQuantity} ${addResult.sellBy === 'weight' ? addResult.unitType : 'units'}\n` +
+            `• **Barcode:** \`${addResult.barcode}\`\n` +
+            `• **Category:** ${addResult.category}\n\n` +
+            `*The product is live in your catalog and synchronized across all POS counters.*`;
+
+          const aiMsg: Message = {
+            id: `msg-${Date.now() + 1}`,
+            sender: 'ai',
+            text: replyText,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            productEditDraft: {
+              id: prodId,
+              name: addResult.name,
+              price: addResult.price,
+              costPrice: addResult.costPrice,
+              stockQuantity: addResult.stockQuantity,
+              minStockLevel: 5,
+              category: addResult.category,
+              barcode: addResult.barcode,
+              shortcutCode: addResult.shortcutCode,
+              serialNumber: addResult.barcode,
+              sellBy: addResult.sellBy,
+              unitType: addResult.unitType,
+              originalProduct: newProductObj,
+              saved: true
+            }
+          };
+
+          setMessages(prev => [...prev, aiMsg]);
+        } catch (e: any) {
+          setMessages(prev => [...prev, {
+            id: `msg-${Date.now() + 1}`,
+            sender: 'ai',
+            text: `⚠️ Could not save product to database: ${e?.message || 'Error occurred'}. Please try again.`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }]);
+        }
+
+        setIsProcessing(false);
+        return;
+      }
+
+      // Check for product editing commands next
       const editResult = parseProductEditInstruction(questionText, safeProducts);
       if (editResult.isEditIntent) {
         if (editResult.matchedProduct) {
@@ -579,6 +773,7 @@ export const StoreAiAssistantModal: React.FC<StoreAiAssistantModalProps> = ({
               minStockLevel: editResult.draft?.minStockLevel || editResult.matchedProduct.minStockLevel || 5,
               category: editResult.draft?.category || editResult.matchedProduct.category || 'General',
               barcode: editResult.draft?.barcode || editResult.matchedProduct.barcode || '',
+              shortcutCode: editResult.matchedProduct.shortcutCode,
               serialNumber: editResult.draft?.serialNumber || editResult.matchedProduct.serialNumber || '',
               sellBy: editResult.draft?.sellBy || editResult.matchedProduct.sellBy || (editResult.matchedProduct.unitType === 'kg' ? 'weight' : 'unit'),
               unitType: editResult.draft?.unitType || editResult.matchedProduct.unitType || (editResult.matchedProduct.sellBy === 'weight' ? 'kg' : 'piece'),
@@ -609,6 +804,18 @@ export const StoreAiAssistantModal: React.FC<StoreAiAssistantModalProps> = ({
       const q = questionText.toLowerCase();
       let reply = '';
       let candidates: Product[] | undefined = undefined;
+
+      // Check for 4-Digit Shortcut queries
+      if (q.includes('shortcut') || q.includes('short cut') || q.includes('4-digit') || q.includes('4 digit') || q.includes('short code') || q.includes('pos code')) {
+        let matchedProd = safeProducts.find(p => p.name && q.includes(p.name.toLowerCase()));
+        if (matchedProd) {
+          reply = `🔢 **4-Digit POS Shortcut Code for "${matchedProd.name}":**\n\n• **Shortcut Code:** **#${matchedProd.shortcutCode || 'N/A'}**\n• **Retail Price:** Rs. ${matchedProd.price.toFixed(2)}${matchedProd.sellBy === 'weight' ? `/${matchedProd.unitType || 'kg'}` : ''}\n• **Barcode:** \`${matchedProd.barcode || 'N/A'}\`\n• **Available Stock:** ${matchedProd.stockQuantity} ${matchedProd.sellBy === 'weight' ? matchedProd.unitType || 'kg' : 'units'}\n\n💡 **Tip:** Cashiers can type \`${matchedProd.shortcutCode}\` anywhere at the cash counter or press \`S+K\` to view all shortcuts!`;
+          candidates = [matchedProd];
+        } else {
+          const sampleList = safeProducts.slice(0, 6).map(p => `• **${p.name}**: \`#${p.shortcutCode || '----'}\` (Rs. ${p.price.toFixed(2)})`).join('\n');
+          reply = `🔢 **4-Digit POS Product Shortcuts:**\n\n${sampleList}\n\n💡 **How to use 4-digit shortcuts:**\n1. Press **S + K** anywhere at the Cash Counter to open the Shortcuts Directory.\n2. Or simply type any 4-digit code (e.g. \`1001\`) into the barcode scanner box at checkout to instantly add item to cart!`;
+        }
+      }
 
       // Smart Query Resolution for Category/Product Specific Queries (e.g. "top selling oil", "cheapest ghee", "price of zeera biscuit")
       const engineRes = processStoreAiQuery(questionText, products, sales);
@@ -753,13 +960,21 @@ export const StoreAiAssistantModal: React.FC<StoreAiAssistantModalProps> = ({
     setIsProcessing(true);
     try {
       let saved = 0;
+      const assignedPool = [...(products || [])];
+      const savedShortcuts: Array<{ name: string; code: string }> = [];
+
       for (const p of productsToSave) {
         const prodId = `prod_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-        await setDoc(doc(db, 'products', prodId), {
+        const shortcutCode = p.shortcutCode || generateNextShortcutCode(assignedPool);
+        assignedPool.push({ shortcutCode } as Product);
+        savedShortcuts.push({ name: p.name, code: shortcutCode });
+
+        await setDoc(doc(db, 'products', prodId), cleanFirestoreData({
           id: prodId,
           storeId: store.id,
           barcode: p.barcode,
           serialNumber: p.serialNumber || p.barcode,
+          shortcutCode: shortcutCode,
           name: p.name,
           category: p.category || 'General',
           sellBy: p.sellBy,
@@ -771,16 +986,21 @@ export const StoreAiAssistantModal: React.FC<StoreAiAssistantModalProps> = ({
           weight: p.sellBy === 'weight' ? (p.unitType === 'kg' ? '1 kg' : '1 Liter') : undefined,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
-        }, { merge: true });
+        }), { merge: true });
         saved++;
       }
+
+      const shortcutSummary = savedShortcuts.slice(0, 6)
+        .map(s => `• **${s.name}**: \`#${s.code}\``)
+        .join('\n');
+      const extraShortcuts = savedShortcuts.length > 6 ? `\n...and ${savedShortcuts.length - 6} more with assigned 4-digit codes.` : '';
 
       setMessages(prev => prev.map(m => {
         if (m.id === msgId) {
           return {
             ...m,
             actionTaken: true,
-            text: m.text + `\n\n🎉 **Successfully registered ${saved} products into ${store.name} inventory!** They are now live and ready for barcode scanning at the Cash Counter POS.`
+            text: m.text + `\n\n🎉 **Successfully registered ${saved} products into ${store.name} inventory!**\n\n🔢 **Assigned 4-Digit POS Shortcut Keys:**\n${shortcutSummary}${extraShortcuts}\n\nThey are now live and ready for instant shortcut key typing and barcode scanning at the Cash Counter POS.`
           };
         }
         return m;
@@ -803,8 +1023,8 @@ export const StoreAiAssistantModal: React.FC<StoreAiAssistantModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-900/60 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl h-[85vh] max-h-[700px] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-[90] flex items-center justify-center p-3 sm:p-6 bg-slate-900/75 backdrop-blur-sm overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl h-[88vh] max-h-[750px] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 my-auto">
         
         {/* Header */}
         <div className="p-4 border-b border-slate-200 bg-slate-900 text-white flex items-center justify-between">

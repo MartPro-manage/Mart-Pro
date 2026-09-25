@@ -23,6 +23,7 @@ import { ExcelManagerModal } from './ExcelManagerModal';
 import { StoreAiAssistantModal } from './StoreAiAssistantModal';
 import { UniversalBackButton } from './UniversalBackButton';
 import { DiscountManagerModal } from './DiscountManagerModal';
+import { ItemDiscountModal } from './ItemDiscountModal';
 import { downloadBarcodeForProduct } from '../lib/barcodeDownload';
 import { BatchProductRow } from '../lib/excelParser';
 import { getAllCategories, addCustomCategoryToStore, saveNewCategoryToStore } from '../lib/categories';
@@ -82,6 +83,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   const [isAiAssistantOpen, setIsAiAssistantOpen] = useState(false);
   const [aiEditTargetProduct, setAiEditTargetProduct] = useState<Product | null>(null);
   const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false);
+  const [quickDiscountProduct, setQuickDiscountProduct] = useState<Product | null>(null);
 
   // Category addition states
   const [isAddCategoryModalOpen, setIsAddCategoryModalOpen] = useState(false);
@@ -1904,12 +1906,37 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                             <div className="text-[11px] text-slate-500">BC: {p.barcode || 'N/A'}</div>
                           </td>
                           <td className="p-3.5 text-center font-mono">
-                            <div className="font-black text-orange-600">
-                              Rs. {(p.price ?? 0).toFixed(2)}{isWeighted ? '/kg' : ''}
-                            </div>
-                            <div className="text-[11px] text-slate-500 font-semibold">
-                              Cost: Rs. {(cost || 0).toFixed(2)}
-                            </div>
+                            {(() => {
+                              const discInfo = getProductDiscountInfo(p);
+                              if (discInfo.hasDiscount) {
+                                return (
+                                  <div>
+                                    <div className="font-black text-rose-600 flex items-center justify-center gap-1">
+                                      <span>Rs. {discInfo.discountedPrice.toFixed(2)}{isWeighted ? '/kg' : ''}</span>
+                                      <span className="text-[10px] font-extrabold bg-rose-100 text-rose-800 px-1.5 py-0.2 rounded-full border border-rose-200">
+                                        {discInfo.discountLabel}
+                                      </span>
+                                    </div>
+                                    <div className="text-[11px] text-slate-400 line-through">
+                                      Was Rs. {(p.price ?? 0).toFixed(2)}
+                                    </div>
+                                    <div className="text-[10px] text-slate-500 font-semibold">
+                                      Cost: Rs. {(cost || 0).toFixed(2)}
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              return (
+                                <div>
+                                  <div className="font-black text-orange-600">
+                                    Rs. {(p.price ?? 0).toFixed(2)}{isWeighted ? '/kg' : ''}
+                                  </div>
+                                  <div className="text-[11px] text-slate-500 font-semibold">
+                                    Cost: Rs. {(cost || 0).toFixed(2)}
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td className="p-3.5 text-center font-mono">
                             <div className={`text-xs font-bold ${itemProfit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
@@ -1926,6 +1953,24 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                           </td>
                           <td className="p-3.5 text-right">
                             <div className="flex items-center justify-end gap-1.5">
+                              {/* Quick Discount Setting Action */}
+                              <button
+                                onClick={() => setQuickDiscountProduct(p)}
+                                className={`px-2 py-1.5 rounded-lg border transition-all text-xs font-bold flex items-center gap-1 cursor-pointer shadow-xs ${
+                                  p.discountActive && (p.discountValue || 0) > 0
+                                    ? 'bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-600 hover:text-white'
+                                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-rose-50 hover:text-rose-700'
+                                }`}
+                                title={p.discountActive ? `Active Discount: ${p.discountValue}${p.discountType === 'percentage' ? '%' : ' Rs.'} off. Click to edit.` : 'Set item discount'}
+                              >
+                                <Percent className="w-3 h-3 text-rose-600" />
+                                {p.discountActive && (p.discountValue || 0) > 0 ? (
+                                  <span>{p.discountValue}{p.discountType === 'percentage' ? '%' : ' Rs.'}</span>
+                                ) : (
+                                  <span>Discount</span>
+                                )}
+                              </button>
+
                               {/* Print Barcode / Sticker Action */}
                               <button
                                 onClick={() => handleOpenGeneratorForProduct(p)}
@@ -2145,8 +2190,19 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
           onClose={() => setIsDiscountModalOpen(false)}
           products={products}
           store={store}
-          onDiscountApplied={() => {
+          onRefresh={() => {
             showNotification('success', 'Product discounts successfully updated!');
+          }}
+        />
+
+        {/* SINGLE ITEM QUICK DISCOUNT MODAL */}
+        <ItemDiscountModal
+          isOpen={Boolean(quickDiscountProduct)}
+          onClose={() => setQuickDiscountProduct(null)}
+          product={quickDiscountProduct}
+          store={store}
+          onSuccess={(updated) => {
+            showNotification('success', `Updated discount on "${updated.name}"!`);
           }}
         />
 

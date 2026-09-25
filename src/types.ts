@@ -1,4 +1,12 @@
-export type UserRole = 'super_admin' | 'admin' | 'cash_counter' | 'product_register' | 'customer_price_checker';
+export type UserRole = 
+  | 'super_admin' 
+  | 'store_admin' 
+  | 'admin' 
+  | 'branch_admin' 
+  | 'cash_counter' 
+  | 'product_register' 
+  | 'customer_price_checker'
+  | (string & {});
 
 export interface Store {
   id: string;
@@ -8,6 +16,15 @@ export interface Store {
   adminUsername: string;
   adminPassword?: string;
   status?: 'active' | 'disabled';
+  parentStoreId?: string; // If this is a branch of a parent chain/store
+  storeAdminId?: string; // Store Admin user ID who owns/manages this chain
+  storeAdminUsername?: string; // Store Admin username
+  isBranch?: boolean; // Indicates whether this is an individual branch
+  branchCode?: string; // e.g. "BR-01"
+  branchAdminUsername?: string; // Assigned branch admin username
+  branchAdminName?: string; // Assigned branch admin name
+  branchAdminSalary?: number; // Monthly branch admin salary / administrative cost set by store admin
+  administrativeExpenses?: number; // Additional monthly administrative overhead
   cameraScannerEnabled?: boolean; // Super admin can enable/disable inbuilt barcode camera for each store
   voiceAnnouncementEnabled?: boolean; // Super admin can allow/disallow audio voice generation for each store
   phone?: string;
@@ -18,6 +35,7 @@ export interface Store {
   receiptQrCodeEnabled?: boolean; // Option to enable QR code on receipt
   receiptQrTitle?: string; // Title above the QR code on receipt
   receiptQrData?: string; // Custom URL or info for the QR code (defaults to verified receipt link)
+  receiptQrImageUrl?: string; // Uploaded custom picture/image of the QR code instead of link
   logoUrl?: string; // Black & white store logo (data URL or image URL)
   receiptFormat?: 'standard' | 'classic_detailed' | 'compact_eco'; // 3 distinct receipt templates
   taxRegistrationNumber?: string;
@@ -26,7 +44,18 @@ export interface Store {
   returnPolicyDays?: number;
   soundEffectsEnabled?: boolean;
   customCategories?: string[];
+  digitalPaymentMethods?: DigitalPaymentMethodConfig[];
   createdAt: string;
+}
+
+export interface DigitalPaymentMethodConfig {
+  id: string;
+  name: string; // e.g. "EasyPaisa", "JazzCash", "Raast", "SadaPay", "NayaPay", "Bank Transfer", etc.
+  accountTitle?: string;
+  accountNumber?: string;
+  qrCodeUrl?: string; // custom QR image for this specific digital payment method
+  instructions?: string;
+  isActive: boolean;
 }
 
 export interface Expense {
@@ -40,33 +69,87 @@ export interface Expense {
   paymentMethod?: 'cash' | 'online';
   timestamp: string; // ISO string
   recordedBy?: string;
+  salaryPaymentId?: string;
+}
+
+export interface SalaryPayment {
+  id: string;
+  storeId: string;
+  parentStoreId?: string;
+  staffId: string;
+  staffName: string;
+  staffRole: UserRole;
+  staffUsername: string;
+  month: string; // "YYYY-MM" e.g. "2026-03"
+  monthName?: string; // e.g. "March 2026"
+  baseSalary: number;
+  bonusAmount?: number;
+  deductionAmount?: number;
+  amountPaid: number;
+  paymentMethod: 'cash' | 'online';
+  paymentDate: string; // YYYY-MM-DD
+  notes?: string;
+  paidByUsername: string;
+  paidByName: string;
+  expenseId?: string; // Linked ID in 'expenses' collection
+  createdAt: string; // ISO string
 }
 
 export interface StaffSessionLog {
   id: string;
   storeId: string;
   userId: string;
-  userName: string;
-  username: string;
+  userName?: string;
+  username?: string;
+  staffName?: string;
+  staffUsername?: string;
   role: UserRole;
+  counterName?: string;
   counterNumber?: string;
   loginTime: string; // ISO string
   logoutTime?: string | null; // ISO string
-  status: 'online' | 'offline';
+  status: 'online' | 'offline' | 'active';
   lastActive?: string;
+  totalSalesCount?: number;
+  totalSalesAmount?: number;
 }
 
 export type StaffSession = StaffSessionLog;
 
+export interface StaffAttendanceRecord {
+  id: string;
+  storeId: string; // Branch ID
+  parentStoreId?: string; // Parent store chain ID
+  staffId: string; // UserAccount ID
+  staffName: string;
+  staffUsername: string;
+  staffRole: UserRole;
+  date: string; // YYYY-MM-DD
+  status: 'present' | 'absent' | 'late' | 'half_day' | 'leave';
+  checkInTime?: string; // e.g. "09:00 AM"
+  checkOutTime?: string; // e.g. "06:00 PM"
+  notes?: string;
+  markedByUsername?: string;
+  markedByRole?: string;
+  timestamp: string; // ISO string
+}
+
 export interface UserAccount {
   id: string;
-  storeId: string; // 'all' for super_admin
+  storeId: string; // 'all' for super_admin, or branch storeId
   storeName?: string;
+  parentStoreId?: string; // Parent store chain ID if branch staff
   role: UserRole;
   username: string;
   password?: string;
   name: string;
   counterNumber?: string; // for cash counter
+  salary?: number; // Monthly base salary set by branch admin / store admin
+  salaryFrequency?: 'monthly' | 'weekly';
+  phone?: string;
+  designation?: string;
+  hireDate?: string;
+  status?: 'active' | 'inactive';
   createdAt: string;
 }
 
@@ -178,6 +261,8 @@ export interface Sale {
   discountAmount?: number;
   totalAmount: number;
   paymentMethod: 'cash' | 'online';
+  onlinePaymentProvider?: string; // e.g. "EasyPaisa", "JazzCash", "SadaPay", "Bank Transfer", etc.
+  onlineTransactionId?: string; // Optional reference or transaction confirmation ID
   cashReceived?: number;
   changeReturned?: number;
   receiptNumber: string;

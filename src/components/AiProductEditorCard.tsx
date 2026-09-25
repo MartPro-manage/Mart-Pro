@@ -16,7 +16,9 @@ import {
   RefreshCw,
   Coins,
   Percent,
-  CheckCircle2
+  CheckCircle2,
+  Hash,
+  Wand2
 } from 'lucide-react';
 import { Product } from '../types';
 import { db, doc, updateDoc, cleanFirestoreData } from '../lib/firebase';
@@ -31,6 +33,7 @@ export interface ProductEditDraft {
   minStockLevel: number;
   category: string;
   barcode: string;
+  shortcutCode?: string;
   serialNumber?: string;
   sellBy?: 'unit' | 'weight';
   unitType?: 'piece' | 'kg' | 'g' | 'liter' | 'dozen';
@@ -60,9 +63,15 @@ export const AiProductEditorCard: React.FC<AiProductEditorCardProps> = ({
   const [stockQuantity, setStockQuantity] = useState<number | string>(draft.stockQuantity);
   const [category, setCategory] = useState(draft.category || 'General');
   const [barcode, setBarcode] = useState(draft.barcode || '');
+  const [shortcutCode, setShortcutCode] = useState(draft.shortcutCode || draft.originalProduct?.shortcutCode || '');
   const [sellBy, setSellBy] = useState<'unit' | 'weight'>(draft.sellBy || (draft.unitType === 'kg' ? 'weight' : 'unit'));
   const [unitType, setUnitType] = useState<string>(draft.unitType || (sellBy === 'weight' ? 'kg' : 'piece'));
   
+  // Discount state
+  const [discountActive, setDiscountActive] = useState<boolean>(Boolean(draft.originalProduct?.discountActive));
+  const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>(draft.originalProduct?.discountType || 'percentage');
+  const [discountValue, setDiscountValue] = useState<number | string>(draft.originalProduct?.discountValue ?? 10);
+
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(draft.saved || false);
   const [error, setError] = useState<string | null>(null);
@@ -71,8 +80,19 @@ export const AiProductEditorCard: React.FC<AiProductEditorCardProps> = ({
   const numPrice = typeof price === 'number' ? price : parseFloat(price) || 0;
   const numCost = typeof costPrice === 'number' ? costPrice : parseFloat(costPrice) || 0;
   const numStock = typeof stockQuantity === 'number' ? stockQuantity : parseFloat(stockQuantity) || 0;
-  const unitProfit = numPrice - numCost;
-  const marginPercent = numPrice > 0 ? (unitProfit / numPrice) * 100 : 0;
+  const numDiscountVal = typeof discountValue === 'number' ? discountValue : parseFloat(discountValue) || 0;
+
+  let calculatedDiscount = 0;
+  if (discountActive && numDiscountVal > 0) {
+    if (discountType === 'percentage') {
+      calculatedDiscount = (numPrice * Math.min(100, Math.max(0, numDiscountVal))) / 100;
+    } else {
+      calculatedDiscount = Math.min(numPrice, Math.max(0, numDiscountVal));
+    }
+  }
+  const effectiveFinalPrice = Math.max(0, numPrice - calculatedDiscount);
+  const unitProfit = effectiveFinalPrice - numCost;
+  const marginPercent = effectiveFinalPrice > 0 ? (unitProfit / effectiveFinalPrice) * 100 : 0;
 
   // Track differences from original
   const orig = draft.originalProduct;
@@ -82,13 +102,21 @@ export const AiProductEditorCard: React.FC<AiProductEditorCardProps> = ({
   const nameChanged = name.trim() !== orig.name.trim();
   const categoryChanged = category.trim() !== (orig.category || 'General').trim();
   const barcodeChanged = barcode.trim() !== (orig.barcode || '').trim();
+  const shortcutChanged = shortcutCode.trim() !== (orig.shortcutCode || '').trim();
+  const discountChanged = discountActive !== Boolean(orig.discountActive) || (discountActive && numDiscountVal !== (orig.discountValue || 0));
 
-  const hasAnyChanges = priceChanged || costChanged || stockChanged || nameChanged || categoryChanged || barcodeChanged;
+  const hasAnyChanges = priceChanged || costChanged || stockChanged || nameChanged || categoryChanged || barcodeChanged || shortcutChanged || discountChanged;
 
   const handleQuickStockAdjust = (delta: number) => {
     const current = typeof stockQuantity === 'number' ? stockQuantity : parseFloat(stockQuantity) || 0;
     const nextVal = Math.max(0, Math.round((current + delta) * 1000) / 1000);
     setStockQuantity(nextVal);
+  };
+
+  const handleGenerateShortcut = () => {
+    const rand = Math.floor(1001 + Math.random() * 8998).toString();
+    setShortcutCode(rand);
+    setSaved(false);
   };
 
   const handleResetToOriginal = () => {
@@ -98,8 +126,12 @@ export const AiProductEditorCard: React.FC<AiProductEditorCardProps> = ({
     setStockQuantity(orig.stockQuantity);
     setCategory(orig.category || 'General');
     setBarcode(orig.barcode || '');
+    setShortcutCode(orig.shortcutCode || '');
     setSellBy(orig.sellBy || (orig.unitType === 'kg' ? 'weight' : 'unit'));
     setUnitType(orig.unitType || (orig.sellBy === 'weight' ? 'kg' : 'piece'));
+    setDiscountActive(Boolean(orig.discountActive));
+    setDiscountType(orig.discountType || 'percentage');
+    setDiscountValue(orig.discountValue ?? 10);
     setError(null);
   };
 
@@ -126,6 +158,7 @@ export const AiProductEditorCard: React.FC<AiProductEditorCardProps> = ({
 
     try {
       const productRef = doc(db, 'products', draft.id);
+      const cleanShortcut = shortcutCode.trim();
       const updatedFields: Partial<Product> = {
         name: name.trim(),
         price: numPrice,
@@ -134,8 +167,12 @@ export const AiProductEditorCard: React.FC<AiProductEditorCardProps> = ({
         stockQuantity: numStock,
         category: category.trim() || 'General',
         barcode: barcode.trim(),
+        shortcutCode: cleanShortcut || undefined,
         sellBy: sellBy,
         unitType: unitType as any,
+        discountActive: discountActive,
+        discountType: discountType,
+        discountValue: discountActive ? numDiscountVal : 0,
         updatedAt: new Date().toISOString()
       };
 
@@ -347,8 +384,8 @@ export const AiProductEditorCard: React.FC<AiProductEditorCardProps> = ({
           </div>
         </div>
 
-        {/* Row 4: Barcode, Category & Sell By */}
-        <div className="grid grid-cols-2 gap-2">
+        {/* Row 4: Barcode, 4-Digit Shortcut & Category */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <div>
             <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
               Barcode {barcodeChanged && <span className="text-orange-600">• Edited</span>}
@@ -366,6 +403,38 @@ export const AiProductEditorCard: React.FC<AiProductEditorCardProps> = ({
           </div>
 
           <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-amber-700">
+                4-Digit POS Code {shortcutChanged && <span className="text-orange-600">• Edited</span>}
+              </label>
+              <button
+                type="button"
+                onClick={handleGenerateShortcut}
+                title="Generate new 4-digit code"
+                className="text-[10px] text-amber-600 hover:text-amber-800 font-bold flex items-center gap-0.5"
+              >
+                <Wand2 className="w-2.5 h-2.5" /> Auto
+              </button>
+            </div>
+            <div className="relative">
+              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-amber-600 font-mono font-bold text-xs">#</span>
+              <input
+                type="text"
+                maxLength={4}
+                value={shortcutCode}
+                onChange={(e) => {
+                  const cleaned = e.target.value.replace(/\D/g, '').slice(0, 4);
+                  setShortcutCode(cleaned);
+                  setSaved(false);
+                }}
+                disabled={isSaving}
+                placeholder="1001"
+                className="w-full pl-6 pr-2 py-1.5 rounded-lg border border-amber-300 font-mono font-black text-amber-900 text-xs bg-amber-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+              />
+            </div>
+          </div>
+
+          <div>
             <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
               Category
             </label>
@@ -380,6 +449,80 @@ export const AiProductEditorCard: React.FC<AiProductEditorCardProps> = ({
               className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-800 bg-white"
             />
           </div>
+        </div>
+
+        {/* Promotional Discount Section */}
+        <div className="bg-rose-50/50 p-2.5 rounded-xl border border-rose-200/70 space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={discountActive}
+                onChange={(e) => {
+                  setDiscountActive(e.target.checked);
+                  setSaved(false);
+                }}
+                disabled={isSaving}
+                className="w-3.5 h-3.5 text-rose-600 rounded border-slate-300 focus:ring-rose-500 cursor-pointer"
+              />
+              <span className="flex items-center gap-1">
+                <Percent className="w-3 h-3 text-rose-600" />
+                <span>Promotional Discount</span>
+              </span>
+            </label>
+            {discountActive && (
+              <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-rose-200 text-[10px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDiscountType('percentage');
+                    setSaved(false);
+                  }}
+                  className={`px-2 py-0.5 rounded ${discountType === 'percentage' ? 'bg-rose-600 text-white' : 'text-slate-600'}`}
+                >
+                  % Off
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDiscountType('fixed');
+                    setSaved(false);
+                  }}
+                  className={`px-2 py-0.5 rounded ${discountType === 'fixed' ? 'bg-rose-600 text-white' : 'text-slate-600'}`}
+                >
+                  Flat Rs.
+                </button>
+              </div>
+            )}
+          </div>
+
+          {discountActive && (
+            <div className="flex items-center gap-2 pt-1">
+              <div className="relative flex-1">
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-rose-500">
+                  {discountType === 'percentage' ? '%' : 'Rs.'}
+                </span>
+                <input
+                  type="number"
+                  step="any"
+                  min="0"
+                  max={discountType === 'percentage' ? 95 : numPrice}
+                  placeholder={discountType === 'percentage' ? '10' : '50'}
+                  value={discountValue}
+                  onChange={(e) => {
+                    setDiscountValue(e.target.value);
+                    setSaved(false);
+                  }}
+                  disabled={isSaving}
+                  className="w-full pl-8 pr-2 py-1 rounded-lg border border-rose-300 font-mono font-bold text-rose-800 text-xs bg-white"
+                />
+              </div>
+
+              <div className="text-[11px] font-bold text-rose-900 bg-white px-2.5 py-1 rounded-lg border border-rose-200 font-mono shrink-0">
+                Pays: Rs. {effectiveFinalPrice.toFixed(2)}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Error message if any */}

@@ -1,7 +1,22 @@
-import {StrictMode} from 'react';
-import {createRoot} from 'react-dom/client';
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { registerSW } from 'virtual:pwa-register';
+
+// Register PWA Service Worker with automatic updates and offline capabilities
+const updateSW = registerSW({
+  immediate: true,
+  onNeedRefresh() {
+    console.log('Mart Pro PWA: New content available, auto-updating...');
+  },
+  onOfflineReady() {
+    console.log('Mart Pro PWA: App ready to work offline');
+  },
+  onRegisterError(error) {
+    console.warn('Mart Pro PWA registration error:', error);
+  },
+});
 
 // Ensure day/light mode default by clearing any legacy dark mode settings
 try {
@@ -25,26 +40,6 @@ window.addEventListener('unhandledrejection', (event) => {
     event.preventDefault(); // Prevent app crash on storage quota error
   }
 });
-
-// Register Service Worker for PWA offline & desktop/mobile installability
-if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').then((registration) => {
-      registration.onupdatefound = () => {
-        const installingWorker = registration.installing;
-        if (installingWorker) {
-          installingWorker.onstatechange = () => {
-            if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              window.location.reload();
-            }
-          };
-        }
-      };
-    }).catch((err) => {
-      console.warn('Service worker registration failed:', err);
-    });
-  });
-}
 
 // Global hook for beforeinstallprompt event
 declare global {

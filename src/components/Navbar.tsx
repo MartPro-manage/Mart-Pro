@@ -42,10 +42,17 @@ export const Navbar: React.FC<NavbarProps> = ({
           color: 'bg-red-50 text-red-700 border-red-200 shadow-red-100', 
           icon: ShieldCheck 
         };
+      case 'store_admin':
       case 'admin':
         return { 
-          label: 'STORE ADMIN', 
+          label: 'CHAIN OWNER', 
           color: 'bg-orange-50 text-orange-700 border-orange-200 shadow-orange-100', 
+          icon: StoreIcon 
+        };
+      case 'branch_admin':
+        return { 
+          label: 'BRANCH ADMIN', 
+          color: 'bg-amber-50 text-amber-700 border-amber-200 shadow-amber-100', 
           icon: StoreIcon 
         };
       case 'cash_counter':
@@ -68,7 +75,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         };
       default:
         return { 
-          label: 'USER', 
+          label: (role || 'STAFF').replace(/_/g, ' ').toUpperCase(), 
           color: 'bg-slate-100 text-slate-700 border-slate-200 shadow-slate-100', 
           icon: User 
         };
@@ -81,49 +88,50 @@ export const Navbar: React.FC<NavbarProps> = ({
   // Single unified navigation options list - Dashboard is explicitly the first option
   // Super Admin has centralized master control and does not use store-level interface slide bar
   const isSuperAdmin = user?.role === 'super_admin';
+  const isStoreAdmin = user?.role === 'store_admin' || user?.role === 'admin';
 
   const navItems = [
     {
       id: 'dashboard' as AppNavView,
-      label: 'Dashboard',
-      shortLabel: 'Dashboard',
+      label: isStoreAdmin ? 'Executive Analytics' : 'Dashboard',
+      shortLabel: isStoreAdmin ? 'Analytics' : 'Dashboard',
       icon: LayoutDashboard,
-      roles: ['admin']
+      roles: ['store_admin', 'admin', 'branch_admin']
     },
     {
       id: 'pos' as AppNavView,
       label: 'Cash Counter POS',
       shortLabel: 'POS',
       icon: Calculator,
-      roles: ['admin', 'cash_counter']
+      roles: ['branch_admin', 'cash_counter']
     },
     {
       id: 'inventory' as AppNavView,
       label: 'Product Register',
       shortLabel: 'Register',
       icon: PackagePlus,
-      roles: ['admin', 'product_register']
+      roles: ['branch_admin', 'product_register']
     },
     {
       id: 'suppliers' as AppNavView,
       label: 'Supplier',
       shortLabel: 'Supplier',
       icon: Truck,
-      roles: ['admin']
+      roles: ['branch_admin']
     },
     {
       id: 'staff' as AppNavView,
       label: 'Staff Sessions',
       shortLabel: 'Staff',
       icon: Users,
-      roles: ['admin']
+      roles: ['branch_admin']
     },
     {
       id: 'price_checker' as AppNavView,
       label: 'Price Checker',
       shortLabel: 'Kiosk',
       icon: ScanLine,
-      roles: ['admin', 'customer_price_checker']
+      roles: ['branch_admin', 'customer_price_checker']
     }
   ];
 

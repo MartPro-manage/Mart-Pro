@@ -44,6 +44,7 @@ export const DiscountManagerModal: React.FC<DiscountManagerModalProps> = ({
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isConfirmClearAllOpen, setIsConfirmClearAllOpen] = useState(false);
 
   const curr = store?.currencySymbol || 'Rs.';
 
@@ -174,9 +175,6 @@ export const DiscountManagerModal: React.FC<DiscountManagerModalProps> = ({
   // Remove all discounts from all products
   const handleClearAllDiscounts = async () => {
     if (discountedProducts.length === 0) return;
-    if (!window.confirm(`Are you sure you want to remove active discounts from all ${discountedProducts.length} product(s)?`)) {
-      return;
-    }
 
     setIsProcessing(true);
     try {
@@ -199,6 +197,7 @@ export const DiscountManagerModal: React.FC<DiscountManagerModalProps> = ({
       }
 
       showStatus('success', `Successfully removed discounts from all ${discountedProducts.length} products.`);
+      setIsConfirmClearAllOpen(false);
       if (onRefresh) onRefresh();
     } catch (err: any) {
       console.error('Failed to clear all discounts:', err);
@@ -211,7 +210,7 @@ export const DiscountManagerModal: React.FC<DiscountManagerModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
+    <div className="fixed inset-0 z-[90] flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
       <div className="bg-white border border-slate-200 rounded-3xl max-w-4xl w-full p-5 sm:p-7 shadow-2xl relative space-y-6 max-h-[92vh] flex flex-col my-auto overflow-hidden">
         
         {/* MODAL HEADER */}
@@ -583,7 +582,7 @@ export const DiscountManagerModal: React.FC<DiscountManagerModalProps> = ({
                 <button
                   type="button"
                   disabled={isProcessing}
-                  onClick={handleClearAllDiscounts}
+                  onClick={() => setIsConfirmClearAllOpen(true)}
                   className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-extrabold text-[11px] rounded-xl border border-rose-200 transition-colors flex items-center gap-1.5 cursor-pointer shrink-0"
                 >
                   <Trash2 className="w-3.5 h-3.5" /> Remove All Discounts ({discountedProducts.length})
@@ -663,6 +662,46 @@ export const DiscountManagerModal: React.FC<DiscountManagerModalProps> = ({
         )}
 
       </div>
+
+      {/* Confirmation Modal: Remove All Discounts */}
+      {isConfirmClearAllOpen && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-scale-up">
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto shadow-inner">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1.5">
+              <h3 className="text-base font-black text-slate-900">Remove All Discounts?</h3>
+              <p className="text-xs text-slate-500">
+                Are you sure you want to remove active promotional discounts from all <strong className="text-slate-900 font-bold">{discountedProducts.length} products</strong>?
+              </p>
+              <div className="text-[11px] text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-200 mt-2">
+                All products will revert back to their standard original retail prices.
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsConfirmClearAllOpen(false)}
+                disabled={isProcessing}
+                className="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleClearAllDiscounts}
+                disabled={isProcessing}
+                className="w-1/2 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs transition-colors cursor-pointer shadow-sm disabled:opacity-50"
+              >
+                {isProcessing ? 'Removing...' : 'Yes, Remove All'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

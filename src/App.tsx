@@ -153,7 +153,13 @@ export default function App() {
       />
 
       {/* Main Content Body - Dynamically renders ONLY the selected view and scrolls separately (scroll slide bar hidden for super admin) */}
-      <main className={`flex-1 min-h-0 ${userRole === 'super_admin' ? 'overflow-y-auto scrollbar-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'overflow-y-auto'}`}>
+      <main className={`flex-1 min-h-0 flex flex-col ${
+        activeNavView === 'dashboard' || activeNavView === 'pos' || activeNavView === 'price_checker'
+          ? 'overflow-hidden'
+          : userRole === 'super_admin' 
+            ? 'overflow-y-auto scrollbar-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' 
+            : 'overflow-y-auto'
+      }`}>
 
         {/* 1. SUPPLIER MODULE (Explicitly in Main Navigation) */}
         {activeNavView === 'suppliers' && activeStore && (
@@ -164,7 +170,7 @@ export default function App() {
           />
         )}
 
-        {/* 2. STAFF SESSIONS & LIVE MONITORING */}
+        {/* 2. STAFF & SALARIES */}
         {activeNavView === 'staff' && activeStore && (
           <StaffSessionsView 
             store={activeStore} 
@@ -202,11 +208,11 @@ export default function App() {
 
         {/* 6. PRIMARY DASHBOARD / MAIN PANEL */}
         {activeNavView === 'dashboard' && (
-          <div>
+          <div className="h-full w-full flex-1 min-h-0 flex flex-col">
             {userRole === 'super_admin' ? (
               inspectedStore ? (
-                <div>
-                  <div className="bg-orange-50 border-b border-orange-200 px-6 py-2.5 flex items-center justify-between text-xs text-orange-950 font-medium">
+                <div className="h-full w-full flex-1 min-h-0 flex flex-col">
+                  <div className="bg-orange-50 border-b border-orange-200 px-6 py-2.5 flex items-center justify-between text-xs text-orange-950 font-medium shrink-0">
                     <span className="font-bold text-orange-700">
                       Inspecting Store: {inspectedStore.name}
                     </span>
@@ -218,22 +224,24 @@ export default function App() {
                     </button>
                   </div>
 
-                  <StoreAdminDashboard
-                    store={inspectedStore}
-                    currentUser={auth.user}
-                    onNavigateToPOS={() => setActiveNavView('pos')}
-                    onNavigateToInventory={() => setActiveNavView('inventory')}
-                    onNavigateToSuppliers={() => setActiveNavView('suppliers')}
-                    onNavigateToLiveSessions={() => setActiveNavView('staff')}
-                    onViewReceipt={handleViewReceipt}
-                  />
+                  <div className="flex-1 min-h-0 h-full w-full">
+                    <StoreAdminDashboard
+                      store={inspectedStore}
+                      currentUser={auth.user}
+                      onNavigateToPOS={() => setActiveNavView('pos')}
+                      onNavigateToInventory={() => setActiveNavView('inventory')}
+                      onNavigateToSuppliers={() => setActiveNavView('suppliers')}
+                      onNavigateToLiveSessions={() => setActiveNavView('staff')}
+                      onViewReceipt={handleViewReceipt}
+                    />
+                  </div>
                 </div>
               ) : (
                 <SuperAdminDashboard
                   onSelectStoreToManage={(store) => setInspectedStore(store)}
                 />
               )
-            ) : userRole === 'admin' && activeStore ? (
+            ) : (userRole === 'admin' || userRole === 'store_admin' || userRole === 'branch_admin') && activeStore ? (
               <StoreAdminDashboard
                 store={activeStore}
                 currentUser={auth.user}

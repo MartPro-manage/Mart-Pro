@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   db, 
@@ -7,22 +7,32 @@ import {
   onSnapshot, 
   query, 
   where, 
+  updateDoc,
+  writeBatch,
+  cleanFirestoreData,
   handleFirestoreError,
   OperationType 
 } from '../lib/firebase';
 import { Product, Sale, Store, UserAccount, ProductReturn, Expense } from '../types';
 import { cleanupExpiredReceipts, isSaleExpired } from '../lib/salesCleanup';
 import { ReturnSlipModal } from './ReturnSlipModal';
+import { ReceiptModal } from './ReceiptModal';
 import { StoreSettingsView } from './StoreSettingsView';
 import { SalesRevenueChart } from './SalesRevenueChart';
 import { SevenDaySalesVolumeChart } from './SevenDaySalesVolumeChart';
 import { StoreAiAssistantModal } from './StoreAiAssistantModal';
 import { ExcelManagerModal } from './ExcelManagerModal';
+import { DiscountManagerModal } from './DiscountManagerModal';
+import { ItemDiscountModal } from './ItemDiscountModal';
+import { getProductDiscountInfo, getEffectiveProductPrice } from '../utils/discountUtils';
+import { syncMissingShortcutCodesInFirestore } from '../utils/productShortcuts';
+import { playScanSuccessBeep } from '../lib/sound';
 import { BatchProductRow } from '../lib/excelParser';
 import { StoreAdminSidebar, StoreAdminTab, ExpenseFilterMode } from './StoreAdminSidebar';
 import { StoreAdminExpenses } from './StoreAdminExpenses';
 import { SupplierManagementView } from './SupplierManagementView';
 import { StaffSessionsView } from './StaffSessionsView';
+import { PaymentMethodsView } from './PaymentMethodsView';
 import { 
   TrendingUp, 
   Package, 
@@ -71,7 +81,8 @@ import {
   Truck,
   Boxes,
   PackagePlus,
-  CheckCircle2
+  CheckCircle2,
+  Trash2
 } from 'lucide-react';
 
 interface StoreAdminDashboardProps {
@@ -139,6 +150,10 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
   const [viewingReturnSlip, setViewingReturnSlip] = useState<ProductReturn | null>(null);
   const [isReturnSlipOpen, setIsReturnSlipOpen] = useState(false);
 
+  // Customer Receipt Modal State
+  const [viewingReceipt, setViewingReceipt] = useState<Sale | null>(null);
+  const [isReceiptOpen, setIsReceiptOpen] = useState(false);
+
   // Date Filtering State
   const todayStr = useMemo(() => getLocalDateString(new Date()), []);
   const [dateFilter, setDateFilter] = useState<DateFilterType>('all');
@@ -148,6 +163,22 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
 
   // Selected date for deep inspection in Sales by Date tab
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
+
+  const mainContentRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (mainContentRef.current) {
+      mainContentRef.current.scrollTop = 0;
+    }
+  }, [activeTab]);
+
+  // Promotions & Discounts States
+  const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false);
+  const [discountEditProduct, setDiscountEditProduct] = useState<Product | null>(null);
+  const [promotionsSearchTerm, setPromotionsSearchTerm] = useState('');
+  const [promotionsFilter, setPromotionsFilter] = useState<'all' | 'active' | 'percentage' | 'fixed' | 'none'>('all');
+  const [promotionsCategory, setPromotionsCategory] = useState<string>('All');
+  const [isClearingAllDiscounts, setIsClearingAllDiscounts] = useState(false);
+  const [isConfirmClearDiscountsOpen, setIsConfirmClearDiscountsOpen] = useState(false);
 
   // Real-time synchronization of Store, Products, Sales, Returns, and Staff for this store
   useEffect(() => {
@@ -182,6 +213,12 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
         prodList.push({ id: doc.id, ...doc.data() } as Product);
       });
       setProducts(prodList);
+
+      // Auto-sync 4-digit shortcut codes for any legacy products missing one
+      const hasMissingShortcuts = prodList.some(p => !p.shortcutCode || !/^\d{4}$/.test(p.shortcutCode));
+      if (hasMissingShortcuts && prodList.length > 0) {
+        syncMissingShortcutCodesInFirestore(prodList).catch(e => console.warn('Background shortcut sync error:', e));
+      }
     }, (err) => {
       handleFirestoreError(err, OperationType.GET, 'products');
     });
@@ -811,18 +848,170 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       .reduce((acc, curr) => acc + (curr.amount || 0), 0);
   }, [expenses]);
 
+  // Payment methods breakdown stats
+  const paymentMethodStats = useMemo(() => {
+    let cashSum = 0;
+    let onlineSum = 0;
+    filteredSalesByDate.forEach(s => {
+      const amt = Number(s.totalAmount) || 0;
+      if (s.paymentMethod === 'online') {
+        onlineSum += amt;
+      } else {
+        cashSum += amt;
+      }
+    });
+    const total = cashSum + onlineSum;
+    const cashPercent = total > 0 ? Math.round((cashSum / total) * 100) : 0;
+    const onlinePercent = total > 0 ? Math.round((onlineSum / total) * 100) : 0;
+    return {
+      cashPaymentTotal: cashSum,
+      onlinePaymentTotal: onlineSum,
+      cashPercent,
+      onlinePercent,
+      totalTransactionsCount: filteredSalesByDate.length
+    };
+  }, [filteredSalesByDate]);
+
   // Sidebar live stats badges
   const sidebarStats = useMemo(() => ({
     salesDays: dailySalesBreakdown.length,
     totalProducts: products.length,
     lowStockCount: lowStockAlertCount,
     soldProductsCount: soldProductsSummary.length,
+    discountedCount: products.filter(p => p.discountActive && (p.discountValue || 0) > 0).length,
     receiptsCount: filteredSalesByDate.length,
     returnsCount: filteredReturnsByDate.length,
     staffCount: storeUsers.length,
     expensesCount: expenses.length,
-    monthlyExpensesTotal
-  }), [dailySalesBreakdown.length, products.length, lowStockAlertCount, soldProductsSummary.length, filteredSalesByDate.length, filteredReturnsByDate.length, storeUsers.length, expenses.length, monthlyExpensesTotal]);
+    monthlyExpensesTotal,
+    cashPaymentTotal: paymentMethodStats.cashPaymentTotal,
+    onlinePaymentTotal: paymentMethodStats.onlinePaymentTotal,
+    cashPercent: paymentMethodStats.cashPercent,
+    onlinePercent: paymentMethodStats.onlinePercent,
+    totalTransactionsCount: paymentMethodStats.totalTransactionsCount
+  }), [dailySalesBreakdown.length, products.length, lowStockAlertCount, soldProductsSummary.length, products, filteredSalesByDate.length, filteredReturnsByDate.length, storeUsers.length, expenses.length, monthlyExpensesTotal, paymentMethodStats]);
+
+  // Promotions Memoized Calculations
+  const promotionsCategories = useMemo(() => {
+    const set = new Set<string>();
+    products.forEach(p => {
+      if (p.category) set.add(p.category);
+    });
+    return ['All', ...Array.from(set).sort()];
+  }, [products]);
+
+  const activeDiscountedProducts = useMemo(() => {
+    return products.filter(p => p.discountActive && (p.discountValue || 0) > 0);
+  }, [products]);
+
+  const promotionsStats = useMemo(() => {
+    const totalCount = products.length;
+    const activeCount = activeDiscountedProducts.length;
+    const percentageCount = activeDiscountedProducts.filter(p => p.discountType === 'percentage').length;
+    const fixedCount = activeDiscountedProducts.filter(p => p.discountType === 'fixed').length;
+
+    let totalPotentialSavings = 0;
+    let sumPercentage = 0;
+    let countPercentage = 0;
+
+    activeDiscountedProducts.forEach(p => {
+      const info = getProductDiscountInfo(p);
+      totalPotentialSavings += info.discountAmount * (p.stockQuantity || 1);
+      if (p.discountType === 'percentage' && p.discountValue) {
+        sumPercentage += p.discountValue;
+        countPercentage++;
+      }
+    });
+
+    const avgDiscountPercentage = countPercentage > 0 ? (sumPercentage / countPercentage) : 0;
+
+    return {
+      totalCount,
+      activeCount,
+      percentageCount,
+      fixedCount,
+      totalPotentialSavings,
+      avgDiscountPercentage,
+      percentCatalogOnSale: totalCount > 0 ? (activeCount / totalCount) * 100 : 0
+    };
+  }, [products, activeDiscountedProducts]);
+
+  const filteredPromotionsProducts = useMemo(() => {
+    let result = products;
+
+    // Filter by discount status
+    if (promotionsFilter === 'active') {
+      result = result.filter(p => p.discountActive && (p.discountValue || 0) > 0);
+    } else if (promotionsFilter === 'percentage') {
+      result = result.filter(p => p.discountActive && p.discountType === 'percentage' && (p.discountValue || 0) > 0);
+    } else if (promotionsFilter === 'fixed') {
+      result = result.filter(p => p.discountActive && p.discountType === 'fixed' && (p.discountValue || 0) > 0);
+    } else if (promotionsFilter === 'none') {
+      result = result.filter(p => !p.discountActive || !p.discountValue || p.discountValue <= 0);
+    }
+
+    // Filter by category
+    if (promotionsCategory !== 'All') {
+      result = result.filter(p => p.category === promotionsCategory);
+    }
+
+    // Filter by search query
+    if (promotionsSearchTerm.trim()) {
+      const q = promotionsSearchTerm.toLowerCase().trim();
+      result = result.filter(p => 
+        (p.name && p.name.toLowerCase().includes(q)) ||
+        (p.barcode && p.barcode.toLowerCase().includes(q)) ||
+        (p.shortcutCode && p.shortcutCode.toLowerCase().includes(q)) ||
+        (p.category && p.category.toLowerCase().includes(q))
+      );
+    }
+
+    return result;
+  }, [products, promotionsFilter, promotionsCategory, promotionsSearchTerm]);
+
+  // Handler to clear all product discounts in bulk
+  const handleClearAllDiscounts = async () => {
+    if (activeDiscountedProducts.length === 0) return;
+
+    setIsClearingAllDiscounts(true);
+    try {
+      const batch = writeBatch(db);
+      activeDiscountedProducts.forEach(p => {
+        const pRef = doc(db, 'products', p.id);
+        batch.update(pRef, {
+          discountActive: false,
+          discountValue: 0,
+          discountType: 'percentage',
+          updatedAt: new Date().toISOString()
+        });
+      });
+      await batch.commit();
+      playScanSuccessBeep();
+      setIsConfirmClearDiscountsOpen(false);
+    } catch (err) {
+      console.error('Failed to clear discounts:', err);
+      handleFirestoreError(err, OperationType.UPDATE, 'products');
+    } finally {
+      setIsClearingAllDiscounts(false);
+    }
+  };
+
+  // Quick single product discount remove
+  const handleQuickRemoveDiscount = async (p: Product) => {
+    try {
+      const pRef = doc(db, 'products', p.id);
+      await updateDoc(pRef, cleanFirestoreData({
+        discountActive: false,
+        discountValue: 0,
+        discountType: 'percentage',
+        updatedAt: new Date().toISOString()
+      }));
+      playScanSuccessBeep();
+    } catch (err) {
+      console.error('Failed to remove discount:', err);
+      handleFirestoreError(err, OperationType.UPDATE, 'products');
+    }
+  };
 
   // Top selling products for overview
   const topSellingProducts = useMemo(() => {
@@ -872,10 +1061,20 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       subtitle: 'Current in-stock inventory counts, selling prices, wholesale costs, and stock alerts',
       icon: Package
     },
+    promotions: {
+      title: 'Item Discounts & Promotions',
+      subtitle: 'Set and manage percentage & flat rupee discounts, monitor customer savings and realized profit margins',
+      icon: Percent
+    },
     sales_history: {
       title: 'Receipts & Billing Log',
       subtitle: 'All customer checkout records, payment methods, cashier counter numbers, and slips',
       icon: Receipt
+    },
+    payment_methods: {
+      title: 'Payment Methods & Financial Breakdown',
+      subtitle: 'Configure accepted digital payment platforms (EasyPaisa, JazzCash, etc.) and audit Cash vs Online inflow',
+      icon: CreditCard
     },
     expenses: {
       title: 'Store Expense Management',
@@ -888,8 +1087,8 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       icon: Truck
     },
     staff: {
-      title: 'Store Staff & Sessions',
-      subtitle: 'Cashiers, inventory staff, customer kiosks, and active login sessions',
+      title: 'Store Staff & Salaries',
+      subtitle: 'Cashiers, inventory staff, salaries, payroll disbursements, and account management',
       icon: Users
     },
     settings: {
@@ -900,7 +1099,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
   };
 
   return (
-    <div className="h-screen bg-slate-100 text-slate-900 flex overflow-hidden">
+    <div className="h-full w-full bg-slate-100 text-slate-900 flex overflow-hidden overflow-x-hidden">
       {/* STORE ADMIN SIDEBAR NAVIGATION */}
       <StoreAdminSidebar
         activeTab={activeTab}
@@ -920,34 +1119,20 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       />
 
       {/* MAIN DASHBOARD CONTENT WRAPPER */}
-      <div className="flex-1 min-w-0 flex flex-col h-screen overflow-hidden">
+      <div className="flex-1 min-w-0 flex flex-col h-full min-h-0 overflow-hidden">
         {/* STICKY TOP APP BAR */}
-        <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 sm:px-6 py-3.5 flex items-center justify-between gap-4 shadow-2xs">
+        <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 px-3 sm:px-6 py-3.5 flex items-center justify-between gap-4 shadow-2xs shrink-0">
           <div className="flex items-center gap-3 min-w-0">
-            {/* Mobile Hamburger to Open Sidebar */}
+            {/* Menu Button to Open Sidebar Drawer */}
             <button
               type="button"
               onClick={() => setIsSidebarOpenMobile(true)}
-              className="p-2 rounded-xl bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 lg:hidden cursor-pointer flex items-center gap-1.5 text-xs font-bold transition-colors"
+              className="p-2 rounded-xl bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 cursor-pointer flex items-center gap-1.5 text-xs font-bold transition-colors shadow-2xs"
               title="Open Sidebar Navigation"
               aria-label="Open Sidebar Navigation"
             >
               <Menu className="w-5 h-5 text-orange-600" />
               <span>Menu</span>
-            </button>
-
-            {/* Desktop Collapse / Expand Button */}
-            <button
-              type="button"
-              onClick={() => setIsSidebarCollapsed(c => !c)}
-              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 hidden lg:flex cursor-pointer transition-colors"
-              title={isSidebarCollapsed ? 'Expand Sidebar Navigation' : 'Collapse Sidebar Navigation'}
-            >
-              {isSidebarCollapsed ? (
-                <PanelLeftOpen className="w-4 h-4 text-orange-600" />
-              ) : (
-                <PanelLeftClose className="w-4 h-4 text-slate-600" />
-              )}
             </button>
 
             {/* Breadcrumb Indicator */}
@@ -995,11 +1180,11 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
         </header>
 
         {/* INNER SCROLLABLE CONTENT */}
-        <main className="p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-6 flex-1">
+        <main ref={mainContentRef as any} className="p-0 sm:p-6 lg:p-8 w-full space-y-6 flex-1 min-h-0 overflow-y-auto overflow-x-hidden custom-scrollbar touch-auto overscroll-contain">
           {/* Store Admin Hero Banner */}
-          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative overflow-hidden">
-            <div className="space-y-2 z-10">
-              <div className="flex items-center gap-2">
+          <div className="bg-white p-4 sm:p-8 rounded-none sm:rounded-3xl border-x-0 sm:border border-slate-200 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative overflow-hidden text-left">
+            <div className="space-y-2 z-10 flex flex-col items-start w-full">
+              <div className="flex items-center justify-start gap-2">
                 <span className="px-3 py-1 rounded-full text-xs font-bold bg-orange-50 text-orange-700 border border-orange-200 flex items-center gap-1.5">
                   <ShoppingBag className="w-3.5 h-3.5 text-orange-600" /> Store Admin Dashboard
                 </span>
@@ -1010,13 +1195,13 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
               <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
                 {store.name} <span className="text-orange-600">{activeTab === 'overview' ? 'Analytics & Executive Dashboard' : tabTitles[activeTab]?.title || 'Store Management'}</span>
               </h1>
-              <p className="text-sm text-slate-600 max-w-2xl font-medium">
+              <p className="text-sm text-slate-600 max-w-2xl font-medium text-left">
                 {tabTitles[activeTab]?.subtitle || 'View sales filtered by date, day-by-day revenue breakdown, product sales velocity, real-time inventory levels, and cashier checkout logs.'}
               </p>
 
               {/* Quick Live Revenue and Profit Highlight Badges - ONLY visible on overview / dashboard */}
               {activeTab === 'overview' && (
-                <div className="flex flex-wrap items-center gap-3 pt-2">
+                <div className="flex flex-wrap items-center justify-start gap-3 pt-2">
                   <div className="px-3.5 py-1.5 rounded-xl bg-orange-50 border border-orange-200 flex items-center gap-2 shadow-2xs">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-orange-700">Total Revenue:</span>
                     <span className="font-mono font-black text-sm text-orange-950">
@@ -1039,7 +1224,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             </div>
 
             {/* Quick Shortcuts for Admin */}
-            <div className="flex flex-wrap items-center gap-3 z-10 shrink-0">
+            <div className="flex flex-wrap items-center justify-start gap-3 z-10 shrink-0">
               <button
                 type="button"
                 onClick={() => setIsExcelModalOpen(true)}
@@ -1238,24 +1423,19 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
         </div>
 
         {/* DYNAMIC REALTIME METRICS CARDS (Adjusts to selected Date Filter) */}
-        <motion.div 
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, ease: 'easeOut' }}
+        <div 
           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4"
         >
           
           {/* Net Realized Profit (Excl. & Incl. Expenses) */}
-          <motion.div 
-            whileHover={{ y: -2 }}
-            transition={{ duration: 0.15 }}
+          <div 
             className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden xl:col-span-2"
           >
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                 Net Profit (Excl. & Incl. Expenses)
               </span>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 shrink-0 select-none">
                 <span className="text-[10px] bg-orange-50 text-orange-700 px-2 py-0.5 rounded-full font-bold border border-orange-200">
                   Total Exp: Rs. {filteredTotalExpenses.toLocaleString('en-PK', { maximumFractionDigits: 0 })}
                 </span>
@@ -1282,12 +1462,10 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
               <span className="text-slate-400">•</span>
               <span className="text-slate-600 font-semibold">Cost: Rs. {(filteredCostOfGoods || 0).toFixed(0)}</span>
             </div>
-          </motion.div>
+          </div>
 
           {/* Net Sales Revenue */}
-          <motion.div 
-            whileHover={{ y: -2 }}
-            transition={{ duration: 0.15 }}
+          <div 
             className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"
           >
             <div className="flex items-center justify-between">
@@ -1304,12 +1482,10 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             <p className="text-[11px] text-slate-500 mt-1 font-medium">
               Gross: Rs. {(filteredGrossRevenue || 0).toFixed(0)} {(filteredRefundsTotal || 0) > 0 ? `• -Rs. ${(filteredRefundsTotal || 0).toFixed(0)} refunds` : ''}
             </p>
-          </motion.div>
+          </div>
 
           {/* Cost of Goods Sold (Wholesale Cost) */}
-          <motion.div 
-            whileHover={{ y: -2 }}
-            transition={{ duration: 0.15 }}
+          <div 
             className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"
           >
             <div className="flex items-center justify-between">
@@ -1326,12 +1502,10 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             <p className="text-[11px] text-slate-500 mt-1 font-medium flex items-center gap-1">
               Purchase rate for {filteredNetUnitsSold.toLocaleString()} sold units
             </p>
-          </motion.div>
+          </div>
 
           {/* Sold Units & Realtime Stock */}
-          <motion.div 
-            whileHover={{ y: -2 }}
-            transition={{ duration: 0.15 }}
+          <div 
             className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"
           >
             <div className="flex items-center justify-between">
@@ -1346,12 +1520,10 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1 font-medium">
               <Package className="w-3.5 h-3.5 text-slate-400" /> {products.reduce((acc, p) => acc + (p.stockQuantity || 0), 0).toLocaleString()} units in inventory
             </p>
-          </motion.div>
+          </div>
 
           {/* Monthly Store Expenses & Outflows */}
-          <motion.div 
-            whileHover={{ y: -2 }}
-            transition={{ duration: 0.15 }}
+          <div 
             onClick={() => setActiveTab('expenses')}
             className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm cursor-pointer hover:border-orange-300 transition-colors group"
           >
@@ -1370,9 +1542,9 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
               <span>{expenses.length} records</span>
               <span className="text-orange-600 font-bold group-hover:underline flex items-center gap-0.5">Manage <ArrowRight className="w-3 h-3" /></span>
             </p>
-          </motion.div>
+          </div>
 
-        </motion.div>
+        </div>
 
         {/* Centralized Inventory & Valuation Analytics Section (Migrated from Product Register) */}
         <motion.div
@@ -1782,7 +1954,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                         <Users className="w-4 h-4" />
                       </div>
                       <div>
-                        <h4 className="text-sm font-extrabold text-slate-900">Staff & Operational Terminals</h4>
+                        <h4 className="text-sm font-extrabold text-slate-900">Staff & Operations</h4>
                         <p className="text-[11px] text-slate-500 font-medium">{storeUsers.length} staff members assigned</p>
                       </div>
                     </div>
@@ -1804,7 +1976,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                       >
                         <Calculator className="w-5 h-5 text-orange-600 mb-1 group-hover:scale-110 transition-transform" />
                         <div className="text-xs font-extrabold text-slate-900">Cash Counter POS</div>
-                        <div className="text-[10px] text-slate-500 font-medium">Launch checkout terminal</div>
+                        <div className="text-[10px] text-slate-500 font-medium">Launch checkout counter</div>
                       </button>
                     )}
 
@@ -2435,20 +2607,29 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                       <th className="p-3.5">Product Name</th>
                       <th className="p-3.5">Barcode</th>
                       <th className="p-3.5">Category</th>
-                      <th className="p-3.5 text-center">Price</th>
+                      <th className="p-3.5 text-center">Retail Price</th>
                       <th className="p-3.5 text-center">Stock Remaining</th>
                       <th className="p-3.5 text-center">Stock Status</th>
+                      <th className="p-3.5 text-right">Promotions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
                     {filteredProducts.map((p) => {
                       const isOutOfStock = p.stockQuantity <= 0;
                       const isLowStock = p.stockQuantity > 0 && p.stockQuantity <= (p.minStockLevel || 5);
+                      const discInfo = getProductDiscountInfo(p);
 
                       return (
                         <tr key={p.id} className="hover:bg-slate-50 transition-colors">
                           <td className="p-3.5 font-bold text-slate-900">
-                            {p.name}
+                            <div className="flex items-center gap-2">
+                              <span>{p.name}</span>
+                              {discInfo.hasDiscount && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-200">
+                                  {discInfo.discountLabel}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="p-3.5 text-slate-500 font-mono text-xs">
                             {p.barcode}
@@ -2458,8 +2639,21 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                               {p.category || 'General'}
                             </span>
                           </td>
-                          <td className="p-3.5 text-center font-bold text-orange-600">
-                            Rs. {(p.price ?? 0).toFixed(2)}
+                          <td className="p-3.5 text-center font-mono">
+                            {discInfo.hasDiscount ? (
+                              <div>
+                                <div className="font-black text-rose-600">
+                                  Rs. {discInfo.discountedPrice.toFixed(2)}
+                                </div>
+                                <div className="text-[10px] text-slate-400 line-through">
+                                  Was Rs. {(p.price ?? 0).toFixed(2)}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="font-bold text-orange-600">
+                                Rs. {(p.price ?? 0).toFixed(2)}
+                              </div>
+                            )}
                           </td>
                           <td className="p-3.5 text-center font-black text-lg">
                             <span className={isOutOfStock ? 'text-red-600' : isLowStock ? 'text-amber-600' : 'text-emerald-600'}>
@@ -2481,6 +2675,21 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                               </span>
                             )}
                           </td>
+                          <td className="p-3.5 text-right">
+                            <button
+                              type="button"
+                              onClick={() => setDiscountEditProduct(p)}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center gap-1 ml-auto shadow-2xs ${
+                                discInfo.hasDiscount
+                                  ? 'bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border-rose-300'
+                                  : 'bg-slate-50 hover:bg-rose-50 text-slate-600 hover:text-rose-700 border-slate-200'
+                              }`}
+                              title={discInfo.hasDiscount ? 'Active discount. Click to modify or remove.' : 'Set discount on item'}
+                            >
+                              <Percent className="w-3 h-3" />
+                              <span>{discInfo.hasDiscount ? discInfo.discountLabel : 'Set Discount'}</span>
+                            </button>
+                          </td>
                         </tr>
                       );
                     })}
@@ -2488,6 +2697,342 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                 </table>
               </div>
             )}
+          </motion.div>
+        )}
+
+        {/* TAB: ITEM DISCOUNTS & PROMOTIONS */}
+        {activeTab === 'promotions' && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25 }}
+            className="space-y-5"
+          >
+            {/* Top Action Header */}
+            <div className="bg-gradient-to-r from-rose-900 via-slate-900 to-slate-950 rounded-2xl p-6 text-white border border-rose-800/40 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl">
+                    <Percent className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-black text-white flex items-center gap-2">
+                      Item Discounts & Promotional Deals
+                    </h2>
+                    <p className="text-xs text-rose-200/80 font-medium mt-0.5">
+                      Set percentage or rupee price reductions on individual items or entire category ranges
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setIsDiscountModalOpen(true)}
+                  className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-black shadow-md shadow-rose-600/30 transition-all flex items-center gap-2 cursor-pointer"
+                >
+                  <Sparkles className="w-4 h-4 text-amber-300" />
+                  <span>Bulk / Category Discounts</span>
+                </button>
+
+                {activeDiscountedProducts.length > 0 && (
+                  <button
+                    type="button"
+                    disabled={isClearingAllDiscounts}
+                    onClick={() => setIsConfirmClearDiscountsOpen(true)}
+                    className="px-3.5 py-2.5 bg-white/10 hover:bg-rose-950/80 text-rose-200 hover:text-white border border-rose-500/30 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    title="Remove all active discounts across all products"
+                  >
+                    <Undo2 className="w-3.5 h-3.5" />
+                    <span>{isClearingAllDiscounts ? 'Clearing...' : 'Clear All Discounts'}</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* KPI Statistics */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Active Discounts</span>
+                <span className="text-2xl font-black text-rose-600 font-mono mt-1 block">
+                  {promotionsStats.activeCount} <span className="text-xs text-slate-400 font-normal">/ {promotionsStats.totalCount} items</span>
+                </span>
+                <span className="text-[10px] text-slate-500 font-medium">
+                  {promotionsStats.percentCatalogOnSale.toFixed(1)}% of inventory on deal
+                </span>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Average Discount %</span>
+                <span className="text-2xl font-black text-slate-900 font-mono mt-1 block">
+                  {promotionsStats.avgDiscountPercentage > 0 ? `${promotionsStats.avgDiscountPercentage.toFixed(1)}%` : '0%'}
+                </span>
+                <span className="text-[10px] text-slate-500 font-medium">
+                  {promotionsStats.percentageCount} percentage deals active
+                </span>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Flat Cash Off Deals</span>
+                <span className="text-2xl font-black text-amber-600 font-mono mt-1 block">
+                  {promotionsStats.fixedCount} <span className="text-xs text-slate-400 font-normal">items</span>
+                </span>
+                <span className="text-[10px] text-slate-500 font-medium">
+                  Direct rupee cuts on price
+                </span>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Est. Customer Savings</span>
+                <span className="text-2xl font-black text-emerald-600 font-mono mt-1 block truncate">
+                  Rs. {promotionsStats.totalPotentialSavings.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </span>
+                <span className="text-[10px] text-emerald-700 font-medium">
+                  Available on stock in store
+                </span>
+              </div>
+            </div>
+
+            {/* Filter and Search Bar */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                {/* Search Bar */}
+                <div className="relative flex-1 max-w-md">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search by name, barcode, shortcut..."
+                    value={promotionsSearchTerm}
+                    onChange={(e) => setPromotionsSearchTerm(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-rose-400 focus:bg-white transition-all"
+                  />
+                  {promotionsSearchTerm && (
+                    <button
+                      onClick={() => setPromotionsSearchTerm('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer text-xs"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Filters */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Category Filter */}
+                  <select
+                    value={promotionsCategory}
+                    onChange={(e) => setPromotionsCategory(e.target.value)}
+                    className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-rose-400 cursor-pointer"
+                  >
+                    {promotionsCategories.map(cat => (
+                      <option key={cat} value={cat}>Category: {cat}</option>
+                    ))}
+                  </select>
+
+                  {/* Status Toggle Pills */}
+                  <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setPromotionsFilter('all')}
+                      className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                        promotionsFilter === 'all' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      All ({products.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPromotionsFilter('active')}
+                      className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                        promotionsFilter === 'active' ? 'bg-rose-600 text-white shadow-2xs font-black' : 'text-rose-700 hover:text-rose-900'
+                      }`}
+                    >
+                      On Discount ({promotionsStats.activeCount})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPromotionsFilter('percentage')}
+                      className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                        promotionsFilter === 'percentage' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      % Off
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPromotionsFilter('fixed')}
+                      className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                        promotionsFilter === 'fixed' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Flat Rs.
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPromotionsFilter('none')}
+                      className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                        promotionsFilter === 'none' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      No Discount
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Promotions Table */}
+              {filteredPromotionsProducts.length === 0 ? (
+                <div className="p-12 text-center text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-300">
+                  <Tag className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+                  <p className="font-bold text-slate-700">No products match your discount filter.</p>
+                  <p className="text-xs text-slate-500 mt-1">Try changing your search terms or filter settings.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto overflow-y-auto max-h-[580px] overscroll-contain custom-scrollbar border border-slate-200 rounded-xl">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-slate-50 text-xs text-slate-600 uppercase tracking-wider border-b border-slate-200 sticky top-0 z-10">
+                      <tr>
+                        <th className="p-3.5">Product</th>
+                        <th className="p-3.5">Barcode / SKU</th>
+                        <th className="p-3.5 text-center">Regular Price</th>
+                        <th className="p-3.5 text-center">Active Discount</th>
+                        <th className="p-3.5 text-center">Customer Price</th>
+                        <th className="p-3.5 text-center">Profit / Unit</th>
+                        <th className="p-3.5 text-center">Stock</th>
+                        <th className="p-3.5 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {filteredPromotionsProducts.map((p) => {
+                        const discInfo = getProductDiscountInfo(p);
+                        const cost = p.costPrice || 0;
+                        const finalSellingPrice = discInfo.effectivePrice;
+                        const unitProfit = finalSellingPrice - cost;
+                        const unitMargin = finalSellingPrice > 0 ? (unitProfit / finalSellingPrice) * 100 : 0;
+
+                        return (
+                          <tr key={p.id} className={`hover:bg-slate-50 transition-colors ${discInfo.hasDiscount ? 'bg-rose-50/20' : ''}`}>
+                            <td className="p-3.5">
+                              <div className="flex items-center gap-3">
+                                {p.imageUrl ? (
+                                  <img 
+                                    src={p.imageUrl} 
+                                    alt={p.name} 
+                                    className="w-10 h-10 rounded-lg object-cover border border-slate-200 bg-white shrink-0" 
+                                  />
+                                ) : (
+                                  <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0 font-black text-xs">
+                                    {p.name.charAt(0).toUpperCase()}
+                                  </div>
+                                )}
+                                <div className="min-w-0">
+                                  <div className="font-black text-slate-900 text-sm truncate max-w-[200px]">
+                                    {p.name}
+                                  </div>
+                                  <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
+                                    <span className="px-1.5 py-0.5 rounded bg-slate-100 font-medium text-[11px]">
+                                      {p.category || 'General'}
+                                    </span>
+                                    <span>•</span>
+                                    <span>{p.sellBy === 'weight' ? 'Per Kg' : 'Per Unit'}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="p-3.5 font-mono text-xs text-slate-600">
+                              <div>{p.barcode || 'No barcode'}</div>
+                              {p.shortcutCode && (
+                                <span className="text-[10px] text-amber-700 font-bold bg-amber-50 px-1 rounded">
+                                  #{p.shortcutCode}
+                                </span>
+                              )}
+                            </td>
+
+                            <td className="p-3.5 text-center font-mono">
+                              <div className="text-sm font-bold text-slate-800">
+                                Rs. {(p.price ?? 0).toFixed(2)}
+                              </div>
+                              <div className="text-[10px] text-slate-400">
+                                Cost: Rs. {cost.toFixed(2)}
+                              </div>
+                            </td>
+
+                            <td className="p-3.5 text-center">
+                              {discInfo.hasDiscount ? (
+                                <div className="inline-flex flex-col items-center">
+                                  <span className="px-2.5 py-1 rounded-full text-xs font-black bg-rose-100 text-rose-800 border border-rose-300 shadow-2xs flex items-center gap-1">
+                                    <Tag className="w-3 h-3" />
+                                    <span>{discInfo.discountLabel}</span>
+                                  </span>
+                                  <span className="text-[10px] text-rose-700 font-bold mt-0.5">
+                                    -Rs. {discInfo.discountAmount.toFixed(2)} off
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-xs text-slate-400 font-medium">
+                                  None (Full Price)
+                                </span>
+                              )}
+                            </td>
+
+                            <td className="p-3.5 text-center font-mono">
+                              <div className={`text-sm font-black ${discInfo.hasDiscount ? 'text-rose-600' : 'text-slate-900'}`}>
+                                Rs. {discInfo.discountedPrice.toFixed(2)}
+                              </div>
+                              {discInfo.hasDiscount && (
+                                <span className="text-[10px] text-emerald-700 font-extrabold block">
+                                  Save Rs. {discInfo.discountAmount.toFixed(2)}
+                                </span>
+                              )}
+                            </td>
+
+                            <td className="p-3.5 text-center font-mono">
+                              <div className={`text-xs font-bold ${unitProfit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                                +Rs. {unitProfit.toFixed(2)}
+                              </div>
+                              <div className="text-[10px] text-slate-400">
+                                {unitMargin.toFixed(0)}% margin
+                              </div>
+                            </td>
+
+                            <td className="p-3.5 text-center font-mono font-bold text-slate-700">
+                              {p.stockQuantity || 0} {p.sellBy === 'weight' ? 'kg' : 'pcs'}
+                            </td>
+
+                            <td className="p-3.5 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setDiscountEditProduct(p)}
+                                  className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-rose-200 hover:border-rose-600 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
+                                  title="Configure item discount"
+                                >
+                                  <Percent className="w-3 h-3" />
+                                  <span>{discInfo.hasDiscount ? 'Edit Deal' : 'Set Deal'}</span>
+                                </button>
+
+                                {discInfo.hasDiscount && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleQuickRemoveDiscount(p)}
+                                    className="p-1.5 rounded-xl bg-red-50 hover:bg-red-600 text-red-600 hover:text-white border border-red-200 text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                                    title="Quick remove discount"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </motion.div>
         )}
 
@@ -2604,7 +3149,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
           </motion.div>
         )}
 
-        {/* TAB 5: STORE STAFF & SESSIONS */}
+        {/* TAB 5: STORE STAFF & SALARIES */}
         {activeTab === 'staff' && (
           <motion.div 
             initial={{ opacity: 0, y: 10 }}
@@ -2642,6 +3187,29 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             storeUsers={storeUsers}
             onStoreUpdated={(updated) => setLiveStore(updated)}
           />
+        )}
+
+        {/* TAB: PAYMENT METHODS & FINANCIAL BREAKDOWN */}
+        {activeTab === 'payment_methods' && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25 }}
+          >
+            <PaymentMethodsView
+              store={liveStore}
+              sales={sales}
+              returns={returns}
+              currencySymbol="Rs."
+              onViewReceipt={(sale) => {
+                setViewingReceipt(sale);
+                setIsReceiptOpen(true);
+              }}
+              onUpdateStore={(updated) => {
+                setLiveStore(prev => ({ ...prev, ...updated }));
+              }}
+            />
+          </motion.div>
         )}
 
         {/* TAB: STORE EXPENSE MANAGEMENT */}
@@ -2706,6 +3274,81 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
           initialSpreadsheetProducts={spreadsheetProductsForAi}
           onOpenBatchRegister={onNavigateToInventory}
         />
+
+        {/* CUSTOMER SALE RECEIPT MODAL */}
+        {viewingReceipt && (
+          <ReceiptModal
+            isOpen={isReceiptOpen}
+            onClose={() => {
+              setIsReceiptOpen(false);
+              setViewingReceipt(null);
+            }}
+            sale={viewingReceipt}
+            store={liveStore}
+          />
+        )}
+
+        {/* BULK / STORE-WIDE DISCOUNT MANAGER MODAL */}
+        <DiscountManagerModal
+          isOpen={isDiscountModalOpen}
+          onClose={() => setIsDiscountModalOpen(false)}
+          products={products}
+          store={liveStore}
+          onRefresh={() => {
+            // Firestore onSnapshot automatically keeps products updated
+          }}
+        />
+
+        {/* SINGLE ITEM QUICK DISCOUNT MODAL */}
+        <ItemDiscountModal
+          isOpen={Boolean(discountEditProduct)}
+          onClose={() => setDiscountEditProduct(null)}
+          product={discountEditProduct}
+          store={liveStore}
+          onSuccess={(updated) => {
+            setDiscountEditProduct(null);
+          }}
+        />
+
+        {/* CONFIRMATION MODAL: CLEAR ALL DISCOUNTS */}
+        {isConfirmClearDiscountsOpen && (
+          <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-scale-up">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto shadow-inner">
+                <Trash2 className="w-6 h-6" />
+              </div>
+
+              <div className="text-center space-y-1.5">
+                <h3 className="text-base font-black text-slate-900">Clear All Active Discounts?</h3>
+                <p className="text-xs text-slate-500">
+                  Are you sure you want to remove discounts from all <strong className="text-slate-900 font-bold">{activeDiscountedProducts.length} active products</strong> in this store?
+                </p>
+                <div className="text-[11px] text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-200 mt-2">
+                  All discounted items will immediately return to standard regular selling prices.
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsConfirmClearDiscountsOpen(false)}
+                  disabled={isClearingAllDiscounts}
+                  className="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearAllDiscounts}
+                  disabled={isClearingAllDiscounts}
+                  className="w-1/2 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs transition-colors cursor-pointer shadow-sm disabled:opacity-50"
+                >
+                  {isClearingAllDiscounts ? 'Clearing...' : 'Yes, Clear All'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         </main>
       </div>

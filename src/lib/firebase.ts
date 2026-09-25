@@ -17,7 +17,8 @@ import {
   onSnapshot,
   orderBy,
   runTransaction,
-  writeBatch
+  writeBatch,
+  increment
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { UserAccount, Store, Product, Sale } from '../types';
@@ -148,5 +149,6 @@ export {
   onSnapshot,
   orderBy,
   runTransaction,
-  writeBatch
+  writeBatch,
+  increment
 };

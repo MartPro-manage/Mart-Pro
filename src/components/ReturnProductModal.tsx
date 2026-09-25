@@ -380,11 +380,11 @@ export const ReturnProductModal: React.FC<ReturnProductModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+    <div className="fixed inset-0 z-[90] flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto overscroll-contain">
       <div className="bg-white border border-slate-200 rounded-3xl max-w-xl w-full p-5 sm:p-6 shadow-2xl relative space-y-5 max-h-[92vh] flex flex-col my-auto overflow-y-auto overscroll-contain custom-scrollbar">
         
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-200 pb-4 shrink-0">
+        <div className="flex items-center justify-between border-b border-slate-200 pb-4 shrink-0 sticky top-0 bg-white z-10">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-rose-100 text-rose-700 rounded-2xl border border-rose-200 shadow-sm">
               <RotateCcw className="w-5 h-5" />

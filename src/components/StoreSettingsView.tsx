@@ -65,9 +65,10 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
   const [receiptHeader, setReceiptHeader] = useState(store.receiptHeader || 'OFFICIAL SALES INVOICE');
   const [receiptFooter, setReceiptFooter] = useState(store.receiptFooter || 'THANK YOU FOR SHOPPING WITH US! Retain slip for returns.');
   const [receiptGreeting, setReceiptGreeting] = useState(store.receiptGreeting || 'Welcome & Thank You for Shopping!');
-  const [receiptQrCodeEnabled, setReceiptQrCodeEnabled] = useState<boolean>(store.receiptQrCodeEnabled !== false);
+  const [receiptQrCodeEnabled, setReceiptQrCodeEnabled] = useState<boolean>(Boolean(store.receiptQrCodeEnabled));
   const [receiptQrTitle, setReceiptQrTitle] = useState(store.receiptQrTitle || 'Scan to Verify Receipt');
   const [receiptQrData, setReceiptQrData] = useState(store.receiptQrData || '');
+  const [receiptQrImageUrl, setReceiptQrImageUrl] = useState<string>(store.receiptQrImageUrl || '');
   const [returnPolicyDays, setReturnPolicyDays] = useState<number>(store.returnPolicyDays || 7);
   const [receiptFormat, setReceiptFormat] = useState<'standard' | 'classic_detailed' | 'compact_eco'>(store.receiptFormat || 'standard');
   const [logoUrl, setLogoUrl] = useState<string>(store.logoUrl || '');
@@ -98,9 +99,10 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
     setReceiptHeader(store.receiptHeader || 'OFFICIAL SALES INVOICE');
     setReceiptFooter(store.receiptFooter || 'THANK YOU FOR SHOPPING WITH US! Retain slip for returns.');
     setReceiptGreeting(store.receiptGreeting || 'Welcome & Thank You for Shopping!');
-    setReceiptQrCodeEnabled(store.receiptQrCodeEnabled !== false);
+    setReceiptQrCodeEnabled(Boolean(store.receiptQrCodeEnabled));
     setReceiptQrTitle(store.receiptQrTitle || 'Scan to Verify Receipt');
     setReceiptQrData(store.receiptQrData || '');
+    setReceiptQrImageUrl(store.receiptQrImageUrl || '');
     setReturnPolicyDays(store.returnPolicyDays || 7);
     setReceiptFormat(store.receiptFormat || 'standard');
     setLogoUrl(store.logoUrl || '');
@@ -170,6 +172,21 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
     reader.readAsDataURL(file);
   };
 
+  const handleQrImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showNotification('error', 'Please upload a valid image file for QR code.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setReceiptQrImageUrl(event.target?.result as string);
+      showNotification('success', 'Custom QR code image uploaded! Remember to click "Save All Settings".');
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleAddCategory = async () => {
     const trimmed = newCatInput.trim();
     if (!trimmed) return;
@@ -229,6 +246,7 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
         receiptQrCodeEnabled: Boolean(receiptQrCodeEnabled),
         receiptQrTitle: receiptQrTitle.trim() || 'Scan to Verify Receipt',
         receiptQrData: receiptQrData.trim(),
+        receiptQrImageUrl: receiptQrImageUrl || '',
         returnPolicyDays: Number(returnPolicyDays) || 7,
         receiptFormat: receiptFormat,
         logoUrl: logoUrl || '',
@@ -358,7 +376,7 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
                 placeholder="e.g. SUPERMARKET PRO"
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-xs font-bold focus:outline-none focus:border-orange-500 focus:bg-white transition-all shadow-xs"
               />
-              <p className="text-[11px] text-slate-400 mt-1">Changes name displayed on POS terminals and receipts.</p>
+              <p className="text-[11px] text-slate-400 mt-1">Changes name displayed on POS counters and receipts.</p>
             </div>
 
             <div>
@@ -825,6 +843,34 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
                   />
                   <p className="text-[11px] text-slate-500 mt-1">If blank, defaults to generating an instant digital verification link for that invoice.</p>
                 </div>
+
+                <div className="md:col-span-2 space-y-2 pt-2 border-t border-orange-200/60">
+                  <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider">
+                    Upload Custom Picture of QR Code (Optional - overrides auto link generation)
+                  </label>
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <label className="px-4 py-2.5 bg-white hover:bg-orange-50 text-orange-900 border border-orange-300 rounded-xl font-bold text-xs cursor-pointer shadow-xs transition-all flex items-center gap-2">
+                      <Image className="w-4 h-4 text-orange-600" /> Upload QR Code Image
+                      <input type="file" accept="image/*" onChange={handleQrImageUpload} className="hidden" />
+                    </label>
+                    {receiptQrImageUrl ? (
+                      <div className="flex items-center gap-3">
+                        <div className="w-16 h-16 bg-white p-1 rounded-xl border border-orange-200 shadow-sm flex items-center justify-center">
+                          <img src={receiptQrImageUrl} alt="QR Code" className="w-full h-full object-contain" />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setReceiptQrImageUrl('')}
+                          className="text-xs font-bold text-red-600 hover:text-red-700 hover:underline cursor-pointer"
+                        >
+                          Remove QR Image
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-slate-500 italic">No custom QR picture uploaded (auto-generating from link).</span>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -1028,7 +1074,7 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
                 <Users className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-base font-extrabold text-slate-900">Active Staff & Terminal Accounts</h3>
+                <h3 className="text-base font-extrabold text-slate-900">Active Staff & Cash Counters</h3>
                 <p className="text-xs text-slate-500 font-medium">
                   Overview of all Cash Counters and Product Registers configured for {store.name}.
                 </p>
@@ -1111,7 +1157,7 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
         {/* Bottom Save Bar */}
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="text-xs text-slate-500 font-medium">
-            All modifications will immediately sync to Firestore and apply to customer receipts and terminal stations.
+            All modifications will immediately sync to Firestore and apply to customer receipts and checkout stations.
           </div>
 
           <button

@@ -23,7 +23,9 @@ function calculateMatchScore(queryClean: string, p: Product): number {
   const pName = clean(p.name);
   const pCat = clean(p.category || '');
   const pBarcode = (p.barcode || '').trim();
+  const pShortcut = (p.shortcutCode || '').trim();
 
+  if (pShortcut && (queryClean.includes(pShortcut.toLowerCase()) || queryClean.includes('#' + pShortcut.toLowerCase()))) return 100;
   if (pBarcode && queryClean.includes(pBarcode.toLowerCase())) return 100;
   if (pName && queryClean.includes(pName)) return 90;
 

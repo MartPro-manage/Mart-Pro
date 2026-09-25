@@ -236,16 +236,16 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+    <div className="fixed inset-0 z-[95] flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto overscroll-contain">
       {/* Hidden container for file scan processing */}
       <div id="temp-qr-scanner-file" className="hidden" />
 
-      <div className={`bg-white border rounded-3xl max-w-md w-full p-6 shadow-2xl relative space-y-5 transition-all ${
+      <div className={`bg-white border rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl relative space-y-5 transition-all my-auto max-h-[92vh] overflow-y-auto overscroll-contain custom-scrollbar ${
         scanSuccessFlash ? 'border-emerald-500 ring-4 ring-emerald-500/20' : 'border-slate-200'
       }`}>
         
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+        <div className="flex items-center justify-between border-b border-slate-200 pb-4 sticky top-0 bg-white z-10 shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="p-2.5 bg-orange-50 text-orange-600 rounded-2xl border border-orange-200 shadow-sm">
               <Camera className="w-5 h-5" />

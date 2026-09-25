@@ -9,12 +9,14 @@ import {
   doc, 
   setDoc,
   deleteDoc,
+  updateDoc,
+  increment,
   runTransaction,
   handleFirestoreError,
   OperationType,
   cleanFirestoreData
 } from '../lib/firebase';
-import { Product, Store, UserAccount, CartItem, Sale, SaleItem, ProductReturn, HeldBill } from '../types';
+import { Product, Store, UserAccount, CartItem, Sale, SaleItem, ProductReturn, HeldBill, DigitalPaymentMethodConfig } from '../types';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
 import { ReceiptModal } from './ReceiptModal';
 import { ReturnProductModal } from './ReturnProductModal';
@@ -30,6 +32,8 @@ import { getProductDiscountInfo, getEffectiveProductPrice } from '../utils/disco
 import { speakMessage } from '../lib/speech';
 import { playScanSuccessBeep, playScanErrorBeep } from '../lib/sound';
 import { cleanupExpiredReceipts, isSaleExpired, getReceiptRemainingDays } from '../lib/salesCleanup';
+import { usePWAInstall } from '../hooks/usePWAInstall';
+import { DownloadAppModal } from './DownloadAppModal';
 import { 
   Calculator, 
   Barcode as BarcodeIcon, 
@@ -43,27 +47,30 @@ import {
   AlertCircle, 
   ShoppingBag, 
   Search, 
-  Sparkles,
-  RefreshCw,
-  Volume2,
-  Percent,
-  Tag,
-  ToggleLeft,
-  ToggleRight,
-  RotateCcw,
-  Undo2,
-  Receipt,
-  Scale,
-  Image as ImageIcon,
-  Zap,
-  Flame,
-  Maximize2,
-  Minimize2,
-  ArrowLeft,
-  Package,
-  PauseCircle,
-  Hash,
-  Keyboard
+  Sparkles, 
+  RefreshCw, 
+  Volume2, 
+  ToggleLeft, 
+  ToggleRight, 
+  RotateCcw, 
+  Undo2, 
+  Receipt, 
+  Scale, 
+  Image as ImageIcon, 
+  Zap, 
+  Flame, 
+  Maximize2, 
+  Minimize2, 
+  ArrowLeft, 
+  Package, 
+  PauseCircle, 
+  Hash, 
+  Keyboard, 
+  Smartphone, 
+  Check, 
+  QrCode, 
+  X,
+  Download
 } from 'lucide-react';
 
 interface CashCounterViewProps {
@@ -91,9 +98,49 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
   const [barcodeInput, setBarcodeInput] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'online'>('cash');
+  const [selectedDigitalProvider, setSelectedDigitalProvider] = useState<string>('');
+  const [digitalTransactionRef, setDigitalTransactionRef] = useState<string>('');
+  const [viewingDigitalQr, setViewingDigitalQr] = useState<DigitalPaymentMethodConfig | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [isCashModalOpen, setIsCashModalOpen] = useState(false);
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+  const { isInstallable, isInstalled, install } = usePWAInstall();
+
+  const handleDownloadClick = async () => {
+    if (isInstallable) {
+      try {
+        const res = await install();
+        if (res !== 'accepted') {
+          setIsDownloadModalOpen(true);
+        }
+      } catch {
+        setIsDownloadModalOpen(true);
+      }
+    } else {
+      setIsDownloadModalOpen(true);
+    }
+  };
+
+  // Active digital payment platforms configured by Admin (or defaults)
+  const configuredDigitalMethods: DigitalPaymentMethodConfig[] = useMemo(() => {
+    if (store?.digitalPaymentMethods && store.digitalPaymentMethods.length > 0) {
+      const active = store.digitalPaymentMethods.filter(m => m.isActive !== false);
+      if (active.length > 0) return active;
+    }
+    return [
+      { id: 'method-easypaisa', name: 'EasyPaisa', accountTitle: '', accountNumber: '', isActive: true, instructions: 'EasyPaisa mobile transfer' },
+      { id: 'method-jazzcash', name: 'JazzCash', accountTitle: '', accountNumber: '', isActive: true, instructions: 'JazzCash mobile account' },
+      { id: 'method-bank', name: 'Bank Transfer / Raast', accountTitle: '', accountNumber: '', isActive: true, instructions: 'Direct Bank or Raast' }
+    ];
+  }, [store?.digitalPaymentMethods]);
+
+  // Auto-select first active platform if none selected
+  useEffect(() => {
+    if (!selectedDigitalProvider && configuredDigitalMethods.length > 0) {
+      setSelectedDigitalProvider(configuredDigitalMethods[0].name);
+    }
+  }, [configuredDigitalMethods, selectedDigitalProvider]);
 
   // Weight Entry Modal State
   const [weightPromptProduct, setWeightPromptProduct] = useState<Product | null>(null);
@@ -103,10 +150,6 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
   const [isReturnSlipOpen, setIsReturnSlipOpen] = useState(false);
   const [completedReturn, setCompletedReturn] = useState<ProductReturn | null>(null);
-
-  // Discount State
-  const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage');
-  const [discountValue, setDiscountValue] = useState<number | ''>(0);
 
   // Notifications & Modals
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -118,6 +161,9 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
   // Full Screen Cart State
   const [isCartFullScreen, setIsCartFullScreen] = useState(false);
   const [fullScreenScanInput, setFullScreenScanInput] = useState('');
+  const [showFullScreenShortcuts, setShowFullScreenShortcuts] = useState(false);
+  const [fullScreenShortcutSearch, setFullScreenShortcutSearch] = useState('');
+  const [fullScreenCategory, setFullScreenCategory] = useState<string>('all');
   const fullScreenScanInputRef = useRef<HTMLInputElement | null>(null);
 
   // Auto-focus input when entering full screen or cart updates
@@ -248,6 +294,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
       playScanErrorBeep();
       showNotification('error', `No product matches "${rawCode}". Check barcode or 4-digit shortcut code.`);
       setBarcodeInput('');
+      ensureBarcodeFocus();
       return;
     }
 
@@ -258,6 +305,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
         speakMessage(`${found.name} is out of stock`);
       }
       setBarcodeInput('');
+      ensureBarcodeFocus();
       return;
     }
 
@@ -312,15 +360,26 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     });
 
     setBarcodeInput('');
+    ensureBarcodeFocus();
   }, [products, isVoiceAllowed, voiceEnabled]);
 
   // Auto focus barcode input for fast hardware USB barcode scanner support
   useEffect(() => {
-    const isAnyModalOpen = isScannerOpen || isReceiptOpen || isReturnModalOpen || isReturnSlipOpen || isCashModalOpen;
+    const isAnyModalOpen = isScannerOpen || isReceiptOpen || isReturnModalOpen || isReturnSlipOpen || isCashModalOpen || isWeightModalOpen;
     if (!isAnyModalOpen && barcodeInputRef.current) {
       barcodeInputRef.current.focus();
+      barcodeInputRef.current.select();
     }
-  }, [isScannerOpen, isReceiptOpen, isReturnModalOpen, isReturnSlipOpen, isCashModalOpen, cart.length]);
+  }, [isScannerOpen, isReceiptOpen, isReturnModalOpen, isReturnSlipOpen, isCashModalOpen, isWeightModalOpen, cart.length]);
+
+  const ensureBarcodeFocus = () => {
+    setTimeout(() => {
+      if (barcodeInputRef.current) {
+        barcodeInputRef.current.focus();
+        barcodeInputRef.current.select();
+      }
+    }, 50);
+  };
 
   // External Hardware Barcode Scanner Listener (Hands-free continuous scanning without clicking any button)
   useEffect(() => {
@@ -510,26 +569,39 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     setCart((prev) => prev.filter(c => c.product.id !== productId));
   };
 
-  // Calculate Subtotal, Discount & Final Payable Grand Total
+  // Calculate Subtotal & Payable Grand Total
   const cartSubtotal = useMemo(() => {
     return cart.reduce((sum, item) => sum + item.totalPrice, 0);
   }, [cart]);
 
-  const discountAmount = useMemo(() => {
-    const rawVal = typeof discountValue === 'number' ? discountValue : parseFloat(discountValue) || 0;
-    if (rawVal <= 0 || cartSubtotal <= 0) return 0;
-
-    if (discountType === 'percentage') {
-      const clampedPct = Math.min(100, Math.max(0, rawVal));
-      return (cartSubtotal * clampedPct) / 100;
-    } else {
-      return Math.min(cartSubtotal, Math.max(0, rawVal));
-    }
-  }, [cartSubtotal, discountType, discountValue]);
-
   const cartTotal = useMemo(() => {
-    return Math.max(0, cartSubtotal - discountAmount);
-  }, [cartSubtotal, discountAmount]);
+    return cartSubtotal;
+  }, [cartSubtotal]);
+
+  // Extract unique categories for shortcuts directory & full screen tray
+  const uniqueCategories = useMemo(() => {
+    const set = new Set<string>();
+    products.forEach(p => {
+      if (p.category) set.add(p.category);
+    });
+    return Array.from(set).sort();
+  }, [products]);
+
+  // Filter products for full screen 4-digit shortcuts quick-access tray
+  const fullScreenFilteredProducts = useMemo(() => {
+    const term = fullScreenShortcutSearch.trim().toLowerCase();
+    return products.filter(p => {
+      const matchesCategory = fullScreenCategory === 'all' || p.category === fullScreenCategory;
+      if (!matchesCategory) return false;
+      if (!term) return true;
+      return (
+        p.shortcutCode?.toLowerCase().includes(term) ||
+        p.name?.toLowerCase().includes(term) ||
+        p.barcode?.toLowerCase().includes(term) ||
+        p.category?.toLowerCase().includes(term)
+      );
+    });
+  }, [products, fullScreenShortcutSearch, fullScreenCategory]);
 
   // Hold Active Bill (H + D)
   const handleHoldBill = useCallback(async () => {
@@ -548,16 +620,12 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
         cashierUsername: currentUser.username,
         items: [...cart],
         subtotal: cartSubtotal,
-        discountType: discountType,
-        discountValue: typeof discountValue === 'number' ? discountValue : 0,
-        discountAmount: discountAmount,
         total: cartTotal,
         heldAt: new Date().toISOString()
       };
 
       await setDoc(doc(db, 'held_bills', heldId), payload);
       setCart([]);
-      setDiscountValue(0);
       playScanSuccessBeep();
       showNotification('success', `Bill held successfully (${payload.items.length} items)! Press A+S to resume.`);
       if (isVoiceAllowed && voiceEnabled) {
@@ -567,14 +635,12 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
       console.error('Error holding bill:', err);
       showNotification('error', 'Failed to hold bill: ' + err.message);
     }
-  }, [cart, cartSubtotal, discountType, discountValue, discountAmount, cartTotal, store.id, currentUser, isVoiceAllowed, voiceEnabled]);
+  }, [cart, cartSubtotal, cartTotal, store.id, currentUser, isVoiceAllowed, voiceEnabled]);
 
   // Restore Parked Bill to Active Cart
   const handleRestoreBill = useCallback(async (bill: HeldBill) => {
     try {
       setCart(bill.items);
-      if (bill.discountType) setDiscountType(bill.discountType);
-      if (typeof bill.discountValue === 'number') setDiscountValue(bill.discountValue);
 
       await deleteDoc(doc(db, 'held_bills', bill.id));
       playScanSuccessBeep();
@@ -700,13 +766,17 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     if (paymentMethod === 'cash') {
       setIsCashModalOpen(true);
     } else {
+      // Compulsory selection of digital payment provider
+      if (!selectedDigitalProvider) {
+        showNotification('error', 'Please select one digital payment platform (e.g. EasyPaisa, JazzCash) to complete online checkout.');
+        return;
+      }
       executeCheckoutSale(cartTotal, 0);
     }
   };
 
-  const executeCheckoutSale = async (cashReceived?: number, changeReturned?: number, receiptType: 'print' | 'ereceipt' = 'print') => {
+  const executeCheckoutSale = async (cashReceived?: number, changeReturned?: number) => {
     setCheckoutLoading(true);
-    setSelectedReceiptType(receiptType);
 
     try {
       // Execute Firestore Atomic Transaction to decrement stock and create sale record
@@ -726,8 +796,6 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
         unitType: item.product.unitType || (item.product.sellBy === 'weight' ? 'kg' : 'piece'),
         weightInfo: item.product.weight || (item.product.sellBy === 'weight' ? `${item.quantity} kg` : undefined)
       }));
-
-      const numDiscountVal = typeof discountValue === 'number' ? discountValue : parseFloat(discountValue) || 0;
 
       const newSaleDocRef = doc(collection(db, 'sales'));
 
@@ -777,7 +845,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
 
         const expiresAtIso = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-        // 2. Create Sale Record with Discount Fields (cleanly populated without undefined fields)
+        // 2. Create Sale Record
         const saleRecordData: Record<string, any> = {
           id: newSaleDocRef.id,
           storeId: store.id || '',
@@ -794,15 +862,14 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           expiresAt: expiresAtIso
         };
 
-        if (discountAmount > 0) {
-          saleRecordData.discountType = discountType;
-          saleRecordData.discountValue = numDiscountVal;
-          saleRecordData.discountAmount = discountAmount;
-        }
-
         if (paymentMethod === 'cash') {
           saleRecordData.cashReceived = cashReceived ?? cartTotal;
           saleRecordData.changeReturned = changeReturned ?? 0;
+        } else {
+          saleRecordData.onlinePaymentProvider = selectedDigitalProvider || 'Online / Digital';
+          if (digitalTransactionRef.trim()) {
+            saleRecordData.onlineTransactionId = digitalTransactionRef.trim();
+          }
         }
 
         transaction.set(newSaleDocRef, cleanFirestoreData(saleRecordData));
@@ -818,30 +885,49 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
         cashierUsername: currentUser.username,
         items: saleItems,
         subtotalAmount: cartSubtotal,
-        discountType: discountAmount > 0 ? discountType : undefined,
-        discountValue: discountAmount > 0 ? numDiscountVal : undefined,
-        discountAmount: discountAmount > 0 ? discountAmount : undefined,
         totalAmount: cartTotal,
         paymentMethod: paymentMethod,
+        onlinePaymentProvider: paymentMethod === 'online' ? (selectedDigitalProvider || 'Online / Digital') : undefined,
+        onlineTransactionId: paymentMethod === 'online' && digitalTransactionRef.trim() ? digitalTransactionRef.trim() : undefined,
         cashReceived: paymentMethod === 'cash' ? (cashReceived ?? cartTotal) : undefined,
         changeReturned: paymentMethod === 'cash' ? (changeReturned ?? 0) : undefined,
         receiptNumber: receiptNum,
         timestamp: nowIso
       };
 
+      // Increment live staff session statistics for current active session
+      const activeSessionId = localStorage.getItem('martpro_current_session_id');
+      if (activeSessionId) {
+        try {
+          const sessRef = doc(db, 'staff_sessions', activeSessionId);
+          await updateDoc(sessRef, {
+            totalSalesCount: increment(1),
+            totalSalesAmount: increment(cartTotal || 0),
+            lastActive: nowIso
+          });
+        } catch (sessErr) {
+          console.warn('Could not increment staff session sales:', sessErr);
+        }
+      }
+
       setIsCashModalOpen(false);
       setCompletedSale(completedSaleData);
       setIsReceiptOpen(true);
       setCart([]);
-      setDiscountValue(0);
       
-      // Voice & Text Thank You greeting with Total Bill Amount for purchase according to store name
+      // Voice & Text Thank You greeting with Total Bill Amount & Change Return for purchase according to store name
       const storeName = store.name || 'our store';
       const formattedTotal = cartTotal % 1 === 0 ? cartTotal.toFixed(0) : cartTotal.toFixed(2);
-      if (isVoiceAllowed && voiceEnabled) {
-        speakMessage(`Total bill is ${formattedTotal} rupees. Thank you for shopping at ${storeName}!`);
+      const hasChange = paymentMethod === 'cash' && (changeReturned ?? 0) > 0;
+      const formattedChange = ((changeReturned || 0) % 1 === 0) ? (changeReturned || 0).toFixed(0) : (changeReturned || 0).toFixed(2);
+
+      let successMsg = `🎉 Sale Completed! Total: Rs. ${formattedTotal}.`;
+      if (hasChange) {
+        successMsg += ` Pay Back Change: Rs. ${formattedChange} to customer.`;
       }
-      showNotification('success', `🎉 Thank you for shopping at ${storeName}! Total: Rs. ${formattedTotal}. Transaction #${receiptNum} completed.`);
+      successMsg += ` Transaction #${receiptNum}.`;
+
+      showNotification('success', successMsg);
 
     } catch (err: any) {
       console.error('Checkout error:', err);
@@ -879,7 +965,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
   }, [products, searchTerm, activeCategoryFilter]);
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen h-full bg-slate-50 text-slate-900 p-3 sm:p-5 lg:p-6 overflow-y-auto overscroll-contain custom-scrollbar touch-pan-y">
       <div className="max-w-7xl mx-auto space-y-6">
 
         {/* Counter Top Bar */}
@@ -1107,6 +1193,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                     barcodeInputRef.current.value = '';
                     barcodeInputRef.current.focus();
                   }
+                  ensureBarcodeFocus();
                 }}
                 className="flex gap-2"
               >
@@ -1352,7 +1439,6 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                       id="btn-clear-cart"
                       onClick={() => {
                         setCart([]);
-                        setDiscountValue(0);
                       }}
                       className="text-xs text-red-600 hover:text-red-700 font-bold cursor-pointer px-2 py-1"
                     >
@@ -1499,102 +1585,6 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
               )}
             </div>
 
-            {/* DISCOUNT OPTION IN CHECKOUT */}
-            <div className="pt-4 border-t border-slate-200 space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                  <Tag className="w-3.5 h-3.5 text-orange-600" /> Apply Bill Discount
-                </label>
-                
-                {/* Discount Unit Selector: Percentage vs Fixed Cash */}
-                <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-[11px] font-bold">
-                  <button
-                    type="button"
-                    onClick={() => setDiscountType('percentage')}
-                    className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${
-                      discountType === 'percentage'
-                        ? 'bg-white text-orange-700 shadow-xs'
-                        : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    % Percent
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDiscountType('fixed')}
-                    className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${
-                      discountType === 'fixed'
-                        ? 'bg-white text-orange-700 shadow-xs'
-                        : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    Rs. Flat Off
-                  </button>
-                </div>
-              </div>
-
-              {/* Quick Discount Preset Chips */}
-              <div className="flex flex-wrap gap-1.5">
-                {[0, 5, 10, 15, 20, 25].map((preset) => {
-                  const isSelected = discountType === 'percentage' && Number(discountValue) === preset;
-                  return (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() => {
-                        setDiscountType('percentage');
-                        setDiscountValue(preset);
-                      }}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                        isSelected
-                          ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
-                          : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
-                      }`}
-                    >
-                      {preset === 0 ? 'No Discount' : `${preset}%`}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Custom Discount Input Field */}
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-500">
-                    {discountType === 'percentage' ? '%' : 'Rs.'}
-                  </span>
-                  <input
-                    id="discount-input-value"
-                    type="number"
-                    min="0"
-                    max={discountType === 'percentage' ? 100 : cartSubtotal}
-                    step="any"
-                    placeholder={discountType === 'percentage' ? 'Custom percentage (e.g. 10)' : 'Custom flat discount in Rs.'}
-                    value={discountValue === 0 ? '' : discountValue}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === '') {
-                        setDiscountValue(0);
-                      } else {
-                        const num = parseFloat(val);
-                        setDiscountValue(isNaN(num) ? 0 : num);
-                      }
-                    }}
-                    className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-orange-500 focus:bg-white transition-all"
-                  />
-                </div>
-                {discountAmount > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setDiscountValue(0)}
-                    className="px-2.5 py-2 text-xs text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded-xl font-bold transition-all cursor-pointer shrink-0"
-                  >
-                    Reset
-                  </button>
-                )}
-              </div>
-            </div>
-
             {/* PAYMENT METHOD & TOTAL SUMMARY */}
             <div className="pt-4 border-t border-slate-200 space-y-4">
               
@@ -1620,41 +1610,110 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                   <button
                     id="btn-payment-online"
                     type="button"
-                    onClick={() => setPaymentMethod('online')}
+                    onClick={() => {
+                      setPaymentMethod('online');
+                      if (!selectedDigitalProvider && configuredDigitalMethods.length > 0) {
+                        setSelectedDigitalProvider(configuredDigitalMethods[0].name);
+                      }
+                    }}
                     className={`py-3 px-3 rounded-xl border text-xs font-extrabold flex items-center justify-center gap-2 cursor-pointer transition-all ${
                       paymentMethod === 'online'
-                        ? 'bg-blue-50 border-blue-500 text-blue-800 shadow-sm'
+                        ? 'bg-blue-50 border-blue-500 text-blue-800 shadow-sm ring-2 ring-blue-500/20'
                         : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900'
                     }`}
                   >
                     <CreditCard className="w-4 h-4" /> ONLINE / DIGITAL
                   </button>
                 </div>
+
+                {/* DIGITAL PAYMENT PLATFORMS SELECTOR (COMPULSORY WHEN ONLINE IS CHOSEN) */}
+                {paymentMethod === 'online' && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="mt-3 p-3.5 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-black text-blue-950 uppercase tracking-wider flex items-center gap-1.5">
+                        <Smartphone className="w-3.5 h-3.5 text-blue-600" />
+                        Select Digital Platform
+                      </label>
+                      <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 border border-rose-200">
+                        * Compulsory
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {configuredDigitalMethods.map((method) => {
+                        const isSelected = selectedDigitalProvider === method.name;
+                        return (
+                          <button
+                            key={method.id}
+                            type="button"
+                            onClick={() => setSelectedDigitalProvider(method.name)}
+                            className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer relative ${
+                              isSelected
+                                ? 'bg-white border-blue-600 shadow-xs ring-2 ring-blue-500/30 text-slate-900'
+                                : 'bg-white/70 border-slate-200 hover:border-blue-300 text-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-extrabold text-xs flex items-center gap-1">
+                                {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
+                                {method.name}
+                              </span>
+                              {method.qrCodeUrl && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setViewingDigitalQr(method);
+                                  }}
+                                  className="text-[10px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-1.5 py-0.5 rounded flex items-center gap-0.5"
+                                  title="View QR Code"
+                                >
+                                  <QrCode className="w-3 h-3" /> QR
+                                </button>
+                              )}
+                            </div>
+                            {(method.accountTitle || method.accountNumber) && (
+                              <div className="text-[10px] text-slate-500 mt-1 truncate">
+                                {method.accountNumber ? `A/C: ${method.accountNumber}` : ''}
+                                {method.accountTitle && method.accountNumber ? ' • ' : ''}
+                                {method.accountTitle ? method.accountTitle : ''}
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Optional Reference / Transaction ID Input */}
+                    <div className="pt-2 border-t border-blue-200/60">
+                      <label className="block text-[10px] font-bold text-slate-600 mb-1">
+                        Transaction Ref / Confirmation ID (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. TRX-982183 or Sender Phone"
+                        value={digitalTransactionRef}
+                        onChange={(e) => setDigitalTransactionRef(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-white border border-blue-200 rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                  </motion.div>
+                )}
               </div>
 
               {/* Total Calculation Display Breakdown */}
               <div className="bg-slate-900 text-white p-5 rounded-2xl border border-slate-800 space-y-2 shadow-lg relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
 
-                {discountAmount > 0 && (
-                  <div className="space-y-1 pb-2 border-b border-slate-800 text-xs">
-                    <div className="flex items-center justify-between text-slate-400">
-                      <span>Subtotal:</span>
-                      <span className="font-mono">Rs. {cartSubtotal.toFixed(2)}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-emerald-400 font-bold">
-                      <span>Discount ({discountType === 'percentage' ? `${discountValue}%` : 'Flat Rs.'}):</span>
-                      <span className="font-mono">-Rs. {discountAmount.toFixed(2)}</span>
-                    </div>
-                  </div>
-                )}
-
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Payable Grand Total</span>
-                    {discountAmount > 0 && (
-                      <span className="text-[10px] text-emerald-400 font-bold">Discount Applied</span>
-                    )}
+                    <span className="text-[10px] text-slate-400 font-medium">({cart.length} {cart.length === 1 ? 'item' : 'items'} in bill)</span>
                   </div>
                   <div className="text-2xl sm:text-3xl font-black text-amber-400 tracking-tight font-mono">
                     Rs. {cartTotal.toFixed(2)}
@@ -1700,17 +1759,83 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           />
         )}
 
+        {/* Digital Payment Provider QR & Account Details Modal */}
+        {viewingDigitalQr && (
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto overscroll-contain">
+            <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-slate-200 text-center space-y-4 animate-scale-up my-auto max-h-[92vh] overflow-y-auto overscroll-contain custom-scrollbar">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <Smartphone className="w-5 h-5 text-blue-600" />
+                  <h3 className="text-base font-black text-slate-900">{viewingDigitalQr.name} Payment</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setViewingDigitalQr(null)}
+                  className="p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {viewingDigitalQr.qrCodeUrl ? (
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 inline-block">
+                  <img
+                    src={viewingDigitalQr.qrCodeUrl}
+                    alt={`${viewingDigitalQr.name} QR`}
+                    className="w-56 h-56 object-contain mx-auto rounded-xl shadow-xs"
+                  />
+                </div>
+              ) : (
+                <div className="py-8 bg-slate-50 rounded-2xl border border-dashed border-slate-300 text-slate-400 text-xs">
+                  <QrCode className="w-12 h-12 mx-auto mb-2 opacity-50 text-slate-400" />
+                  No QR picture uploaded for {viewingDigitalQr.name}.
+                </div>
+              )}
+
+              <div className="bg-blue-50/70 p-3.5 rounded-2xl border border-blue-200 text-left space-y-1 text-xs">
+                {viewingDigitalQr.accountTitle && (
+                  <div>
+                    <span className="text-slate-500 font-medium">Account Title: </span>
+                    <strong className="text-slate-900">{viewingDigitalQr.accountTitle}</strong>
+                  </div>
+                )}
+                {viewingDigitalQr.accountNumber && (
+                  <div>
+                    <span className="text-slate-500 font-medium">Account Number: </span>
+                    <strong className="text-blue-700 font-mono text-sm">{viewingDigitalQr.accountNumber}</strong>
+                  </div>
+                )}
+                {viewingDigitalQr.instructions && (
+                  <div className="text-[11px] text-slate-500 pt-1 border-t border-blue-100">
+                    {viewingDigitalQr.instructions}
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setViewingDigitalQr(null)}
+                className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl cursor-pointer shadow-sm transition-colors"
+              >
+                Close QR Code
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Cash Payment Calculator Modal */}
         <CashPaymentModal
           isOpen={isCashModalOpen}
           onClose={() => setIsCashModalOpen(false)}
           subtotalAmount={cartSubtotal}
-          discountAmount={discountAmount}
-          discountType={discountType}
-          discountValue={typeof discountValue === 'number' ? discountValue : parseFloat(discountValue) || 0}
           totalAmount={cartTotal}
-          onConfirmPayment={(cashReceived, changeReturned, receiptType) => {
-            executeCheckoutSale(cashReceived, changeReturned, receiptType);
+          isFullScreen={isCartFullScreen}
+          storeName={store.name}
+          counterName={`Counter #${currentUser.counterNumber || 1}`}
+          cashierName={currentUser.username}
+          itemCount={cart.length}
+          onConfirmPayment={(cashReceived, changeReturned) => {
+            executeCheckoutSale(cashReceived, changeReturned);
           }}
           loading={checkoutLoading}
         />
@@ -1778,24 +1903,30 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           onSelectProduct={handleAddProductClick}
         />
 
+        {/* Download Web App Modal (Desktop & Mobile) */}
+        <DownloadAppModal
+          isOpen={isDownloadModalOpen}
+          onClose={() => setIsDownloadModalOpen(false)}
+        />
+
         {/* FULL SCREEN CART OVERLAY */}
         {isCartFullScreen && (
-          <div className="fixed inset-0 z-50 bg-slate-100 flex flex-col overflow-hidden animate-fade-in">
+          <div className="fixed inset-0 z-50 bg-slate-100 flex flex-col overflow-y-auto overscroll-contain custom-scrollbar animate-fade-in">
             {/* Top Navigation & Header Bar */}
-            <div className="bg-slate-900 text-white px-4 sm:px-6 py-3 flex items-center justify-between shadow-md border-b border-slate-800 shrink-0">
-              <div className="flex items-center gap-3">
+            <div className="bg-slate-900 text-white px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between shadow-md border-b border-slate-800 shrink-0 gap-2 sticky top-0 z-20">
+              <div className="flex items-center gap-2 sm:gap-3 shrink-0">
                 <button
                   id="btn-close-cart-fullscreen"
                   type="button"
                   onClick={() => setIsCartFullScreen(false)}
-                  className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-black text-xs transition-all cursor-pointer shadow-sm group"
+                  className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-black text-xs transition-all cursor-pointer shadow-sm group"
                   title="Return to regular view (Press Esc)"
                 >
                   <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
-                  <span>Back to Counter</span>
+                  <span className="hidden xs:inline">Back to Counter</span>
                   <span className="text-[10px] bg-black/25 px-1.5 py-0.5 rounded font-mono font-normal">ESC</span>
                 </button>
-                <div className="hidden sm:block border-l border-slate-700 pl-3">
+                <div className="hidden md:block border-l border-slate-700 pl-3">
                   <div className="text-xs font-black text-white flex items-center gap-2">
                     <span>{store.name}</span>
                     <span className="text-orange-400 font-normal">•</span>
@@ -1807,31 +1938,106 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 sm:gap-3">
-                <div className="bg-slate-800/90 border border-slate-700 px-3 py-1.5 rounded-xl text-right">
-                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Cart Items</div>
+              {/* Center Quick Action Buttons in Full-Screen Header */}
+              <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto custom-scrollbar py-0.5">
+                {/* Hold Bill (H+D) */}
+                <button
+                  type="button"
+                  onClick={handleHoldBill}
+                  disabled={cart.length === 0}
+                  className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
+                  title="Hold active bill to attend another customer (Shortcut: H + D)"
+                >
+                  <PauseCircle className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="hidden sm:inline">Hold Bill</span>
+                  <span className="px-1.5 py-0.2 rounded bg-amber-500/30 text-amber-200 text-[10px] font-mono font-black">
+                    H+D
+                  </span>
+                </button>
+
+                {/* Access Held Bills (A+S) */}
+                <button
+                  type="button"
+                  onClick={() => setIsHeldBillsModalOpen(true)}
+                  className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-xs font-bold transition-all cursor-pointer shadow-xs"
+                  title="Access and resume held receipts (Shortcut: A + S)"
+                >
+                  <Receipt className="w-3.5 h-3.5 text-purple-400" />
+                  <span className="hidden sm:inline">Access Bills</span>
+                  {heldBills.length > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full bg-purple-500 text-white text-[10px] font-mono font-black animate-pulse">
+                      {heldBills.length}
+                    </span>
+                  )}
+                  <span className="px-1.5 py-0.2 rounded bg-purple-500/30 text-purple-200 text-[10px] font-mono font-black">
+                    A+S
+                  </span>
+                </button>
+
+                {/* 4-Digit Product Shortcuts Modal (S+K) */}
+                <button
+                  type="button"
+                  onClick={() => setIsShortcutsModalOpen(true)}
+                  className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/40 text-xs font-bold transition-all cursor-pointer shadow-xs"
+                  title="Open full 4-digit shortcuts directory (Shortcut: S + K)"
+                >
+                  <Hash className="w-3.5 h-3.5 text-blue-400" />
+                  <span className="hidden sm:inline">4-Digit Shortcuts</span>
+                  <span className="px-1.5 py-0.2 rounded bg-blue-500/30 text-blue-200 text-[10px] font-mono font-black">
+                    S+K
+                  </span>
+                </button>
+
+                {/* Toggle Quick Shortcuts Tray */}
+                <button
+                  type="button"
+                  onClick={() => setShowFullScreenShortcuts(prev => !prev)}
+                  className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs ${
+                    showFullScreenShortcuts 
+                      ? 'bg-orange-500 text-slate-950 font-black' 
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                  }`}
+                  title="Toggle Quick Shortcuts Bar in full screen"
+                >
+                  <Keyboard className="w-3.5 h-3.5" />
+                  <span className="hidden md:inline">Quick Tray</span>
+                </button>
+              </div>
+
+              {/* Right Side Header Utilities */}
+              <div className="flex items-center gap-2 shrink-0">
+                {/* Download App Trigger in Fullscreen POS */}
+                <button
+                  type="button"
+                  onClick={handleDownloadClick}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs shadow-xs transition-all cursor-pointer"
+                  title="Download & Install Mart Pro Web App on Mobile or Desktop"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Download App</span>
+                </button>
+
+                <div className="bg-slate-800/90 border border-slate-700 px-2.5 sm:px-3 py-1 rounded-xl text-right">
+                  <div className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Cart</div>
                   <div className="text-xs font-black font-mono text-orange-400">
-                    {cart.length} {cart.length === 1 ? 'item' : 'items'}
+                    {cart.length}
                   </div>
                 </div>
 
                 {cart.length > 0 && (
                   <button
                     type="button"
-                    onClick={() => {
-                      setCart([]);
-                      setDiscountValue(0);
-                    }}
-                    className="px-3 py-2 rounded-xl bg-red-950/40 hover:bg-red-900/60 text-red-300 border border-red-800/60 font-bold text-xs cursor-pointer transition-colors"
+                    onClick={() => setCart([])}
+                    className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-red-950/40 hover:bg-red-900/60 text-red-300 border border-red-800/60 font-bold text-xs cursor-pointer transition-colors"
                   >
-                    Clear Cart
+                    Clear
                   </button>
                 )}
 
                 <button
                   type="button"
                   onClick={() => setIsCartFullScreen(false)}
-                  className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                  className="p-1.5 sm:p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
                   title="Exit Full Screen"
                 >
                   <Minimize2 className="w-4 h-4" />
@@ -1839,8 +2045,8 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
               </div>
             </div>
 
-            {/* Pinned Laser Barcode Scanner Bar */}
-            <div className="bg-white px-4 sm:px-6 py-3 border-b border-slate-200 shadow-xs shrink-0">
+            {/* Pinned Laser Barcode & 4-Digit Shortcut Scanner Bar */}
+            <div className="bg-white px-4 sm:px-6 py-2.5 border-b border-slate-200 shadow-xs shrink-0">
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -1866,10 +2072,10 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                     autoComplete="off"
                     autoCorrect="off"
                     spellCheck={false}
-                    placeholder="Scan barcode with laser or type product code/serial number here..."
+                    placeholder="Scan barcode with laser reader or type 4-digit shortcut code (e.g. 1001) / SKU..."
                     value={fullScreenScanInput}
                     onChange={(e) => setFullScreenScanInput(e.target.value)}
-                    className="w-full pl-11 pr-24 py-2.5 bg-slate-50 border-2 border-orange-300 focus:border-orange-600 focus:bg-white rounded-xl text-slate-900 font-mono text-sm sm:text-base font-bold shadow-inner focus:outline-none transition-all"
+                    className="w-full pl-11 pr-24 py-2.5 bg-slate-50 border-2 border-orange-300 focus:border-orange-600 focus:bg-white rounded-xl text-slate-900 font-mono text-xs sm:text-sm font-bold shadow-inner focus:outline-none transition-all"
                   />
                   <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 pointer-events-none">
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-bold">↵ ENTER</span>
@@ -1878,16 +2084,16 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
 
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs sm:text-sm rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+                  className="px-4 sm:px-5 py-2.5 bg-orange-600 hover:bg-orange-500 text-white font-black text-xs sm:text-sm rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
                 >
-                  <Plus className="w-4 h-4" /> Add to Cart
+                  <Plus className="w-4 h-4" /> <span>Add</span>
                 </button>
 
                 {isCameraScannerAllowed && (
                   <button
                     type="button"
                     onClick={() => setIsScannerOpen(true)}
-                    className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold text-xs sm:text-sm rounded-xl border border-slate-700 shadow-xs transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+                    className="px-3 sm:px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold text-xs sm:text-sm rounded-xl border border-slate-700 shadow-xs transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
                     title="Open camera barcode scanner"
                   >
                     <Camera className="w-4 h-4 text-orange-400" />
@@ -1895,39 +2101,255 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                   </button>
                 )}
               </form>
+
+              {/* Fast Shortcut Actions Ribbon */}
+              <div className="flex items-center justify-between gap-2 max-w-5xl mx-auto mt-2 pt-2 border-t border-slate-100 text-[11px] text-slate-600 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-slate-700 flex items-center gap-1">
+                    <Hash className="w-3.5 h-3.5 text-orange-600" /> 4-Digit Shortcuts Active:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsShortcutsModalOpen(true)}
+                    className="text-blue-700 hover:underline font-extrabold flex items-center gap-1 cursor-pointer"
+                  >
+                    Browse Directory (S+K)
+                  </button>
+                  <span>•</span>
+                  <button
+                    type="button"
+                    onClick={() => setIsHeldBillsModalOpen(true)}
+                    className="text-purple-700 hover:underline font-extrabold flex items-center gap-1 cursor-pointer"
+                  >
+                    Access Parked Bills ({heldBills.length}) (A+S)
+                  </button>
+                  <span>•</span>
+                  <button
+                    type="button"
+                    onClick={handleHoldBill}
+                    disabled={cart.length === 0}
+                    className="text-amber-800 hover:underline font-extrabold flex items-center gap-1 cursor-pointer disabled:opacity-40"
+                  >
+                    Hold Active Bill (H+D)
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowFullScreenShortcuts(prev => !prev)}
+                  className="font-bold text-orange-700 hover:text-orange-800 flex items-center gap-1 cursor-pointer ml-auto"
+                >
+                  <Keyboard className="w-3.5 h-3.5" />
+                  <span>{showFullScreenShortcuts ? 'Hide Quick Shortcuts Tray' : 'Show 4-Digit Quick Shortcuts Tray'}</span>
+                </button>
+              </div>
             </div>
 
+            {/* Quick 4-Digit Shortcuts Tray (Collapsible) */}
+            <AnimatePresence>
+              {showFullScreenShortcuts && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="bg-slate-900 text-white border-b border-slate-800 p-3.5 sm:px-6 shrink-0 overflow-hidden"
+                >
+                  <div className="max-w-7xl mx-auto space-y-3">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-orange-600 rounded-lg text-white">
+                          <Hash className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
+                            <span>4-Digit Product Shortcuts Quick-Tap</span>
+                            <span className="text-[10px] bg-orange-500/30 text-orange-300 font-mono px-2 py-0.5 rounded-full border border-orange-500/40 font-bold">
+                              {fullScreenFilteredProducts.length} Products
+                            </span>
+                          </h4>
+                        </div>
+                      </div>
+
+                      {/* Search in Quick Shortcuts */}
+                      <div className="flex items-center gap-2">
+                        <div className="relative">
+                          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="text"
+                            placeholder="Filter by code or name..."
+                            value={fullScreenShortcutSearch}
+                            onChange={(e) => setFullScreenShortcutSearch(e.target.value)}
+                            className="pl-8 pr-3 py-1 bg-slate-800 border border-slate-700 focus:border-orange-500 rounded-lg text-xs font-medium text-white placeholder-slate-500 focus:outline-none w-48 sm:w-64"
+                          />
+                          {fullScreenShortcutSearch && (
+                            <button
+                              type="button"
+                              onClick={() => setFullScreenShortcutSearch('')}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setIsShortcutsModalOpen(true)}
+                          className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold rounded-lg cursor-pointer transition-colors"
+                        >
+                          Full Directory (S+K)
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Category Filter Chips */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-1 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setFullScreenCategory('all')}
+                        className={`px-2.5 py-1 rounded-lg font-bold text-xs whitespace-nowrap cursor-pointer transition-all ${
+                          fullScreenCategory === 'all'
+                            ? 'bg-orange-600 text-white shadow-xs'
+                            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                        }`}
+                      >
+                        All Categories
+                      </button>
+                      {uniqueCategories.map(cat => (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => setFullScreenCategory(cat)}
+                          className={`px-2.5 py-1 rounded-lg font-bold text-xs whitespace-nowrap cursor-pointer transition-all ${
+                            fullScreenCategory === cat
+                              ? 'bg-orange-600 text-white shadow-xs'
+                              : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                          }`}
+                        >
+                          {cat}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Shortcuts Grid Horizontal / Quick Cards */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                      {fullScreenFilteredProducts.map((prod) => {
+                        const isWeight = prod.sellBy === 'weight' || prod.unitType === 'kg' || Boolean(prod.pricePerKg);
+                        const discInfo = getProductDiscountInfo(prod);
+                        const isOutOfStock = prod.stockQuantity <= 0;
+
+                        return (
+                          <button
+                            key={prod.id}
+                            type="button"
+                            disabled={isOutOfStock}
+                            onClick={() => handleAddProductClick(prod)}
+                            className="bg-slate-800/90 hover:bg-orange-950/40 hover:border-orange-500 border border-slate-700/80 rounded-xl p-2.5 text-left transition-all cursor-pointer flex flex-col justify-between group relative disabled:opacity-40 disabled:cursor-not-allowed"
+                            title={`Click to add ${prod.name} (Code: ${prod.shortcutCode || prod.barcode || 'N/A'})`}
+                          >
+                            <div>
+                              <div className="flex items-center justify-between gap-1 mb-1">
+                                {prod.shortcutCode ? (
+                                  <span className="px-1.5 py-0.5 rounded-md bg-orange-500 text-slate-950 font-mono font-black text-xs shadow-xs">
+                                    #{prod.shortcutCode}
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] text-slate-400 font-mono">
+                                    {prod.barcode?.slice(-4) || 'SKU'}
+                                  </span>
+                                )}
+                                {isWeight && (
+                                  <span className="text-[9px] bg-amber-400/20 text-amber-300 font-bold px-1 rounded">
+                                    KG
+                                  </span>
+                                )}
+                              </div>
+                              <div className="font-bold text-xs text-white truncate group-hover:text-orange-300 transition-colors">
+                                {prod.name}
+                              </div>
+                            </div>
+
+                            <div className="mt-2 pt-1 border-t border-slate-700/60 flex items-center justify-between text-[11px]">
+                              <span className="font-mono font-black text-emerald-400">
+                                Rs. {discInfo.effectivePrice.toFixed(0)}
+                              </span>
+                              <span className="text-[10px] text-slate-400">
+                                Stock: {prod.stockQuantity}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Main Full-Screen Layout */}
-            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 p-4 sm:p-6 overflow-hidden min-h-0 max-w-7xl mx-auto w-full">
+            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 p-3 sm:p-6 overflow-y-auto overscroll-contain custom-scrollbar min-h-0 max-w-7xl mx-auto w-full">
               {/* LEFT 8 COLS: Large Cart Items Table / List */}
-              <div className="lg:col-span-8 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+              <div className="lg:col-span-8 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden min-h-[360px] lg:min-h-0">
                 <div className="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
                   <div className="flex items-center gap-2">
                     <ShoppingBag className="w-4 h-4 text-orange-600" />
                     <h3 className="text-xs font-black uppercase tracking-wider text-slate-800">
-                      Full-Screen Cart Items ({cart.length})
+                      Full-Screen Active Cart ({cart.length} {cart.length === 1 ? 'item' : 'items'})
                     </h3>
                   </div>
-                  <span className="text-[11px] text-slate-500 font-medium">
-                    Adjust quantity or remove items before proceeding to checkout
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-[11px] text-slate-500 font-medium hidden sm:inline">
+                      Shortcut codes & items shown below
+                    </span>
+                    {cart.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleHoldBill}
+                        className="text-xs font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1 cursor-pointer"
+                        title="Hold current bill (H + D)"
+                      >
+                        <PauseCircle className="w-3.5 h-3.5" /> Hold Bill (H+D)
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {cart.length === 0 ? (
                   <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50/40">
-                    <div className="w-16 h-16 rounded-2xl bg-orange-50 text-orange-500 flex items-center justify-center mb-3">
+                    <div className="w-16 h-16 rounded-2xl bg-orange-50 text-orange-500 flex items-center justify-center mb-3 shadow-xs">
                       <BarcodeIcon className="w-8 h-8" />
                     </div>
                     <h4 className="text-base font-bold text-slate-800">Cart is Empty in Full Screen</h4>
-                    <p className="text-xs text-slate-500 max-w-sm mt-1">
-                      Scan product barcode with the laser reader or type the code in the scanner bar above to start adding items.
+                    <p className="text-xs text-slate-500 max-w-md mt-1">
+                      Scan product barcode with laser reader, type 4-digit code (e.g. <strong>1001</strong>), or use the Quick Shortcuts Tray to start adding items.
                     </p>
+
+                    <div className="mt-4 flex items-center gap-2 flex-wrap justify-center">
+                      <button
+                        type="button"
+                        onClick={() => setIsShortcutsModalOpen(true)}
+                        className="px-3 py-1.5 bg-blue-50 text-blue-800 hover:bg-blue-100 border border-blue-200 rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1.5 transition-colors"
+                      >
+                        <Hash className="w-3.5 h-3.5 text-blue-600" /> View 4-Digit Product Shortcuts (S+K)
+                      </button>
+
+                      {heldBills.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setIsHeldBillsModalOpen(true)}
+                          className="px-3 py-1.5 bg-purple-50 text-purple-800 hover:bg-purple-100 border border-purple-200 rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1.5 transition-colors"
+                        >
+                          <Receipt className="w-3.5 h-3.5 text-purple-600" /> Access {heldBills.length} Held Bill(s) (A+S)
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <div className="flex-1 overflow-y-auto custom-scrollbar divide-y divide-slate-100">
                     {cart.map((item, idx) => {
                       const isWeight = item.product.sellBy === 'weight' || item.product.unitType === 'kg' || Boolean(item.product.pricePerKg);
                       const qtyStep = isWeight ? 0.25 : 1;
+                      const discInfo = getProductDiscountInfo(item.product);
 
                       return (
                         <div
@@ -1958,16 +2380,49 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                                 <span className="font-extrabold text-slate-900 text-sm truncate">
                                   {item.product.name}
                                 </span>
+
+                                {/* 4-DIGIT SHORTCUT CODE BADGE (PROMINENTLY SHOWN IN FULL SCREEN) */}
+                                {item.product.shortcutCode && (
+                                  <span className="px-2 py-0.5 rounded-lg bg-orange-100 text-orange-900 border border-orange-200 font-mono font-black text-xs flex items-center gap-1 shadow-2xs">
+                                    <Hash className="w-3 h-3 text-orange-600" />
+                                    <span>#{item.product.shortcutCode}</span>
+                                  </span>
+                                )}
+
                                 {isWeight && (
-                                  <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-bold text-[10px] flex items-center gap-0.5">
-                                    <Scale className="w-3 h-3" /> KG
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setWeightPromptProduct(item.product);
+                                      setIsWeightModalOpen(true);
+                                    }}
+                                    className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-bold text-[10px] flex items-center gap-0.5 hover:bg-amber-200 cursor-pointer transition-colors"
+                                    title="Click to adjust weight in scale calculator"
+                                  >
+                                    <Scale className="w-3 h-3 text-amber-700" /> KG
+                                  </button>
+                                )}
+
+                                {discInfo.hasDiscount && (
+                                  <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 font-black text-[9px] uppercase border border-rose-200">
+                                    {discInfo.discountLabel}
                                   </span>
                                 )}
                               </div>
-                              <div className="text-[11px] text-slate-500 font-mono mt-0.5 flex items-center gap-2">
+
+                              <div className="text-[11px] text-slate-500 font-mono mt-0.5 flex items-center gap-2 flex-wrap">
                                 <span>Code: {item.product.barcode || item.product.serialNumber || 'N/A'}</span>
                                 <span>•</span>
-                                <span>Rate: Rs. {item.product.price.toFixed(2)}{isWeight ? '/kg' : ''}</span>
+                                {discInfo.hasDiscount ? (
+                                  <>
+                                    <span className="line-through text-slate-400">Rs. {discInfo.basePrice.toFixed(2)}</span>
+                                    <span className="text-rose-600 font-black">Rs. {discInfo.effectivePrice.toFixed(2)}{isWeight ? '/kg' : ''}</span>
+                                  </>
+                                ) : (
+                                  <span>Rate: Rs. {item.product.price.toFixed(2)}{isWeight ? '/kg' : ''}</span>
+                                )}
+                                <span>•</span>
+                                <span className="text-emerald-700 font-semibold">Stock: {item.product.stockQuantity}{isWeight ? 'kg' : ''}</span>
                               </div>
                             </div>
                           </div>
@@ -1978,6 +2433,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                               type="button"
                               onClick={() => handleUpdateQuantity(item.product.id, Math.max(0, item.quantity - qtyStep))}
                               className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-black flex items-center justify-center cursor-pointer transition-colors"
+                              title="Reduce quantity"
                             >
                               <Minus className="w-3.5 h-3.5" />
                             </button>
@@ -2000,6 +2456,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                               type="button"
                               onClick={() => handleUpdateQuantity(item.product.id, item.quantity + qtyStep)}
                               className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-black flex items-center justify-center cursor-pointer transition-colors"
+                              title="Increase quantity"
                             >
                               <Plus className="w-3.5 h-3.5" />
                             </button>
@@ -2011,7 +2468,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                               Rs. {item.totalPrice.toFixed(2)}
                             </div>
                             <div className="text-[10px] text-slate-400">
-                              {item.quantity} × Rs. {item.product.price.toFixed(2)}
+                              {item.quantity} × Rs. {discInfo.effectivePrice.toFixed(2)}
                             </div>
                           </div>
 
@@ -2032,62 +2489,60 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
               </div>
 
               {/* RIGHT 4 COLS: Payment & Total Station */}
-              <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col justify-between overflow-y-auto custom-scrollbar">
+              <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-6 flex flex-col justify-between overflow-y-auto custom-scrollbar space-y-4">
                 <div className="space-y-4">
-                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 border-b border-slate-200 pb-3 flex items-center gap-2">
-                    <Calculator className="w-4 h-4 text-orange-600" />
-                    Payment Summary
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 border-b border-slate-200 pb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Calculator className="w-4 h-4 text-orange-600" />
+                      <span>Payment Summary</span>
+                    </div>
+                    <span className="text-[11px] text-slate-500 font-bold">
+                      Counter #{currentUser.counterNumber || 1}
+                    </span>
                   </h3>
 
+                  {/* Payment Method Selector in Full Screen */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">
+                      Payment Mode
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('cash')}
+                        className={`py-2.5 px-2 rounded-xl border text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                          paymentMethod === 'cash'
+                            ? 'bg-emerald-50 border-emerald-500 text-emerald-800 shadow-xs'
+                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <Banknote className="w-3.5 h-3.5" /> Cash
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('online')}
+                        className={`py-2.5 px-2 rounded-xl border text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                          paymentMethod === 'online'
+                            ? 'bg-blue-50 border-blue-500 text-blue-800 shadow-xs'
+                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <CreditCard className="w-3.5 h-3.5" /> Digital
+                      </button>
+                    </div>
+                  </div>
+
                   {/* Pricing Breakdown */}
-                  <div className="space-y-2.5 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
+                  <div className="space-y-2 bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs">
                     <div className="flex justify-between text-slate-600">
                       <span>Subtotal ({cart.length} {cart.length === 1 ? 'item' : 'items'})</span>
                       <span className="font-mono font-bold text-slate-900">Rs. {cartSubtotal.toFixed(2)}</span>
                     </div>
-
-                    {/* Discount Configuration */}
-                    <div className="pt-2 border-t border-slate-200/80">
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="font-bold text-slate-700">Special Discount:</span>
-                        <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-slate-200">
-                          <button
-                            type="button"
-                            onClick={() => setDiscountType('percentage')}
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${discountType === 'percentage' ? 'bg-orange-600 text-white' : 'text-slate-600'}`}
-                          >
-                            %
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setDiscountType('fixed')}
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${discountType === 'fixed' ? 'bg-orange-600 text-white' : 'text-slate-600'}`}
-                          >
-                            Rs.
-                          </button>
-                        </div>
-                      </div>
-                      <input
-                        type="number"
-                        min="0"
-                        step="any"
-                        placeholder="Discount amount..."
-                        value={discountValue}
-                        onChange={(e) => setDiscountValue(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold"
-                      />
-                    </div>
-
-                    {discountAmount > 0 && (
-                      <div className="flex justify-between text-emerald-700 font-bold pt-1">
-                        <span>Discount Saved</span>
-                        <span className="font-mono">-Rs. {discountAmount.toFixed(2)}</span>
-                      </div>
-                    )}
                   </div>
 
                   {/* Net Payable Grand Total */}
-                  <div className="bg-orange-50 border-2 border-orange-200 p-4 rounded-2xl text-center space-y-1">
+                  <div className="bg-orange-50 border-2 border-orange-200 p-4 rounded-2xl text-center space-y-1 shadow-xs">
                     <span className="text-xs font-black uppercase tracking-wider text-orange-900">
                       Net Total Payable
                     </span>
@@ -2095,17 +2550,48 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                       Rs. {cartTotal.toFixed(2)}
                     </div>
                   </div>
+
+                  {/* Fast Secondary Actions inside summary: Hold Bill & Access Bills */}
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleHoldBill}
+                      disabled={cart.length === 0}
+                      className="py-2 px-2 bg-amber-50 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed border border-amber-300 text-amber-900 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                      title="Hold active bill (H + D)"
+                    >
+                      <PauseCircle className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Hold Bill (H+D)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsHeldBillsModalOpen(true)}
+                      className="py-2 px-2 bg-purple-50 hover:bg-purple-100 border border-purple-300 text-purple-900 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                      title="Access parked bills (A + S)"
+                    >
+                      <Receipt className="w-3.5 h-3.5 text-purple-600" />
+                      <span>Access Bills ({heldBills.length})</span>
+                    </button>
+                  </div>
                 </div>
 
-                {/* Action Buttons */}
-                <div className="space-y-3 pt-4">
+                {/* Primary Action Buttons */}
+                <div className="space-y-2.5 pt-3">
                   <button
                     type="button"
                     disabled={cart.length === 0 || checkoutLoading}
-                    onClick={() => setIsCashModalOpen(true)}
+                    onClick={() => {
+                      if (paymentMethod === 'cash') {
+                        setIsCashModalOpen(true);
+                      } else {
+                        executeCheckoutSale(cartTotal, 0);
+                      }
+                    }}
                     className="w-full py-3.5 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-black text-sm rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
                   >
-                    <CheckCircle2 className="w-5 h-5" /> Collect Cash & Checkout
+                    <CheckCircle2 className="w-5 h-5" /> 
+                    {paymentMethod === 'cash' ? 'Collect Cash & Issue Receipt' : 'Complete Digital Sale'}
                   </button>
 
                   <button

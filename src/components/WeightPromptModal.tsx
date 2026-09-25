@@ -70,13 +70,13 @@ export const WeightPromptModal: React.FC<WeightPromptModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs animate-fade-in">
+    <div className="fixed inset-0 z-[90] flex items-center justify-center p-3 sm:p-4 bg-slate-900/75 backdrop-blur-xs animate-fade-in overflow-y-auto overscroll-contain">
       <div 
-        className="bg-white w-full max-w-md rounded-3xl border border-slate-200 shadow-2xl overflow-hidden animate-scale-up"
+        className="bg-white w-full max-w-md rounded-3xl border border-slate-200 shadow-2xl overflow-hidden animate-scale-up my-auto max-h-[92vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="bg-gradient-to-r from-orange-600 to-amber-600 p-5 text-white flex items-center justify-between">
+        <div className="bg-gradient-to-r from-orange-600 to-amber-600 p-5 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-white/20 rounded-2xl backdrop-blur-md">
               <Scale className="w-6 h-6 text-white" />
@@ -101,7 +101,7 @@ export const WeightPromptModal: React.FC<WeightPromptModalProps> = ({
         </div>
 
         {/* Content Body */}
-        <form onSubmit={handleApplyWeight} className="p-6 space-y-5">
+        <form onSubmit={handleApplyWeight} className="p-6 space-y-5 overflow-y-auto overscroll-contain custom-scrollbar">
           {/* Product Meta Banner */}
           <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 flex items-center justify-between text-xs">
             <div>

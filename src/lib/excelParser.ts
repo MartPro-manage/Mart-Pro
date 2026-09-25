@@ -5,6 +5,7 @@ export interface BatchProductRow {
   id: string;
   barcode: string;
   serialNumber?: string;
+  shortcutCode?: string;
   name: string;
   category: string;
   sellBy: 'unit' | 'weight';
@@ -156,9 +157,21 @@ export async function parseExcelProductFile(file: File): Promise<BatchProductRow
       'General'
     ).trim();
 
+    // Identify Shortcut Code (if column provided)
+    const rawShortcut = String(
+      normalized['shortcutcode'] ||
+      normalized['shortcut'] ||
+      normalized['shortkey'] ||
+      normalized['quickcode'] ||
+      normalized['itemcode'] ||
+      ''
+    ).replace(/\D/g, '').slice(0, 4);
+    const shortcutCode = rawShortcut.length === 4 ? rawShortcut : undefined;
+
     products.push({
       id: `row-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 6)}`,
       barcode,
+      shortcutCode,
       name,
       category: category || 'General',
       sellBy,

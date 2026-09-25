@@ -1,4 +1,5 @@
 import { Product } from '../types';
+import { db, doc, updateDoc, cleanFirestoreData } from '../lib/firebase';
 
 /**
  * Generates the next available unique 4-digit shortcut code for a product.
@@ -29,7 +30,7 @@ export function generateNextShortcutCode(existingProducts: Array<{ shortcutCode?
 }
 
 /**
- * Ensures all products have a valid 4-digit shortcut code.
+ * Ensures all products in memory have a valid 4-digit shortcut code.
  */
 export function ensureProductShortcutCodes(products: Product[]): Product[] {
   const usedCodes = new Set<string>();
@@ -63,6 +64,63 @@ export function ensureProductShortcutCodes(products: Product[]): Product[] {
       shortcutCode: getNextAvailable()
     };
   });
+}
+
+/**
+ * Syncs and updates all existing products in Firestore that are missing 4-digit shortcut codes.
+ * Ensures every single existing product in the database gets a unique 4-digit shortcut code (1001-9999).
+ */
+export async function syncMissingShortcutCodesInFirestore(products: Product[]): Promise<number> {
+  if (!products || products.length === 0) return 0;
+
+  const usedCodes = new Set<string>();
+  const missingProducts: Product[] = [];
+
+  // Pass 1: Collect valid existing codes
+  products.forEach(p => {
+    if (p.shortcutCode && /^\d{4}$/.test(p.shortcutCode)) {
+      usedCodes.add(p.shortcutCode);
+    } else {
+      missingProducts.push(p);
+    }
+  });
+
+  if (missingProducts.length === 0) {
+    return 0;
+  }
+
+  let counter = 1001;
+  const getNextAvailable = (): string => {
+    while (counter <= 9999) {
+      const codeStr = counter.toString();
+      counter++;
+      if (!usedCodes.has(codeStr)) {
+        usedCodes.add(codeStr);
+        return codeStr;
+      }
+    }
+    const rand = Math.floor(1000 + Math.random() * 9000).toString();
+    usedCodes.add(rand);
+    return rand;
+  };
+
+  let updatedCount = 0;
+  const updatePromises = missingProducts.map(async (prod) => {
+    try {
+      const assignedCode = getNextAvailable();
+      const productDocRef = doc(db, 'products', prod.id);
+      await updateDoc(productDocRef, cleanFirestoreData({
+        shortcutCode: assignedCode,
+        updatedAt: new Date().toISOString()
+      }));
+      updatedCount++;
+    } catch (err) {
+      console.warn(`Failed to backfill shortcut code for product ${prod.id}:`, err);
+    }
+  });
+
+  await Promise.allSettled(updatePromises);
+  return updatedCount;
 }
 
 /**

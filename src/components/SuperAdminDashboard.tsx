@@ -11,6 +11,7 @@ import {
   deleteDoc,
   query, 
   where,
+  getDocs,
   handleFirestoreError,
   OperationType
 } from '../lib/firebase';
@@ -37,6 +38,7 @@ import {
   AlertCircle,
   X,
   ChevronRight,
+  ChevronDown,
   Info,
   Lock,
   User,
@@ -53,7 +55,9 @@ import {
   Activity,
   Save,
   Check,
-  ScanLine
+  ScanLine,
+  Users,
+  DollarSign
 } from 'lucide-react';
 
 interface SuperAdminProps {
@@ -87,7 +91,12 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
   const [masterAdminPassword, setMasterAdminPassword] = useState('');
   const [showMasterPassword, setShowMasterPassword] = useState(false);
 
-  // Form states - Create Store
+  // Form states - Create Store or Regional Branch (Super Admin Exclusive)
+  const [newStoreType, setNewStoreType] = useState<'main' | 'branch'>('main');
+  const [parentStoreIdForBranch, setParentStoreIdForBranch] = useState('');
+  const [newBranchCode, setNewBranchCode] = useState('');
+  const [newBranchAdminSalary, setNewBranchAdminSalary] = useState('');
+  const [newAdministrativeExpenses, setNewAdministrativeExpenses] = useState('');
   const [newStoreName, setNewStoreName] = useState('');
   const [newStoreAdminUsername, setNewStoreAdminUsername] = useState('');
   const [newStoreAdminPassword, setNewStoreAdminPassword] = useState('');
@@ -112,6 +121,31 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
   const [priceCheckerName, setPriceCheckerName] = useState('');
   const [priceCheckerUsername, setPriceCheckerUsername] = useState('');
   const [priceCheckerPassword, setPriceCheckerPassword] = useState('');
+
+  // Drill-down hierarchy state
+  const [expandedStoreId, setExpandedStoreId] = useState<string | null>(null);
+  const [expandedBranchId, setExpandedBranchId] = useState<string | null>(null);
+
+  // Dedicated modal for creating a branch admin account directly from a clicked store
+  const [createBranchModalStore, setCreateBranchModalStore] = useState<Store | null>(null);
+  const [modalBranchName, setModalBranchName] = useState('');
+  const [modalBranchCode, setModalBranchCode] = useState('');
+  const [modalBranchAdminUsername, setModalBranchAdminUsername] = useState('');
+  const [modalBranchAdminPassword, setModalBranchAdminPassword] = useState('');
+  const [modalBranchAdminSalary, setModalBranchAdminSalary] = useState('');
+  const [modalBranchAdminOverhead, setModalBranchAdminOverhead] = useState('');
+
+  // Dedicated modal for creating further accounts for a specific branch
+  const [createBranchAccountModal, setCreateBranchAccountModal] = useState<{
+    branch: Store;
+    accountType: 'cash_counter' | 'product_register' | 'price_checker' | 'staff';
+  } | null>(null);
+  const [modalAccountName, setModalAccountName] = useState('');
+  const [modalAccountUsername, setModalAccountUsername] = useState('');
+  const [modalAccountPassword, setModalAccountPassword] = useState('');
+  const [modalAccountCounterNum, setModalAccountCounterNum] = useState('1');
+  const [modalAccountSalary, setModalAccountSalary] = useState('');
+  const [modalStaffRole, setModalStaffRole] = useState<'staff' | 'inventory_manager'>('staff');
 
   // Store Management Modals / Actions
   const [storeToDelete, setStoreToDelete] = useState<Store | null>(null);
@@ -184,7 +218,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
     return users.some(u => u.username.toLowerCase() === uname.trim().toLowerCase());
   };
 
-  // Handle Create Store
+  // Handle Create Store or Regional Branch (Super Admin Exclusive)
   const handleCreateStore = async (e: React.FormEvent) => {
     e.preventDefault();
     setMsg(null);
@@ -198,6 +232,11 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
       return;
     }
 
+    if (newStoreType === 'branch' && !parentStoreIdForBranch) {
+      showNotification('error', 'Please select a parent supermarket store for this regional branch.');
+      return;
+    }
+
     if (isUsernameTaken(adminUsername)) {
       showNotification('error', `Username "${adminUsername}" is already in use by another account.`);
       return;
@@ -208,35 +247,89 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
       const storeDocRef = doc(collection(db, 'stores'));
       const storeId = storeDocRef.id;
 
-      const newStoreData: Store = {
-        id: storeId,
-        name: storeName,
-        adminUsername: adminUsername,
-        adminPassword: adminPassword,
-        status: 'active',
-        cameraScannerEnabled: newStoreCameraScannerEnabled,
-        voiceAnnouncementEnabled: newStoreVoiceAnnouncementEnabled,
-        createdAt: new Date().toISOString()
-      };
-      await setDoc(storeDocRef, newStoreData);
+      if (newStoreType === 'branch') {
+        const parentStore = stores.find(s => s.id === parentStoreIdForBranch);
+        const bSalary = Number(newBranchAdminSalary) || 0;
+        const adminExp = Number(newAdministrativeExpenses) || 0;
+        const bCode = newBranchCode.trim() || `BR-0${stores.filter(s => s.parentStoreId === parentStoreIdForBranch).length + 1}`;
 
-      const userDocRef = doc(collection(db, 'users'));
-      const newStoreAdminUser: UserAccount = {
-        id: userDocRef.id,
-        storeId: storeId,
-        storeName: storeName,
-        role: 'admin',
-        username: adminUsername,
-        password: adminPassword,
-        name: `${storeName} Admin`,
-        createdAt: new Date().toISOString()
-      };
-      await setDoc(userDocRef, newStoreAdminUser);
+        const newBranchData: Store = {
+          id: storeId,
+          name: storeName,
+          isBranch: true,
+          parentStoreId: parentStore?.id,
+          storeAdminUsername: parentStore?.storeAdminUsername || parentStore?.adminUsername || adminUsername,
+          adminUsername: adminUsername,
+          adminPassword: adminPassword,
+          branchCode: bCode,
+          branchAdminUsername: adminUsername,
+          branchAdminName: `${storeName} Branch Manager`,
+          branchAdminSalary: bSalary,
+          administrativeExpenses: adminExp,
+          status: 'active',
+          currencySymbol: parentStore?.currencySymbol || 'Rs.',
+          receiptHeader: parentStore?.receiptHeader || `${storeName} - Official Receipt`,
+          receiptFooter: parentStore?.receiptFooter || 'Thank you for shopping with us!',
+          receiptFormat: parentStore?.receiptFormat || 'standard',
+          cameraScannerEnabled: newStoreCameraScannerEnabled,
+          voiceAnnouncementEnabled: newStoreVoiceAnnouncementEnabled,
+          createdAt: new Date().toISOString()
+        };
+        await setDoc(storeDocRef, newBranchData);
 
-      showNotification('success', `Supermarket Store "${storeName}" and Admin Account created successfully!`);
+        const userDocRef = doc(collection(db, 'users'));
+        const newBranchAdminUser: UserAccount = {
+          id: userDocRef.id,
+          storeId: storeId,
+          storeName: storeName,
+          parentStoreId: parentStore?.id,
+          role: 'branch_admin',
+          username: adminUsername,
+          password: adminPassword,
+          name: `${storeName} Branch Manager`,
+          salary: bSalary,
+          salaryFrequency: 'monthly',
+          createdAt: new Date().toISOString()
+        };
+        await setDoc(userDocRef, newBranchAdminUser);
+
+        showNotification('success', `Regional Branch "${storeName}" (${bCode}) created under "${parentStore?.name || 'Main Store'}" with Branch Admin @${adminUsername}!`);
+      } else {
+        const newStoreData: Store = {
+          id: storeId,
+          name: storeName,
+          adminUsername: adminUsername,
+          storeAdminUsername: adminUsername,
+          adminPassword: adminPassword,
+          status: 'active',
+          cameraScannerEnabled: newStoreCameraScannerEnabled,
+          voiceAnnouncementEnabled: newStoreVoiceAnnouncementEnabled,
+          createdAt: new Date().toISOString()
+        };
+        await setDoc(storeDocRef, newStoreData);
+
+        const userDocRef = doc(collection(db, 'users'));
+        const newStoreAdminUser: UserAccount = {
+          id: userDocRef.id,
+          storeId: storeId,
+          storeName: storeName,
+          role: 'store_admin',
+          username: adminUsername,
+          password: adminPassword,
+          name: `${storeName} Store Admin`,
+          createdAt: new Date().toISOString()
+        };
+        await setDoc(userDocRef, newStoreAdminUser);
+
+        showNotification('success', `Supermarket Store "${storeName}" and Store Admin Account created successfully!`);
+      }
+
       setNewStoreName('');
       setNewStoreAdminUsername('');
       setNewStoreAdminPassword('');
+      setNewBranchCode('');
+      setNewBranchAdminSalary('');
+      setNewAdministrativeExpenses('');
       setNewStoreCameraScannerEnabled(true);
       setNewStoreVoiceAnnouncementEnabled(true);
     } catch (err: any) {
@@ -371,6 +464,155 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
     } catch (err: any) {
       console.error(err);
       showNotification('error', 'Failed to update password: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 1. Direct Modal Handler: Create Branch Admin Account under a clicked Main Store
+  const handleModalCreateBranchAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!createBranchModalStore) return;
+
+    const bName = modalBranchName.trim();
+    const bCode = modalBranchCode.trim();
+    const username = modalBranchAdminUsername.trim().toLowerCase();
+    const password = modalBranchAdminPassword.trim();
+    const bSalary = Number(modalBranchAdminSalary) || 0;
+    const adminExp = Number(modalBranchAdminOverhead) || 0;
+
+    if (!bName || !username || !password) {
+      showNotification('error', 'Please provide branch name, branch admin username, and password.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Check username uniqueness
+      const existingUserQuery = query(collection(db, 'users'), where('username', '==', username));
+      const userSnap = await getDocs(existingUserQuery);
+      if (!userSnap.empty) {
+        showNotification('error', `Username "${username}" is already taken.`);
+        setLoading(false);
+        return;
+      }
+
+      const branchRef = doc(collection(db, 'stores'));
+      const branchId = branchRef.id;
+
+      const newBranchStore: Store = {
+        id: branchId,
+        name: bName,
+        adminUsername: username,
+        adminPassword: password,
+        status: 'active',
+        isBranch: true,
+        parentStoreId: createBranchModalStore.id,
+        branchCode: bCode || undefined,
+        branchAdminUsername: username,
+        branchAdminSalary: bSalary,
+        administrativeExpenses: adminExp,
+        cameraScannerEnabled: true,
+        voiceAnnouncementEnabled: true,
+        receiptHeader: createBranchModalStore.receiptHeader || `${bName}\nTax Invoice`,
+        receiptFooter: createBranchModalStore.receiptFooter || 'Thank you for shopping with us!',
+        createdAt: new Date().toISOString()
+      };
+      await setDoc(branchRef, newBranchStore);
+
+      // Create branch admin user account
+      const userRef = doc(collection(db, 'users'));
+      const branchAdminAccount: UserAccount = {
+        id: userRef.id,
+        storeId: branchId,
+        parentStoreId: createBranchModalStore.id,
+        storeName: bName,
+        role: 'branch_admin',
+        username,
+        password,
+        name: `${bName} Admin`,
+        salary: bSalary,
+        salaryFrequency: 'monthly',
+        createdAt: new Date().toISOString()
+      };
+      await setDoc(userRef, branchAdminAccount);
+
+      showNotification('success', `Branch "${bName}" & Branch Admin @${username} created under ${createBranchModalStore.name}!`);
+      // Auto expand parent store and newly created branch
+      setExpandedStoreId(createBranchModalStore.id);
+      setExpandedBranchId(branchId);
+
+      setCreateBranchModalStore(null);
+      setModalBranchName('');
+      setModalBranchCode('');
+      setModalBranchAdminUsername('');
+      setModalBranchAdminPassword('');
+      setModalBranchAdminSalary('');
+      setModalBranchAdminOverhead('');
+    } catch (err: any) {
+      console.error(err);
+      showNotification('error', 'Failed to create branch admin account: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 2. Direct Modal Handler: Create Further Sub-Accounts for a clicked Branch
+  const handleModalCreateBranchSubAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!createBranchAccountModal) return;
+
+    const { branch, accountType } = createBranchAccountModal;
+    const name = modalAccountName.trim();
+    const username = modalAccountUsername.trim().toLowerCase();
+    const password = modalAccountPassword.trim();
+    const salary = Number(modalAccountSalary) || 0;
+    const counterNum = modalAccountCounterNum.trim();
+    const assignedRole = accountType === 'staff' ? modalStaffRole : accountType;
+
+    if (!name || !username || !password) {
+      showNotification('error', 'Please fill in account name, username, and password.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const existingUserQuery = query(collection(db, 'users'), where('username', '==', username));
+      const userSnap = await getDocs(existingUserQuery);
+      if (!userSnap.empty) {
+        showNotification('error', `Username "${username}" is already taken.`);
+        setLoading(false);
+        return;
+      }
+
+      const userDocRef = doc(collection(db, 'users'));
+      const newAccount: UserAccount = {
+        id: userDocRef.id,
+        storeId: branch.id,
+        parentStoreId: branch.parentStoreId || branch.id,
+        storeName: branch.name,
+        role: assignedRole,
+        username,
+        password,
+        name,
+        counterNumber: accountType === 'cash_counter' ? (counterNum || '1') : undefined,
+        salary: salary > 0 ? salary : undefined,
+        salaryFrequency: salary > 0 ? 'monthly' : undefined,
+        createdAt: new Date().toISOString()
+      };
+
+      await setDoc(userDocRef, newAccount);
+
+      showNotification('success', `${assignedRole.replace('_', ' ').toUpperCase()} account @${username} created for branch "${branch.name}"!`);
+      setCreateBranchAccountModal(null);
+      setModalAccountName('');
+      setModalAccountUsername('');
+      setModalAccountPassword('');
+      setModalAccountCounterNum('1');
+      setModalAccountSalary('');
+    } catch (err: any) {
+      console.error(err);
+      showNotification('error', 'Failed to create account: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -852,22 +1094,118 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
             <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6">
               <div>
                 <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <Plus className="w-5 h-5 text-orange-600" /> Create New Supermarket Store
+                  <Plus className="w-5 h-5 text-orange-600" /> {newStoreType === 'branch' ? 'Create Regional Branch' : 'Create New Supermarket Store'}
                 </h2>
                 <p className="text-xs text-slate-500 mt-1 font-medium">
-                  Assign a unique store name and store admin username & password.
+                  {newStoreType === 'branch' 
+                    ? 'Create a regional branch location assigned to an existing main store chain.'
+                    : 'Assign a unique store name and store admin username & password.'}
                 </p>
               </div>
 
               <form onSubmit={handleCreateStore} className="space-y-4">
+                {/* Entity Type Toggle: Main Store vs Regional Branch */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Store Name
+                    Store Entity Type
+                  </label>
+                  <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setNewStoreType('main')}
+                      className={`py-2 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                        newStoreType === 'main'
+                          ? 'bg-orange-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <StoreIcon className="w-3.5 h-3.5" />
+                      <span>Main Store</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewStoreType('branch')}
+                      className={`py-2 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                        newStoreType === 'branch'
+                          ? 'bg-orange-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <Building2 className="w-3.5 h-3.5" />
+                      <span>Regional Branch</span>
+                    </button>
+                  </div>
+                </div>
+
+                {newStoreType === 'branch' && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                        Select Parent Main Store *
+                      </label>
+                      <select
+                        required
+                        value={parentStoreIdForBranch}
+                        onChange={(e) => setParentStoreIdForBranch(e.target.value)}
+                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:bg-white focus:border-orange-500 font-medium"
+                      >
+                        <option value="">-- Choose Parent Supermarket --</option>
+                        {stores.filter(s => !s.isBranch).map(s => (
+                          <option key={s.id} value={s.id}>{s.name} (@{s.adminUsername})</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                          Branch Code
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. BR-01"
+                          value={newBranchCode}
+                          onChange={(e) => setNewBranchCode(e.target.value)}
+                          className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs font-mono font-bold focus:outline-none focus:bg-white focus:border-orange-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                          Admin Salary (Rs.)
+                        </label>
+                        <input
+                          type="number"
+                          placeholder="e.g. 50000"
+                          value={newBranchAdminSalary}
+                          onChange={(e) => setNewBranchAdminSalary(e.target.value)}
+                          className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs font-mono focus:outline-none focus:bg-white focus:border-orange-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                        Monthly Admin Overhead (Rs.)
+                      </label>
+                      <input
+                        type="number"
+                        placeholder="e.g. 15000"
+                        value={newAdministrativeExpenses}
+                        onChange={(e) => setNewAdministrativeExpenses(e.target.value)}
+                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs font-mono focus:outline-none focus:bg-white focus:border-orange-500"
+                      />
+                    </div>
+                  </>
+                )}
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    {newStoreType === 'branch' ? 'Branch Name' : 'Store Name'}
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="Enter store name"
+                    placeholder={newStoreType === 'branch' ? 'e.g. Metro Supermarket - Saddar Branch' : 'Enter store name'}
                     value={newStoreName}
                     onChange={(e) => setNewStoreName(e.target.value)}
                     className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:bg-white focus:border-orange-500 font-medium"
@@ -876,7 +1214,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Store Admin Username
+                    {newStoreType === 'branch' ? 'Branch Admin Username' : 'Store Admin Username'}
                   </label>
                   <input
                     type="text"
@@ -890,7 +1228,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Store Admin Password
+                    {newStoreType === 'branch' ? 'Branch Admin Password' : 'Store Admin Password'}
                   </label>
                   <input
                     type="password"
@@ -972,18 +1310,25 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                   className="w-full py-3 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl shadow-md shadow-orange-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer text-sm"
                 >
                   <Plus className="w-4 h-4" />
-                  {loading ? 'Creating Store...' : 'Create Supermarket Store'}
+                  {loading ? 'Creating...' : newStoreType === 'branch' ? 'Create Regional Branch' : 'Create Supermarket Store'}
                 </button>
               </form>
             </div>
 
-            {/* Registered Stores List */}
+            {/* Registered Stores List & Hierarchical Chain Drill-down */}
             <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
               <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <StoreIcon className="w-5 h-5 text-orange-600" /> Supermarket Stores ({stores.length})
-                </h2>
-                <span className="text-xs text-slate-500 font-semibold">Active & Configured</span>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                    <StoreIcon className="w-5 h-5 text-orange-600" /> Supermarket Stores Hierarchy ({stores.length})
+                  </h2>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">
+                    Click any store to create branch admin accounts, then click the branch to create POS counters, registrars & staff.
+                  </p>
+                </div>
+                <span className="text-xs text-slate-500 font-semibold bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
+                  {stores.filter(s => !s.isBranch).length} Stores • {stores.filter(s => s.isBranch).length} Branches
+                </span>
               </div>
 
               <div className="space-y-4">
@@ -992,138 +1337,443 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                     No supermarket stores created yet. Use the form on the left to add your first store.
                   </p>
                 ) : (
-                  stores.map(s => {
-                    const isDisabled = s.status === 'disabled';
-                    const isVoiceAllowed = s.voiceAnnouncementEnabled !== false;
-                    const cashierCount = users.filter(u => u.storeId === s.id && u.role === 'cash_counter').length;
-                    const registrarCount = users.filter(u => u.storeId === s.id && u.role === 'product_register').length;
+                  (() => {
+                    const mainStores = stores.filter(s => !s.isBranch);
+                    const allChildBranchIds = new Set<string>();
 
                     return (
-                      <div 
-                        key={s.id} 
-                        className={`p-5 rounded-2xl border transition-all space-y-4 ${
-                          isDisabled ? 'bg-slate-50 border-red-200' : 'bg-white border-slate-200 hover:border-slate-300 shadow-sm'
-                        }`}
-                      >
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          <div>
-                            <div className="flex items-center gap-2.5 flex-wrap">
-                              <h3 className="text-base font-extrabold text-slate-900">{s.name}</h3>
-                              {isDisabled ? (
-                                <span className="text-[11px] font-bold bg-red-100 text-red-700 px-2.5 py-0.5 rounded-full border border-red-200 flex items-center gap-1">
-                                  <Ban className="w-3 h-3" /> Store Disabled
-                                </span>
-                              ) : (
-                                <span className="text-[11px] font-bold bg-emerald-100 text-emerald-700 px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
-                                  <CheckCircle className="w-3 h-3" /> Active Store
-                                </span>
-                              )}
-                              {s.cameraScannerEnabled !== false ? (
-                                <span className="text-[11px] font-bold bg-purple-50 text-purple-700 px-2.5 py-0.5 rounded-full border border-purple-200 flex items-center gap-1">
-                                  <Camera className="w-3 h-3 text-purple-600" /> Camera: ON
-                                </span>
-                              ) : (
-                                <span className="text-[11px] font-bold bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full border border-slate-200 flex items-center gap-1">
-                                  <Camera className="w-3 h-3 text-slate-400" /> Camera: OFF
-                                </span>
-                              )}
-                              {isVoiceAllowed ? (
-                                <span className="text-[11px] font-bold bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
-                                  <Volume2 className="w-3 h-3 text-emerald-600" /> Voice: ALLOWED
-                                </span>
-                              ) : (
-                                <span className="text-[11px] font-bold bg-rose-50 text-rose-700 px-2.5 py-0.5 rounded-full border border-rose-200 flex items-center gap-1">
-                                  <VolumeX className="w-3 h-3 text-rose-500" /> Voice: DISALLOWED
-                                </span>
+                      <div className="space-y-4">
+                        {mainStores.map(s => {
+                          const isDisabled = s.status === 'disabled';
+                          const isVoiceAllowed = s.voiceAnnouncementEnabled !== false;
+                          const childBranches = stores.filter(b => b.isBranch && (b.parentStoreId === s.id || b.parentStoreId === s.adminUsername));
+                          childBranches.forEach(b => allChildBranchIds.add(b.id));
+
+                          const directCashierCount = users.filter(u => u.storeId === s.id && u.role === 'cash_counter').length;
+                          const directRegistrarCount = users.filter(u => u.storeId === s.id && u.role === 'product_register').length;
+                          const isExpanded = expandedStoreId === s.id;
+
+                          return (
+                            <div 
+                              key={s.id} 
+                              className={`rounded-2xl border transition-all overflow-hidden ${
+                                isDisabled ? 'bg-slate-50 border-red-200' : 'bg-white border-slate-200 hover:border-slate-300 shadow-sm'
+                              }`}
+                            >
+                              {/* Main Store Card Header */}
+                              <div className="p-5 space-y-4">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                  <div>
+                                    <div className="flex items-center gap-2.5 flex-wrap">
+                                      <h3 className="text-base font-extrabold text-slate-900">{s.name}</h3>
+                                      <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-orange-100 text-orange-800 uppercase tracking-wider border border-orange-200">
+                                        Main Chain Store
+                                      </span>
+                                      {isDisabled ? (
+                                        <span className="text-[11px] font-bold bg-red-100 text-red-700 px-2.5 py-0.5 rounded-full border border-red-200 flex items-center gap-1">
+                                          <Ban className="w-3 h-3" /> Disabled
+                                        </span>
+                                      ) : (
+                                        <span className="text-[11px] font-bold bg-emerald-100 text-emerald-700 px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                                          <CheckCircle className="w-3 h-3" /> Active
+                                        </span>
+                                      )}
+                                      <span className="text-[11px] font-bold bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded-full border border-blue-200 flex items-center gap-1">
+                                        <Building2 className="w-3 h-3" /> {childBranches.length} {childBranches.length === 1 ? 'Branch' : 'Branches'}
+                                      </span>
+                                    </div>
+                                    <p className="text-xs text-slate-500 mt-1 font-medium">
+                                      Store Admin: <span className="text-slate-800 font-bold font-mono">@{s.adminUsername}</span> | ID: <span className="font-mono">{s.id.substring(0, 8)}</span>
+                                    </p>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                                    {/* Primary Action: Create Branch Admin Account under this store */}
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setCreateBranchModalStore(s);
+                                        setModalBranchName(`${s.name} - Branch 1`);
+                                        setModalBranchCode(`BR-0${childBranches.length + 1}`);
+                                      }}
+                                      className="px-3.5 py-2 bg-orange-600 hover:bg-orange-500 text-white font-extrabold rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-orange-600/20 cursor-pointer transition-all"
+                                      title="Create a new regional branch admin account under this supermarket store"
+                                    >
+                                      <Plus className="w-4 h-4" />
+                                      <span>Create Branch Admin</span>
+                                    </button>
+
+                                    {/* Expand / View Branches Hierarchy Toggle */}
+                                    <button
+                                      type="button"
+                                      onClick={() => setExpandedStoreId(isExpanded ? null : s.id)}
+                                      className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
+                                        isExpanded 
+                                          ? 'bg-slate-900 text-white border-slate-900' 
+                                          : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200'
+                                      }`}
+                                    >
+                                      {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                                      <span>{isExpanded ? 'Hide Hierarchy' : `Branches (${childBranches.length})`}</span>
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* Controls Row */}
+                                <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+                                  <div className="flex items-center gap-2 text-slate-500 font-medium">
+                                    <span>Direct Cashiers: <strong className="text-slate-800">{directCashierCount}</strong></span>
+                                    <span>•</span>
+                                    <span>Registers: <strong className="text-slate-800">{directRegistrarCount}</strong></span>
+                                    <span>•</span>
+                                    <span>Inbuilt Camera: <strong className={s.cameraScannerEnabled !== false ? 'text-purple-700' : 'text-slate-500'}>{s.cameraScannerEnabled !== false ? 'ON' : 'OFF'}</strong></span>
+                                    <span>•</span>
+                                    <span>Voice: <strong className={isVoiceAllowed ? 'text-emerald-700' : 'text-rose-700'}>{isVoiceAllowed ? 'Allowed' : 'Blocked'}</strong></span>
+                                  </div>
+
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => handleToggleStoreStatus(s)}
+                                      disabled={loading}
+                                      className={`px-3 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1 text-xs cursor-pointer ${
+                                        isDisabled 
+                                          ? 'bg-emerald-600 text-white hover:bg-emerald-500' 
+                                          : 'bg-amber-100 text-amber-800 hover:bg-amber-200 border border-amber-200'
+                                      }`}
+                                    >
+                                      <Power className="w-3.5 h-3.5" />
+                                      {isDisabled ? 'Enable' : 'Disable'}
+                                    </button>
+
+                                    <button
+                                      onClick={() => setResetStoreModal(s)}
+                                      className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 font-bold rounded-xl flex items-center gap-1 cursor-pointer transition-all"
+                                    >
+                                      <KeyRound className="w-3.5 h-3.5" /> Reset Pass
+                                    </button>
+
+                                    {onSelectStoreToManage && (
+                                      <button
+                                        onClick={() => onSelectStoreToManage(s)}
+                                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl flex items-center gap-1 cursor-pointer transition-colors"
+                                      >
+                                        <Eye className="w-3.5 h-3.5 text-orange-600" /> Inspect
+                                      </button>
+                                    )}
+
+                                    <button
+                                      onClick={() => setStoreToDelete(s)}
+                                      className="px-2.5 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 font-bold rounded-xl flex items-center gap-1 cursor-pointer transition-all"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* HIERARCHICAL DRILL-DOWN: REGIONAL BRANCHES UNDER THIS STORE */}
+                              {isExpanded && (
+                                <div className="p-5 bg-slate-50 border-t border-slate-200 space-y-4">
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
+                                    <div>
+                                      <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                                        <Building2 className="w-4 h-4 text-orange-600" />
+                                        Regional Branches of {s.name} ({childBranches.length})
+                                      </h4>
+                                      <p className="text-xs text-slate-500 mt-0.5">
+                                        Click any regional branch to create cash counters, registrars, price checkers, and branch staff.
+                                      </p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setCreateBranchModalStore(s);
+                                        setModalBranchName(`${s.name} - Branch ${childBranches.length + 1}`);
+                                        setModalBranchCode(`BR-0${childBranches.length + 1}`);
+                                      }}
+                                      className="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition-all self-start sm:self-auto"
+                                    >
+                                      <Plus className="w-3.5 h-3.5" />
+                                      <span>+ Create Branch Admin Account</span>
+                                    </button>
+                                  </div>
+
+                                  {childBranches.length === 0 ? (
+                                    <div className="p-6 bg-white rounded-xl border border-dashed border-slate-300 text-center space-y-2">
+                                      <Building2 className="w-8 h-8 mx-auto text-slate-300" />
+                                      <p className="text-xs font-bold text-slate-700">No regional branches created for {s.name} yet</p>
+                                      <p className="text-[11px] text-slate-500">
+                                        Click the <strong className="text-orange-600">"+ Create Branch Admin Account"</strong> button above to assign a regional branch location.
+                                      </p>
+                                    </div>
+                                  ) : (
+                                    <div className="space-y-3">
+                                      {childBranches.map(branch => {
+                                        const branchUsers = users.filter(u => u.storeId === branch.id);
+                                        const isBranchExpanded = expandedBranchId === branch.id;
+                                        const branchCashiers = branchUsers.filter(u => u.role === 'cash_counter');
+                                        const branchRegistrars = branchUsers.filter(u => u.role === 'product_register');
+                                        const branchPriceCheckers = branchUsers.filter(u => u.role === 'price_checker');
+                                        const branchStaffMembers = branchUsers.filter(u => u.role === 'staff' || u.role === 'inventory_manager');
+
+                                        return (
+                                          <div 
+                                            key={branch.id} 
+                                            className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs hover:border-slate-300 transition-all"
+                                          >
+                                            {/* Branch Summary Bar */}
+                                            <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                                              <div 
+                                                className="cursor-pointer flex-1"
+                                                onClick={() => setExpandedBranchId(isBranchExpanded ? null : branch.id)}
+                                              >
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                  <span className="font-extrabold text-sm text-slate-900">{branch.name}</span>
+                                                  {branch.branchCode && (
+                                                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                                                      {branch.branchCode}
+                                                    </span>
+                                                  )}
+                                                  <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-blue-50 text-blue-800 border border-blue-200">
+                                                    Branch Admin: @{branch.branchAdminUsername || branch.adminUsername}
+                                                  </span>
+                                                  <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono">
+                                                    Admin Salary: Rs. {(Number(branch.branchAdminSalary) || 0).toLocaleString()}
+                                                  </span>
+                                                  {Number(branch.administrativeExpenses) > 0 && (
+                                                    <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-amber-50 text-amber-800 border border-amber-200 font-mono">
+                                                      Overhead: Rs. {(Number(branch.administrativeExpenses) || 0).toLocaleString()}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                                <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-2 font-medium">
+                                                  <span>Accounts: <strong className="text-slate-900">{branchUsers.length}</strong></span>
+                                                  <span>•</span>
+                                                  <span>Cashiers: <strong className="text-slate-800">{branchCashiers.length}</strong></span>
+                                                  <span>•</span>
+                                                  <span>Registers: <strong className="text-slate-800">{branchRegistrars.length}</strong></span>
+                                                  <span>•</span>
+                                                  <span>Staff: <strong className="text-slate-800">{branchStaffMembers.length}</strong></span>
+                                                </div>
+                                              </div>
+
+                                              <div className="flex items-center gap-2 shrink-0">
+                                                {/* Click into branch to create further accounts */}
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setExpandedBranchId(isBranchExpanded ? null : branch.id)}
+                                                  className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors ${
+                                                    isBranchExpanded
+                                                      ? 'bg-orange-600 text-white shadow-2xs'
+                                                      : 'bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200'
+                                                  }`}
+                                                >
+                                                  {isBranchExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                                                  <span>{isBranchExpanded ? 'Hide Accounts' : `Create & View Accounts (${branchUsers.length})`}</span>
+                                                </button>
+
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setResetStoreModal(branch)}
+                                                  className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                                                  title="Reset Branch Admin Password"
+                                                >
+                                                  <KeyRound className="w-4 h-4" />
+                                                </button>
+
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setStoreToDelete(branch)}
+                                                  className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                                                  title="Delete Branch"
+                                                >
+                                                  <Trash2 className="w-4 h-4" />
+                                                </button>
+                                              </div>
+                                            </div>
+
+                                            {/* EXPANDED BRANCH: CREATE FURTHER ACCOUNTS FOR THIS BRANCH */}
+                                            {isBranchExpanded && (
+                                              <div className="p-4 bg-slate-100/70 border-t border-slate-200 space-y-4">
+                                                <div className="bg-white p-3.5 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                                                  <div>
+                                                    <div className="text-xs font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                                                      <UserPlus className="w-4 h-4 text-orange-600" />
+                                                      Create Further Accounts for {branch.name}
+                                                    </div>
+                                                    <div className="text-[11px] text-slate-500">
+                                                      Add POS cashiers, product registrars, price checkers, or staff members directly linked to this branch.
+                                                    </div>
+                                                  </div>
+
+                                                  <div className="flex items-center gap-2 flex-wrap">
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => {
+                                                        setCreateBranchAccountModal({ branch, accountType: 'cash_counter' });
+                                                        setModalAccountName(`${branch.name} POS Counter ${branchCashiers.length + 1}`);
+                                                        setModalAccountCounterNum(String(branchCashiers.length + 1));
+                                                      }}
+                                                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer flex items-center gap-1 transition-all"
+                                                    >
+                                                      <Calculator className="w-3.5 h-3.5" />
+                                                      <span>+ Cash Counter</span>
+                                                    </button>
+
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => {
+                                                        setCreateBranchAccountModal({ branch, accountType: 'product_register' });
+                                                        setModalAccountName(`${branch.name} Registrar`);
+                                                      }}
+                                                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer flex items-center gap-1 transition-all"
+                                                    >
+                                                      <PackageCheck className="w-3.5 h-3.5" />
+                                                      <span>+ Product Registrar</span>
+                                                    </button>
+
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => {
+                                                        setCreateBranchAccountModal({ branch, accountType: 'price_checker' });
+                                                        setModalAccountName(`${branch.name} Kiosk`);
+                                                      }}
+                                                      className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer flex items-center gap-1 transition-all"
+                                                    >
+                                                      <ScanLine className="w-3.5 h-3.5" />
+                                                      <span>+ Price Checker</span>
+                                                    </button>
+
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => {
+                                                        setCreateBranchAccountModal({ branch, accountType: 'staff' });
+                                                        setModalAccountName(`${branch.name} Staff`);
+                                                      }}
+                                                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer flex items-center gap-1 transition-all"
+                                                    >
+                                                      <Users className="w-3.5 h-3.5" />
+                                                      <span>+ Branch Staff</span>
+                                                    </button>
+                                                  </div>
+                                                </div>
+
+                                                {/* Sub-Accounts List Table for this Branch */}
+                                                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
+                                                  <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-700 flex items-center justify-between">
+                                                    <span>Active Sub-Accounts in {branch.name} ({branchUsers.length})</span>
+                                                    <span className="text-[11px] text-slate-500">Salaries deducted monthly from profit</span>
+                                                  </div>
+
+                                                  {branchUsers.length === 0 ? (
+                                                    <div className="p-6 text-center text-slate-400 text-xs font-medium">
+                                                      No sub-accounts created for this branch yet. Use the buttons above to add cashiers, registrars, or staff.
+                                                    </div>
+                                                  ) : (
+                                                    <div className="overflow-x-auto">
+                                                      <table className="w-full text-left text-xs border-collapse">
+                                                        <thead className="bg-slate-100/70 text-slate-600 font-bold border-b border-slate-200">
+                                                          <tr>
+                                                            <th className="p-2.5">Role</th>
+                                                            <th className="p-2.5">Name</th>
+                                                            <th className="p-2.5">Username</th>
+                                                            <th className="p-2.5">Counter / Cashier</th>
+                                                            <th className="p-2.5">Monthly Salary</th>
+                                                            <th className="p-2.5 text-center w-28">Actions</th>
+                                                          </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-slate-100">
+                                                          {branchUsers.map(user => (
+                                                            <tr key={user.id} className="hover:bg-slate-50/80 transition-colors">
+                                                              <td className="p-2.5">
+                                                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                                                                  user.role === 'branch_admin' ? 'bg-purple-100 text-purple-800' :
+                                                                  user.role === 'cash_counter' ? 'bg-emerald-100 text-emerald-800' :
+                                                                  user.role === 'product_register' ? 'bg-blue-100 text-blue-800' :
+                                                                  user.role === 'price_checker' ? 'bg-indigo-100 text-indigo-800' :
+                                                                  'bg-amber-100 text-amber-800'
+                                                                }`}>
+                                                                  {user.role.replace('_', ' ')}
+                                                                </span>
+                                                              </td>
+                                                              <td className="p-2.5 font-bold text-slate-900">{user.name}</td>
+                                                              <td className="p-2.5 font-mono text-slate-700">@{user.username}</td>
+                                                              <td className="p-2.5 font-medium text-slate-600">
+                                                                {user.counterNumber ? `Counter #${user.counterNumber}` : '—'}
+                                                              </td>
+                                                              <td className="p-2.5 font-mono font-bold text-emerald-700">
+                                                                {user.salary ? `Rs. ${Number(user.salary).toLocaleString()}` : '—'}
+                                                              </td>
+                                                              <td className="p-2.5 text-center">
+                                                                <div className="flex items-center justify-center gap-1">
+                                                                  <button
+                                                                    type="button"
+                                                                    onClick={() => setResetUserModal(user)}
+                                                                    className="px-2 py-1 text-[11px] font-bold text-blue-700 hover:bg-blue-50 border border-blue-200 rounded-lg cursor-pointer"
+                                                                    title="Reset Password"
+                                                                  >
+                                                                    Reset
+                                                                  </button>
+                                                                  <button
+                                                                    type="button"
+                                                                    onClick={() => setUserToDelete(user)}
+                                                                    className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg cursor-pointer transition-colors"
+                                                                    title="Delete Account"
+                                                                  >
+                                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                                  </button>
+                                                                </div>
+                                                              </td>
+                                                            </tr>
+                                                          ))}
+                                                        </tbody>
+                                                      </table>
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
                               )}
                             </div>
-                            <p className="text-xs text-slate-500 mt-1 font-medium">
-                              Admin Username: <span className="text-slate-800 font-bold font-mono">{s.adminUsername}</span> | ID: <span className="font-mono">{s.id.substring(0, 8)}</span>
-                            </p>
+                          );
+                        })}
+
+                        {/* Any Standalone Branches without matching parent store */}
+                        {stores.filter(s => s.isBranch && !allChildBranchIds.has(s.id)).length > 0 && (
+                          <div className="pt-4 border-t border-slate-200">
+                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                              Other Regional Branches ({stores.filter(s => s.isBranch && !allChildBranchIds.has(s.id)).length})
+                            </h4>
+                            <div className="space-y-3">
+                              {stores.filter(s => s.isBranch && !allChildBranchIds.has(s.id)).map(branch => (
+                                <div key={branch.id} className="p-4 bg-white rounded-xl border border-slate-200 flex items-center justify-between">
+                                  <div>
+                                    <div className="font-bold text-sm text-slate-900">{branch.name}</div>
+                                    <div className="text-xs text-slate-500">
+                                      Admin: <span className="font-mono text-slate-800 font-bold">@{branch.adminUsername || branch.branchAdminUsername}</span>
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={() => setResetStoreModal(branch)}
+                                    className="px-3 py-1.5 text-xs font-bold bg-blue-50 text-blue-700 rounded-lg border border-blue-200"
+                                  >
+                                    Reset Password
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
                           </div>
-
-                          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-                            {/* Super Admin Voice Toggle */}
-                            <button
-                              onClick={() => handleToggleVoiceAnnouncement(s)}
-                              disabled={loading}
-                              className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
-                                isVoiceAllowed
-                                  ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
-                                  : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
-                              }`}
-                              title={isVoiceAllowed ? "Disallow & Mute voice generation for this store" : "Allow voice generation for this store"}
-                            >
-                              {isVoiceAllowed ? <Volume2 className="w-3.5 h-3.5 text-emerald-600" /> : <VolumeX className="w-3.5 h-3.5 text-rose-600" />}
-                              <span>{isVoiceAllowed ? 'Voice: ALLOWED' : 'Voice: BLOCKED'}</span>
-                            </button>
-
-                            {/* Super Admin Camera Scanner Toggle */}
-                            <button
-                              onClick={() => handleToggleCameraScanner(s)}
-                              disabled={loading}
-                              className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
-                                s.cameraScannerEnabled !== false
-                                  ? 'bg-purple-50 hover:bg-purple-100 text-purple-800 border-purple-200'
-                                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
-                              }`}
-                              title={s.cameraScannerEnabled !== false ? "Disable inbuilt camera barcode scanner for this store" : "Enable inbuilt camera barcode scanner for this store"}
-                            >
-                              <Camera className="w-3.5 h-3.5" />
-                              <span>{s.cameraScannerEnabled !== false ? 'Camera: ON' : 'Camera: OFF'}</span>
-                            </button>
-
-                            {onSelectStoreToManage && (
-                              <button
-                                onClick={() => onSelectStoreToManage(s)}
-                                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer self-start sm:self-auto"
-                              >
-                                <Eye className="w-4 h-4 text-orange-600" /> Inspect
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Store Action Controls */}
-                        <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs">
-                          <div className="flex items-center gap-2 text-slate-500 font-medium">
-                            <span>Cashiers: <strong className="text-slate-800">{cashierCount}</strong></span>
-                            <span>•</span>
-                            <span>Registers: <strong className="text-slate-800">{registrarCount}</strong></span>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => handleToggleStoreStatus(s)}
-                              disabled={loading}
-                              className={`px-3 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1 text-xs cursor-pointer ${
-                                isDisabled 
-                                  ? 'bg-emerald-600 text-white hover:bg-emerald-500' 
-                                  : 'bg-amber-100 text-amber-800 hover:bg-amber-200 border border-amber-200'
-                              }`}
-                            >
-                              <Power className="w-3.5 h-3.5" />
-                              {isDisabled ? 'Enable Store' : 'Disable Store'}
-                            </button>
-
-                            <button
-                              onClick={() => setResetStoreModal(s)}
-                              className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 font-bold rounded-xl flex items-center gap-1 cursor-pointer transition-all"
-                            >
-                              <KeyRound className="w-3.5 h-3.5" /> Reset Admin Pass
-                            </button>
-
-                            <button
-                              onClick={() => setStoreToDelete(s)}
-                              className="px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 font-bold rounded-xl flex items-center gap-1 cursor-pointer transition-all"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" /> Delete Store
-                            </button>
-                          </div>
-                        </div>
+                        )}
                       </div>
                     );
-                  })
+                  })()
                 )}
               </div>
             </div>
@@ -1139,7 +1789,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                   <Calculator className="w-5 h-5 text-emerald-600" /> Add Cash Counter Account
                 </h2>
                 <p className="text-xs text-slate-500 mt-1 font-medium">
-                  Create cash counters (POS terminals) assigned to a specific store.
+                  Create cash counters assigned to a specific store.
                 </p>
               </div>
 
@@ -1434,7 +2084,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Terminal / Kiosk Name
+                    Price Checker / Kiosk Name
                   </label>
                   <input
                     type="text"
@@ -1480,14 +2130,14 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                   className="w-full py-3 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl shadow-md shadow-orange-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer text-sm"
                 >
                   <UserPlus className="w-4 h-4" />
-                  {loading ? 'Creating Terminal...' : 'Create Customer Price Checker Account'}
+                  {loading ? 'Creating Account...' : 'Create Customer Price Checker Account'}
                 </button>
               </form>
             </div>
 
             <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
               <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                <ScanLine className="w-5 h-5 text-orange-600" /> Active Customer Price Checker Terminals
+                <ScanLine className="w-5 h-5 text-orange-600" /> Active Customer Price Checkers
               </h2>
 
               <div className="space-y-3">
@@ -1910,7 +2560,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                           </span>
                         </h4>
                         <p className="text-xs text-purple-900/80 font-medium mt-1 leading-relaxed">
-                          Controls whether the cashier POS terminals can use the live video camera barcode reader or must rely purely on physical USB/Bluetooth handheld barcode scanners.
+                          Controls whether cashier POS counters can use the live video camera barcode reader or must rely purely on physical USB/Bluetooth handheld barcode scanners.
                         </p>
                       </div>
                     </div>
@@ -2223,7 +2873,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                     <p className="text-xs text-emerald-800/80 font-medium mt-0.5">
                       {furtherDetailsStore.voiceAnnouncementEnabled !== false 
                         ? 'Speech announcements for checkout bill amounts & greetings are ALLOWED.' 
-                        : 'Voice generation is DISALLOWED & MUTED for all terminals in this store.'}
+                        : 'Voice generation is DISALLOWED & MUTED for all counters in this store.'}
                     </p>
                   </div>
                 </div>
@@ -2325,7 +2975,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                   <Calculator className="w-5 h-5 text-emerald-600" />
                   Cashiers & Cash Counters ({users.filter(u => u.storeId === furtherDetailsStore.id && u.role === 'cash_counter').length})
                 </h4>
-                <span className="text-xs text-slate-500 font-medium">POS Terminal Credentials Matrix</span>
+                <span className="text-xs text-slate-500 font-medium">Cash Counter Credentials Matrix</span>
               </div>
 
               {users.filter(u => u.storeId === furtherDetailsStore.id && u.role === 'cash_counter').length === 0 ? (
@@ -2603,6 +3253,309 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                 {loading ? 'Deleting...' : 'Delete Account'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 5: DEDICATED CREATE BRANCH ADMIN ACCOUNT UNDER STORE */}
+      {createBranchModalStore && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5 relative max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+              <div>
+                <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-orange-600" /> Create Branch Admin Account
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Provision a new regional branch location under <strong className="text-slate-800">{createBranchModalStore.name}</strong>
+                </p>
+              </div>
+              <button
+                onClick={() => setCreateBranchModalStore(null)}
+                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-xl hover:bg-slate-100 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleModalCreateBranchAdmin} className="space-y-4">
+              {/* Parent Chain Store */}
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">
+                  Parent Main Store (Fixed)
+                </label>
+                <input
+                  type="text"
+                  disabled
+                  value={`${createBranchModalStore.name} (@${createBranchModalStore.adminUsername})`}
+                  className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-slate-600 font-bold text-xs cursor-not-allowed"
+                />
+              </div>
+
+              {/* Branch Name & Code */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Branch Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Downtown Branch"
+                    value={modalBranchName}
+                    onChange={(e) => setModalBranchName(e.target.value)}
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs font-medium focus:outline-none focus:border-orange-500 focus:bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Branch Code
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="BR-01"
+                    value={modalBranchCode}
+                    onChange={(e) => setModalBranchCode(e.target.value)}
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs font-mono font-bold focus:outline-none focus:border-orange-500 focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Branch Admin Username & Password */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Branch Admin Username *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. downtown_admin"
+                    value={modalBranchAdminUsername}
+                    onChange={(e) => setModalBranchAdminUsername(e.target.value.toLowerCase().replace(/\s+/g, ''))}
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs font-mono font-medium focus:outline-none focus:border-orange-500 focus:bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Branch Admin Password *
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="Password"
+                    value={modalBranchAdminPassword}
+                    onChange={(e) => setModalBranchAdminPassword(e.target.value)}
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs font-medium focus:outline-none focus:border-orange-500 focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Branch Admin Salary & Administrative Overhead */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-amber-50/50 rounded-2xl border border-amber-200">
+                <div>
+                  <label className="block text-[11px] font-bold text-amber-900 uppercase tracking-wider mb-1">
+                    Branch Admin Salary (Rs.)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="e.g. 70000"
+                    value={modalBranchAdminSalary}
+                    onChange={(e) => setModalBranchAdminSalary(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-amber-300 rounded-xl text-slate-900 text-xs font-bold font-mono focus:outline-none focus:border-orange-500"
+                  />
+                  <span className="text-[10px] text-amber-700 font-medium">Set by Store/Super Admin (Branch Admin cannot edit own)</span>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-amber-900 uppercase tracking-wider mb-1">
+                    Administrative Overhead (Rs.)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="e.g. 15000"
+                    value={modalBranchAdminOverhead}
+                    onChange={(e) => setModalBranchAdminOverhead(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-amber-300 rounded-xl text-slate-900 text-xs font-bold font-mono focus:outline-none focus:border-orange-500"
+                  />
+                  <span className="text-[10px] text-amber-700 font-medium">Rent, utilities, licenses overhead</span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setCreateBranchModalStore(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold hover:bg-slate-200 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-5 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold shadow-md shadow-orange-600/20 transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <Building2 className="w-4 h-4" />
+                  <span>{loading ? 'Creating...' : 'Create Branch Admin Account'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 6: DEDICATED CREATE SUB-ACCOUNT DIRECTLY UNDER BRANCH */}
+      {createBranchAccountModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5 relative max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+              <div>
+                <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
+                  <UserPlus className="w-5 h-5 text-orange-600" />
+                  Create {createBranchAccountModal.accountType.replace('_', ' ').toUpperCase()} Account
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Branch: <strong className="text-slate-800">{createBranchAccountModal.branch.name}</strong>
+                </p>
+              </div>
+              <button
+                onClick={() => setCreateBranchAccountModal(null)}
+                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-xl hover:bg-slate-100 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleModalCreateBranchSubAccount} className="space-y-4">
+              {/* Branch locked */}
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">
+                  Assigned Branch
+                </label>
+                <input
+                  type="text"
+                  disabled
+                  value={`${createBranchAccountModal.branch.name} (${createBranchAccountModal.branch.branchCode || 'BR'})`}
+                  className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-slate-600 font-bold text-xs cursor-not-allowed"
+                />
+              </div>
+
+              {/* Staff Role Selector (if staff type) */}
+              {createBranchAccountModal.accountType === 'staff' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Specific Role
+                  </label>
+                  <select
+                    value={modalStaffRole}
+                    onChange={(e) => setModalStaffRole(e.target.value as any)}
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs font-bold focus:outline-none focus:border-orange-500 focus:bg-white"
+                  >
+                    <option value="staff">General Floor Staff</option>
+                    <option value="inventory_manager">Inventory & Warehouse Manager</option>
+                  </select>
+                </div>
+              )}
+
+              {/* Counter Number (if cash counter) */}
+              {createBranchAccountModal.accountType === 'cash_counter' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    POS Counter Number *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="1, 2, 3..."
+                    value={modalAccountCounterNum}
+                    onChange={(e) => setModalAccountCounterNum(e.target.value)}
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs font-bold font-mono focus:outline-none focus:border-orange-500 focus:bg-white"
+                  />
+                </div>
+              )}
+
+              {/* Name */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Full Name / Counter Title *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Counter 1 Cashier / John Staff"
+                  value={modalAccountName}
+                  onChange={(e) => setModalAccountName(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs font-medium focus:outline-none focus:border-orange-500 focus:bg-white"
+                />
+              </div>
+
+              {/* Username & Password */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Login Username *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="username"
+                    value={modalAccountUsername}
+                    onChange={(e) => setModalAccountUsername(e.target.value.toLowerCase().replace(/\s+/g, ''))}
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs font-mono font-medium focus:outline-none focus:border-orange-500 focus:bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Login Password *
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="Password"
+                    value={modalAccountPassword}
+                    onChange={(e) => setModalAccountPassword(e.target.value)}
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs font-medium focus:outline-none focus:border-orange-500 focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Staff Monthly Base Salary */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Monthly Base Salary (Rs.)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="e.g. 35000"
+                  value={modalAccountSalary}
+                  onChange={(e) => setModalAccountSalary(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs font-mono font-bold focus:outline-none focus:border-orange-500 focus:bg-white"
+                />
+                <span className="text-[11px] text-slate-500 mt-0.5 block">
+                  Staff salary can be entered by Branch Admin or Store Admin and will be deducted from branch net profit.
+                </span>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setCreateBranchAccountModal(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold hover:bg-slate-200 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-5 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold shadow-md shadow-orange-600/20 transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>{loading ? 'Creating...' : 'Create Account'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

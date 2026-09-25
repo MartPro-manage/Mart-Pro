@@ -22,7 +22,8 @@ import {
   ShieldCheck,
   Image as ImageIcon,
   Link,
-  Clock
+  Clock,
+  Coins
 } from 'lucide-react';
 import { speakMessage } from '../lib/speech';
 
@@ -55,7 +56,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   const receiptSubHeader = store?.receiptHeader || 'OFFICIAL SALES INVOICE';
   const receiptGreetingMessage = store?.receiptGreeting || 'Welcome & Thank You for Shopping With Us!';
   const receiptFooterText = store?.receiptFooter || `THANK YOU FOR SHOPPING AT ${(store?.name || sale?.storeName || 'OUR STORE').toUpperCase()}! Please retain slip for return.`;
-  const isQrEnabled = store?.receiptQrCodeEnabled !== false;
+  const isQrEnabled = Boolean(store?.receiptQrCodeEnabled);
   const qrTitle = store?.receiptQrTitle || 'Scan to Verify Receipt';
   const isVoiceAllowed = store?.voiceAnnouncementEnabled !== false;
 
@@ -65,12 +66,18 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     }
   }, [initialTab, isOpen]);
 
-  // Trigger audio voice greeting with bill total when checkout completes and receipt opens
+  // Trigger audio voice greeting with bill total & change when checkout completes and receipt opens
   useEffect(() => {
     if (isOpen && sale && voiceEnabled && isVoiceAllowed) {
       const storeName = store?.name || sale?.storeName || 'our store';
       const formattedTotal = sale.totalAmount % 1 === 0 ? sale.totalAmount.toFixed(0) : sale.totalAmount.toFixed(2);
-      speakMessage(`Total bill is ${formattedTotal} rupees. Thank you for shopping at ${storeName}!`);
+      let speech = `Total bill is ${formattedTotal} rupees.`;
+      if (sale.paymentMethod === 'cash' && (sale.changeReturned ?? 0) > 0) {
+        const formattedChange = (sale.changeReturned || 0) % 1 === 0 ? (sale.changeReturned || 0).toFixed(0) : (sale.changeReturned || 0).toFixed(2);
+        speech += ` Change to return to customer is ${formattedChange} rupees.`;
+      }
+      speech += ` Thank you for shopping at ${storeName}!`;
+      speakMessage(speech);
     }
   }, [isOpen, sale, voiceEnabled, isVoiceAllowed, store?.name]);
 
@@ -78,7 +85,13 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     if (!sale || !isVoiceAllowed) return;
     const storeName = store?.name || sale?.storeName || 'our store';
     const formattedTotal = sale.totalAmount % 1 === 0 ? sale.totalAmount.toFixed(0) : sale.totalAmount.toFixed(2);
-    speakMessage(`Total bill is ${formattedTotal} rupees. Thank you for shopping at ${storeName}!`);
+    let speech = `Total bill is ${formattedTotal} rupees.`;
+    if (sale.paymentMethod === 'cash' && (sale.changeReturned ?? 0) > 0) {
+      const formattedChange = (sale.changeReturned || 0) % 1 === 0 ? (sale.changeReturned || 0).toFixed(0) : (sale.changeReturned || 0).toFixed(2);
+      speech += ` Change to return to customer is ${formattedChange} rupees.`;
+    }
+    speech += ` Thank you for shopping at ${storeName}!`;
+    speakMessage(speech);
   };
 
   const getFormattedReceiptText = () => {
@@ -188,7 +201,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             <div>
               <div class="flex-row"><span>Cash Counter:</span><strong>${sale.counterName}</strong></div>
               <div class="flex-row"><span>Cashier:</span><strong>${sale.cashierUsername}</strong></div>
-              <div class="flex-row"><span>Payment Method:</span><strong class="uppercase">${sale.paymentMethod}</strong></div>
+              <div class="flex-row"><span>Payment Method:</span><strong class="uppercase">${sale.paymentMethod === 'online' ? `ONLINE (${sale.onlinePaymentProvider || 'DIGITAL'})` : 'CASH'}${sale.onlineTransactionId ? ` [Ref: ${sale.onlineTransactionId}]` : ''}</strong></div>
             </div>
 
             <div class="divider"></div>
@@ -286,14 +299,19 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
   const receiptUrl = sale ? getReceiptDirectUrl() : '';
 
-  // Generate QR Code for E-Receipt (encodes live receipt URL for instant mobile viewing & downloading)
+  // Generate QR Code for E-Receipt (encodes live receipt URL or custom QR picture/data)
   useEffect(() => {
     if (!sale) return;
+
+    if (store?.receiptQrImageUrl) {
+      setQrCodeDataUrl(store.receiptQrImageUrl);
+      return;
+    }
 
     let isMounted = true;
     const generateQr = async () => {
       try {
-        const targetUrl = receiptUrl || `${getPublicAppBaseUrl()}?receiptId=${sale.id}&no=${sale.receiptNumber}`;
+        const targetUrl = store?.receiptQrData || receiptUrl || `${getPublicAppBaseUrl()}?receiptId=${sale.id}&no=${sale.receiptNumber}`;
         
         const dataUrl = await QRCode.toDataURL(targetUrl, {
           width: 360,
@@ -571,7 +589,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+    <div className="fixed inset-0 z-[90] flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto overscroll-contain">
       
       {/* Print-Only Stylesheet override for in-page browser print fallback */}
       <style>{`
@@ -685,10 +703,35 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
           </div>
         )}
 
+        {/* COMPACT CASH TRANSACTION BREAKDOWN & CHANGE RETURN CARD */}
+        {sale.paymentMethod === 'cash' && (
+          <div className="bg-slate-900 border border-emerald-500/50 rounded-xl px-3.5 py-2.5 text-white shadow-sm no-print shrink-0 flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <Coins className="w-4 h-4 text-emerald-400 shrink-0" />
+              <div className="truncate">
+                <span className="font-extrabold text-emerald-400">Cash Settlement:</span>
+                <span className="text-slate-300 ml-1.5 text-[11px]">
+                  Bill: <strong className="text-white">{curr} {sale.totalAmount.toFixed(2)}</strong> &bull; 
+                  Recv: <strong className="text-emerald-400">{curr} {(sale.cashReceived ?? sale.totalAmount).toFixed(2)}</strong>
+                </span>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="bg-emerald-950/90 px-3 py-1 rounded-lg border border-emerald-500/60 text-right">
+                <span className="text-[9px] uppercase font-bold text-emerald-400 block">Change Due</span>
+                <span className="text-sm font-black font-mono text-emerald-300">
+                  {curr} {(sale.changeReturned ?? 0).toFixed(2)}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* STANDARD PRINTABLE RECEIPT CARD */}
             <div 
               id="printable-receipt" 
-              className={`text-slate-900 overflow-y-auto overscroll-contain max-h-[44vh] custom-scrollbar ${
+              className={`text-slate-900 overflow-y-auto overscroll-contain max-h-[62vh] custom-scrollbar ${
                 store?.receiptFormat === 'classic_detailed'
                   ? 'bg-white p-5 sm:p-6 rounded-2xl border-4 border-double border-slate-800 font-mono text-xs space-y-3 shadow-md'
                   : store?.receiptFormat === 'compact_eco'
@@ -750,7 +793,16 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 <div>Counter: <span className="font-bold text-slate-800">{sale.counterName}</span></div>
                 <div className="text-right">Cashier: <span className="font-bold text-slate-800">{sale.cashierUsername}</span></div>
                 <div>Payment Method:</div>
-                <div className="text-right font-bold uppercase text-slate-900">{sale.paymentMethod}</div>
+                <div className="text-right font-bold uppercase text-slate-900">
+                  {sale.paymentMethod === 'online' ? (
+                    <span>ONLINE ({sale.onlinePaymentProvider || 'DIGITAL'})</span>
+                  ) : (
+                    <span>CASH</span>
+                  )}
+                  {sale.onlineTransactionId && (
+                    <span className="block text-[9px] text-slate-500 font-mono font-normal">Ref: {sale.onlineTransactionId}</span>
+                  )}
+                </div>
               </div>
 
               {/* Items Table */}
@@ -796,7 +848,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                   <>
                     <div className="flex justify-between text-xs text-slate-600">
                       <span>Subtotal:</span>
-                      <span className="font-mono font-semibold">{curr} ${(sale.subtotalAmount || ((sale.totalAmount || 0) + (sale.discountAmount || 0))).toFixed(2)}</span>
+                      <span className="font-mono font-semibold">{curr} {(sale.subtotalAmount || ((sale.totalAmount || 0) + (sale.discountAmount || 0))).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-xs font-bold text-emerald-700">
                       <span>Discount {sale.discountType === 'percentage' && sale.discountValue ? `(${sale.discountValue}%)` : ''}:</span>
@@ -820,7 +872,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                     </div>
                     <div className="flex justify-between text-xs font-black text-emerald-700">
                       <span>Change Returned:</span>
-                      <span className="font-mono">{curr} ${(sale.changeReturned || 0).toFixed(2)}</span>
+                      <span className="font-mono">{curr} {(sale.changeReturned || 0).toFixed(2)}</span>
                     </div>
                   </>
                 )}

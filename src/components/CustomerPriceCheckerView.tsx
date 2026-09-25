@@ -35,7 +35,10 @@ import {
   Mic,
   MicOff,
   X,
-  MessageSquare
+  MessageSquare,
+  Hash,
+  Calculator,
+  Delete
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -54,6 +57,10 @@ export const CustomerPriceCheckerView: React.FC<CustomerPriceCheckerViewProps> =
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+
+  // Short Code Touch Keypad State
+  const [isKeypadOpen, setIsKeypadOpen] = useState(false);
+  const [keypadInput, setKeypadInput] = useState('');
 
   // AI Query Assistant States for Buyers
   const [aiQuestion, setAiQuestion] = useState('');
@@ -187,7 +194,7 @@ export const CustomerPriceCheckerView: React.FC<CustomerPriceCheckerViewProps> =
     }
   };
 
-  // Handle Barcode Look up
+  // Handle Barcode & Short Code Look up
   const handleLookupBarcode = useCallback((targetBarcode: string) => {
     const rawCode = targetBarcode ? targetBarcode.replace(/[\r\n\t]/g, '').trim() : '';
     if (!rawCode) return;
@@ -196,43 +203,61 @@ export const CustomerPriceCheckerView: React.FC<CustomerPriceCheckerViewProps> =
       clearTimeout(autoResetTimerRef.current);
     }
 
-    const targetCode = cleanCode(rawCode);
+    const cleanInput = cleanCode(rawCode);
+    const targetCode = cleanInput.replace(/^#/, ''); // Strip leading hash e.g. #1001 -> 1001
     const targetName = cleanName(rawCode);
 
-    // Exact Match
+    // 1. Exact Match on Short Code, Barcode, Serial Number, ID, or Product Name
     let found = products.find(p => {
+      const pShortcut = cleanCode(p.shortcutCode).replace(/^#/, '');
       const pBarcode = cleanCode(p.barcode);
       const pSerial = cleanCode(p.serialNumber);
       const pId = cleanCode(p.id);
       const pName = cleanName(p.name);
 
-      if (pBarcode && pBarcode === targetCode) return true;
-      if (pSerial && pSerial === targetCode) return true;
-      if (pId && pId === targetCode) return true;
+      // Match short code (with or without #)
+      if (pShortcut && (pShortcut === targetCode || pShortcut === cleanInput)) return true;
+      if (pBarcode && (pBarcode === targetCode || pBarcode === cleanInput)) return true;
+      if (pSerial && (pSerial === targetCode || pSerial === cleanInput)) return true;
+      if (pId && (pId === targetCode || pId === cleanInput)) return true;
       if (pName && pName === targetName) return true;
       return false;
     });
 
-    // Fallback for leading zeros
+    // 2. Fallback for leading zeros in barcodes or short codes
     if (!found) {
       const targetDigitsNoZero = targetCode.replace(/^0+/, '');
-      if (targetDigitsNoZero.length >= 3) {
+      if (targetDigitsNoZero.length >= 2) {
         found = products.find(p => {
+          const pShortcutDigits = cleanCode(p.shortcutCode).replace(/^#/, '').replace(/^0+/, '');
           const pBarcodeDigits = cleanCode(p.barcode).replace(/^0+/, '');
           const pSerialDigits = cleanCode(p.serialNumber).replace(/^0+/, '');
-          return (pBarcodeDigits && pBarcodeDigits === targetDigitsNoZero) ||
+          return (pShortcutDigits && pShortcutDigits === targetDigitsNoZero) ||
+                 (pBarcodeDigits && pBarcodeDigits === targetDigitsNoZero) ||
                  (pSerialDigits && pSerialDigits === targetDigitsNoZero);
         });
       }
+    }
+
+    // 3. Fallback partial name search if 3+ chars
+    if (!found && targetCode.length >= 3) {
+      found = products.find(p => {
+        const pName = cleanName(p.name);
+        return pName.includes(targetName) || targetName.includes(pName);
+      });
     }
 
     if (!found) {
       playScanErrorBeep();
       setScannedProduct(null);
       setScanStatus('not_found');
-      setStatusMessage(`Barcode "${rawCode}" is not registered in this store. Please ask a staff member for assistance.`);
+      const isShortCodeLike = /^\d{2,6}$/.test(targetCode);
+      const notFoundMsg = isShortCodeLike
+        ? `Short Code "#${targetCode}" is not registered in this store. Please ask a staff member for assistance.`
+        : `Item / Barcode "${rawCode}" is not registered in this store. Please ask a staff member for assistance.`;
+      setStatusMessage(notFoundMsg);
       if (isVoiceAllowed && voiceEnabled) {
-        speakMessage(`Item not found in store database.`);
+        speakMessage(isShortCodeLike ? `Short code ${targetCode} not found.` : `Item not found in store database.`);
       }
     } else {
       playScanSuccessBeep();
@@ -335,6 +360,15 @@ export const CustomerPriceCheckerView: React.FC<CustomerPriceCheckerViewProps> =
     ? [...products, ...products] 
     : [];
 
+  // Match keypad product in real-time
+  const cleanKeypadCode = cleanCode(keypadInput).replace(/^#/, '');
+  const matchedKeypadProduct = cleanKeypadCode
+    ? products.find(p => {
+        const pShortcut = cleanCode(p.shortcutCode).replace(/^#/, '');
+        return pShortcut && pShortcut === cleanKeypadCode;
+      })
+    : null;
+
   return (
     <div className="h-screen max-h-screen w-screen overflow-hidden bg-slate-950 text-white flex flex-col justify-between selection:bg-orange-500 selection:text-white relative select-none">
       {/* Background Ambience / Subtle Grid */}
@@ -365,6 +399,20 @@ export const CustomerPriceCheckerView: React.FC<CustomerPriceCheckerViewProps> =
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Touch Keypad Button for Short Code */}
+            <button
+              type="button"
+              onClick={() => {
+                setKeypadInput('');
+                setIsKeypadOpen(true);
+              }}
+              className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 font-bold text-xs rounded-xl border border-amber-500/30 transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+              title="Enter 4-digit short code using touch screen keypad"
+            >
+              <Calculator className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">Short Code Keypad</span>
+            </button>
+
             {/* Audio Voice Announcement Toggle */}
             {isVoiceAllowed && (
               <button
@@ -403,10 +451,10 @@ export const CustomerPriceCheckerView: React.FC<CustomerPriceCheckerViewProps> =
         {/* Top Section: Barcode Scanner Input + Ask AI Assistant Bar + Continuous Scrolling Ticker */}
         <div className="w-full shrink-0 space-y-2">
           
-          {/* Dual Inputs: Barcode Scanner & AI Shopping Assistant */}
+          {/* Dual Inputs: Barcode & Short Code Scanner & AI Shopping Assistant */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-w-4xl mx-auto">
             
-            {/* 1. Barcode Input Form */}
+            {/* 1. Barcode & Short Code Input Form */}
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -418,8 +466,9 @@ export const CustomerPriceCheckerView: React.FC<CustomerPriceCheckerViewProps> =
               className="w-full"
             >
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                  <BarcodeIcon className="w-5 h-5 text-orange-400" />
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center gap-1.5 pointer-events-none text-slate-400">
+                  <BarcodeIcon className="w-4 h-4 text-orange-400" />
+                  <span className="text-[11px] font-mono text-amber-400 font-black border-l border-slate-700 pl-1.5">#</span>
                 </div>
                 <input
                   id="kiosk-barcode-input"
@@ -431,16 +480,30 @@ export const CustomerPriceCheckerView: React.FC<CustomerPriceCheckerViewProps> =
                   spellCheck={false}
                   value={barcodeInput}
                   onChange={(e) => setBarcodeInput(e.target.value)}
-                  placeholder="Scan barcode or type code..."
-                  className="w-full pl-11 pr-22 py-2 sm:py-2.5 bg-slate-900/90 border-2 border-slate-700 focus:border-orange-500 focus:bg-slate-800 rounded-2xl text-white placeholder-slate-400 text-xs sm:text-sm font-mono focus:outline-none transition-all shadow-lg backdrop-blur-sm"
+                  placeholder="Scan barcode or enter short code (e.g. 1001)..."
+                  className="w-full pl-14 pr-28 py-2 sm:py-2.5 bg-slate-900/90 border-2 border-slate-700 focus:border-orange-500 focus:bg-slate-800 rounded-2xl text-white placeholder-slate-400 text-xs sm:text-sm font-mono focus:outline-none transition-all shadow-lg backdrop-blur-sm"
                 />
-                <button
-                  type="submit"
-                  className="absolute right-1 top-1 bottom-1 px-3 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1"
-                >
-                  <span>Check</span>
-                  <ArrowRight className="w-3 h-3" />
-                </button>
+                <div className="absolute right-1 top-1 bottom-1 flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setKeypadInput(barcodeInput.replace(/^#/, ''));
+                      setIsKeypadOpen(true);
+                    }}
+                    className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-amber-300 font-mono text-xs font-bold rounded-lg border border-slate-700 transition-all cursor-pointer flex items-center gap-1"
+                    title="Open on-screen touch keypad"
+                  >
+                    <Calculator className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="text-[10px] hidden xs:inline">123</span>
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-3 py-1 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1"
+                  >
+                    <span>Check</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </button>
+                </div>
               </div>
             </form>
 
@@ -537,7 +600,7 @@ export const CustomerPriceCheckerView: React.FC<CustomerPriceCheckerViewProps> =
                       <button
                         type="button"
                         key={`${p.id}-${idx}`}
-                        onClick={() => handleLookupBarcode(p.barcode || p.serialNumber || p.name)}
+                        onClick={() => handleLookupBarcode(p.shortcutCode || p.barcode || p.serialNumber || p.name)}
                         className="flex items-center gap-4.5 px-5 py-4 bg-slate-800/95 hover:bg-slate-700/95 border-2 border-slate-700 hover:border-orange-500 rounded-3xl transition-all text-left shrink-0 cursor-pointer shadow-xl hover:shadow-orange-500/20 min-w-[330px] sm:min-w-[400px] md:min-w-[450px]"
                       >
                         {/* Extra Large Product Pic */}
@@ -570,6 +633,12 @@ export const CustomerPriceCheckerView: React.FC<CustomerPriceCheckerViewProps> =
                             )}
                           </div>
                           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                            {p.shortcutCode && (
+                              <span className="text-xs font-bold font-mono text-amber-300 bg-amber-950/80 px-2.5 py-1 rounded-xl border border-amber-700/60 shadow-xs flex items-center gap-1">
+                                <Hash className="w-3 h-3 text-amber-400" />
+                                <span>{p.shortcutCode}</span>
+                              </span>
+                            )}
                             {p.weight && (
                               <span className="text-xs font-bold text-slate-200 bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-800 font-mono">
                                 {p.weight}
@@ -692,12 +761,35 @@ export const CustomerPriceCheckerView: React.FC<CustomerPriceCheckerViewProps> =
 
                 <div className="space-y-1">
                   <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                    Please Scan Any Product Barcode
+                    Scan Barcode or Enter Short Code
                   </h2>
                   <p className="text-slate-400 text-xs sm:text-sm max-w-md mx-auto leading-relaxed">
-                    Point the scanner laser at any item barcode, or select items from the scrolling list above to see instant price & stock.
+                    Scan any product barcode, type or dial a 4-digit Short Code (e.g. 1001), or tap items from the live scrolling catalog.
                   </p>
                 </div>
+
+                {/* Quick Shelf Short Code Pills to try */}
+                {products.filter(p => p.shortcutCode).length > 0 && (
+                  <div className="pt-2 border-t border-slate-800 space-y-1.5">
+                    <div className="flex items-center justify-center gap-1 text-[11px] font-bold text-amber-400">
+                      <Hash className="w-3.5 h-3.5" />
+                      <span>Quick Check by Shelf Short Code:</span>
+                    </div>
+                    <div className="flex items-center justify-center gap-2 flex-wrap max-h-16 overflow-y-auto">
+                      {products.filter(p => p.shortcutCode).slice(0, 6).map(p => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => handleLookupBarcode(p.shortcutCode!)}
+                          className="px-2.5 py-1 rounded-xl bg-slate-800/90 hover:bg-amber-500/20 text-amber-300 hover:text-amber-200 border border-amber-500/30 font-mono text-xs font-bold transition-all cursor-pointer flex items-center gap-1 shadow-xs"
+                        >
+                          <span>#{p.shortcutCode}</span>
+                          <span className="text-[10px] text-slate-400 truncate max-w-[85px]">({p.name})</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-3 gap-2 pt-3 border-t border-slate-800 text-[11px] text-slate-300">
                   <div className="p-2 bg-slate-950/60 rounded-xl border border-slate-800/80 flex flex-col items-center gap-1">
@@ -705,8 +797,8 @@ export const CustomerPriceCheckerView: React.FC<CustomerPriceCheckerViewProps> =
                     <span className="font-medium">Live Store Pricing</span>
                   </div>
                   <div className="p-2 bg-slate-950/60 rounded-xl border border-slate-800/80 flex flex-col items-center gap-1">
-                    <Scale className="w-3.5 h-3.5 text-amber-400" />
-                    <span className="font-medium">Weight Rates</span>
+                    <Hash className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="font-medium">Short Code (#1001)</span>
                   </div>
                   <div className="p-2 bg-slate-950/60 rounded-xl border border-slate-800/80 flex flex-col items-center gap-1">
                     <Volume2 className="w-3.5 h-3.5 text-orange-400" />
@@ -751,6 +843,11 @@ export const CustomerPriceCheckerView: React.FC<CustomerPriceCheckerViewProps> =
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-500/20 text-orange-300 border border-orange-500/30 uppercase">
                         {scannedProduct.category || 'General Item'}
                       </span>
+                      {scannedProduct.shortcutCode && (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black font-mono bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1 shadow-xs">
+                          <Hash className="w-3 h-3 text-amber-400" /> Short Code: #{scannedProduct.shortcutCode}
+                        </span>
+                      )}
                       {scannedProduct.sellBy === 'weight' && (
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
                           <Scale className="w-2.5 h-2.5" /> Sold by Weight
@@ -769,7 +866,13 @@ export const CustomerPriceCheckerView: React.FC<CustomerPriceCheckerViewProps> =
                     <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight truncate">
                       {scannedProduct.name}
                     </h2>
-                    <p className="text-[11px] text-slate-400 font-mono flex items-center gap-2">
+                    <p className="text-[11px] text-slate-400 font-mono flex items-center gap-2 flex-wrap">
+                      {scannedProduct.shortcutCode && (
+                        <span className="text-amber-300 font-bold flex items-center gap-0.5">
+                          <Hash className="w-3 h-3 text-amber-400" /> Code: <strong>#{scannedProduct.shortcutCode}</strong>
+                        </span>
+                      )}
+                      {scannedProduct.shortcutCode && <span>&bull;</span>}
                       <span>BC: <strong className="text-slate-200">{scannedProduct.barcode || 'N/A'}</strong></span>
                       {scannedProduct.serialNumber && (
                         <span>&bull; S/N: <strong className="text-slate-200">{scannedProduct.serialNumber}</strong></span>
@@ -862,7 +965,7 @@ export const CustomerPriceCheckerView: React.FC<CustomerPriceCheckerViewProps> =
       {/* Footer Instructions Bar */}
       <footer className="relative z-10 px-4 py-2 border-t border-slate-800/80 bg-slate-950/90 backdrop-blur-md text-center text-[11px] text-slate-500 shrink-0">
         <div className="max-w-4xl mx-auto flex items-center justify-between gap-2">
-          <span>Customer Self-Service Terminal &bull; {store.name}</span>
+          <span>Customer Price Checker Kiosk &bull; {store.name}</span>
           <span className="text-slate-400 font-medium">Logged in as: <strong className="text-slate-200">{currentUser.name}</strong> ({currentUser.username})</span>
         </div>
       </footer>
@@ -878,6 +981,126 @@ export const CustomerPriceCheckerView: React.FC<CustomerPriceCheckerViewProps> =
           }}
         />
       )}
+
+      {/* TOUCH SCREEN SHORT CODE KEYPAD MODAL */}
+      <AnimatePresence>
+        {isKeypadOpen && (
+          <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 15 }}
+              className="bg-slate-900 border-2 border-amber-500/40 rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-4 relative"
+            >
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">
+                    <Calculator className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-white">Enter Product Short Code</h3>
+                    <p className="text-[10px] text-slate-400">Dial 4-digit code (e.g. 1001) from shelf label</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsKeypadOpen(false)}
+                  className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Display Screen */}
+              <div className="bg-slate-950 rounded-2xl border-2 border-amber-500/50 p-3.5 text-center">
+                <span className="text-[10px] font-black uppercase text-amber-400/80 tracking-widest block mb-0.5">
+                  Shelf Short Code
+                </span>
+                <div className="text-3xl font-black font-mono tracking-wider text-amber-300">
+                  #{keypadInput || '----'}
+                </div>
+                {/* Real-time match preview */}
+                {matchedKeypadProduct ? (
+                  <div className="mt-2 text-xs font-bold text-emerald-400 bg-emerald-950/60 py-1.5 px-2.5 rounded-xl border border-emerald-800/60 truncate flex items-center justify-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span className="truncate">{matchedKeypadProduct.name}</span>
+                    <span className="font-mono text-emerald-300 font-extrabold shrink-0">
+                      &bull; {curr} {(matchedKeypadProduct.price || matchedKeypadProduct.pricePerKg || 0).toFixed(2)}
+                    </span>
+                  </div>
+                ) : keypadInput.length >= 2 ? (
+                  <div className="mt-1.5 text-[11px] text-slate-400 font-medium">
+                    Searching for #{keypadInput}...
+                  </div>
+                ) : null}
+              </div>
+
+              {/* 3x4 Numeric Keypad */}
+              <div className="grid grid-cols-3 gap-2">
+                {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(digit => (
+                  <button
+                    key={digit}
+                    type="button"
+                    onClick={() => {
+                      if (keypadInput.length < 8) {
+                        setKeypadInput(keypadInput + digit);
+                      }
+                    }}
+                    className="py-3 bg-slate-800 hover:bg-slate-700 active:bg-amber-600 text-white font-mono text-xl font-black rounded-2xl border border-slate-700 transition-all cursor-pointer shadow-sm active:scale-95"
+                  >
+                    {digit}
+                  </button>
+                ))}
+                {/* Clear Button */}
+                <button
+                  type="button"
+                  onClick={() => setKeypadInput('')}
+                  className="py-3 bg-rose-950/60 hover:bg-rose-900 text-rose-300 font-bold text-xs uppercase tracking-wider rounded-2xl border border-rose-800/60 transition-all cursor-pointer active:scale-95"
+                >
+                  Clear
+                </button>
+                {/* Zero */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (keypadInput.length < 8) {
+                      setKeypadInput(keypadInput + '0');
+                    }
+                  }}
+                  className="py-3 bg-slate-800 hover:bg-slate-700 active:bg-amber-600 text-white font-mono text-xl font-black rounded-2xl border border-slate-700 transition-all cursor-pointer shadow-sm active:scale-95"
+                >
+                  0
+                </button>
+                {/* Backspace */}
+                <button
+                  type="button"
+                  onClick={() => setKeypadInput(keypadInput.slice(0, -1))}
+                  className="py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-sm rounded-2xl border border-slate-700 transition-all cursor-pointer active:scale-95 flex items-center justify-center"
+                  title="Backspace"
+                >
+                  <Delete className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Check Price Submit Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (keypadInput.trim()) {
+                    handleLookupBarcode(keypadInput.trim());
+                    setIsKeypadOpen(false);
+                  }
+                }}
+                disabled={!keypadInput.trim()}
+                className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 disabled:opacity-40 text-white font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg shadow-orange-600/30 transition-all cursor-pointer active:scale-98 flex items-center justify-center gap-2"
+              >
+                <Search className="w-4 h-4" />
+                <span>Check Price for #{keypadInput || '----'}</span>
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

@@ -58,6 +58,8 @@ export const StoreExpensesView: React.FC<StoreExpensesViewProps> = ({
 }) => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [expenseToDelete, setExpenseToDelete] = useState<Expense | null>(null);
+  const [isMonthlyDeleteModalOpen, setIsMonthlyDeleteModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -212,22 +214,26 @@ export const StoreExpensesView: React.FC<StoreExpensesViewProps> = ({
     }
   };
 
-  // Handle Delete Expense
-  const handleDeleteExpense = async (expenseId: string, name: string) => {
-    if (!window.confirm(`Are you sure you want to delete expense "${name}"?`)) return;
+  // Handle Delete Single Expense
+  const confirmDeleteSingleExpense = async () => {
+    if (!expenseToDelete) return;
 
+    setLoading(true);
     try {
-      await deleteDoc(doc(db, 'expenses', expenseId));
-      showNotification('success', 'Expense deleted.');
+      await deleteDoc(doc(db, 'expenses', expenseToDelete.id));
+      showNotification('success', `Expense "${expenseToDelete.name}" deleted.`);
+      setExpenseToDelete(null);
     } catch (err: any) {
       console.error('Error deleting expense:', err);
-      handleFirestoreError(err, OperationType.DELETE, `expenses/${expenseId}`);
-      showNotification('error', 'Failed to delete expense.');
+      handleFirestoreError(err, OperationType.DELETE, `expenses/${expenseToDelete.id}`);
+      showNotification('error', 'Failed to delete expense: ' + err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
   // Handle Delete Monthly Expenses
-  const handleDeleteMonthlyExpenses = async () => {
+  const confirmDeleteMonthlyExpenses = async () => {
     const now = new Date();
     const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const monthlyExpenses = expenses.filter(exp => {
@@ -237,21 +243,22 @@ export const StoreExpensesView: React.FC<StoreExpensesViewProps> = ({
 
     if (monthlyExpenses.length === 0) {
       showNotification('error', 'No expenses found for this month to delete.');
+      setIsMonthlyDeleteModalOpen(false);
       return;
     }
 
-    if (!window.confirm(`Are you sure you want to delete all ${monthlyExpenses.length} monthly expense records for (${currentMonthStr})? This cannot be undone.`)) {
-      return;
-    }
-
+    setLoading(true);
     try {
       for (const exp of monthlyExpenses) {
         await deleteDoc(doc(db, 'expenses', exp.id));
       }
       showNotification('success', `Successfully deleted ${monthlyExpenses.length} monthly expenses.`);
+      setIsMonthlyDeleteModalOpen(false);
     } catch (err: any) {
       console.error('Error deleting monthly expenses:', err);
-      showNotification('error', 'Failed to delete monthly expenses.');
+      showNotification('error', 'Failed to delete monthly expenses: ' + err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -276,7 +283,7 @@ export const StoreExpensesView: React.FC<StoreExpensesViewProps> = ({
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={handleDeleteMonthlyExpenses}
+            onClick={() => setIsMonthlyDeleteModalOpen(true)}
             className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer shrink-0"
             title="Delete all expense records for the current month"
           >
@@ -510,7 +517,7 @@ export const StoreExpensesView: React.FC<StoreExpensesViewProps> = ({
                     <td className="py-3 px-4 text-center whitespace-nowrap">
                       <button
                         type="button"
-                        onClick={() => handleDeleteExpense(exp.id, exp.name)}
+                        onClick={() => setExpenseToDelete(exp)}
                         className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
                         title="Delete expense"
                       >
@@ -686,6 +693,92 @@ export const StoreExpensesView: React.FC<StoreExpensesViewProps> = ({
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+        {/* Single Expense Delete Confirmation Modal */}
+        {expenseToDelete && (
+          <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto shadow-inner">
+                <Trash2 className="w-6 h-6" />
+              </div>
+
+              <div className="text-center space-y-1.5">
+                <h3 className="text-base font-black text-slate-900">Delete Expense?</h3>
+                <p className="text-xs text-slate-500">
+                  Are you sure you want to permanently delete expense <strong className="text-slate-900">"{expenseToDelete.name}"</strong>?
+                </p>
+                <div className="bg-rose-50 text-rose-800 p-2.5 rounded-xl border border-rose-200 text-xs font-mono font-bold mt-2">
+                  Amount: {curr} {Number(expenseToDelete.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setExpenseToDelete(null)}
+                  disabled={loading}
+                  className="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDeleteSingleExpense}
+                  disabled={loading}
+                  className="w-1/2 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs transition-colors cursor-pointer shadow-sm disabled:opacity-50"
+                >
+                  {loading ? 'Deleting...' : 'Yes, Delete'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Delete Monthly Expenses Confirmation Modal */}
+        {isMonthlyDeleteModalOpen && (
+          <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto shadow-inner">
+                <Trash2 className="w-6 h-6" />
+              </div>
+
+              <div className="text-center space-y-1.5">
+                <h3 className="text-base font-black text-slate-900">Delete Current Month's Expenses?</h3>
+                <p className="text-xs text-slate-500">
+                  Are you sure you want to permanently delete all expense records for the current active month? This action cannot be undone.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsMonthlyDeleteModalOpen(false)}
+                  disabled={loading}
+                  className="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDeleteMonthlyExpenses}
+                  disabled={loading}
+                  className="w-1/2 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs transition-colors cursor-pointer shadow-sm disabled:opacity-50"
+                >
+                  {loading ? 'Deleting All...' : 'Confirm Delete All'}
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

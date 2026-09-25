@@ -16,7 +16,7 @@ import {
   OperationType,
   cleanFirestoreData
 } from '../lib/firebase';
-import { Product, Store, UserAccount, CartItem, Sale, SaleItem, ProductReturn, HeldBill, DigitalPaymentMethodConfig } from '../types';
+import { Product, Store, UserAccount, CartItem, Sale, SaleItem, ProductReturn, HeldBill, DigitalPaymentMethodConfig, StoreBankAccount } from '../types';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
 import { ReceiptModal } from './ReceiptModal';
 import { ReturnProductModal } from './ReturnProductModal';
@@ -70,7 +70,15 @@ import {
   Check, 
   QrCode, 
   X,
-  Download
+  Download,
+  Building2,
+  Copy,
+  Info,
+  Landmark,
+  CheckCheck,
+  Star,
+  Edit2,
+  ShieldCheck
 } from 'lucide-react';
 
 interface CashCounterViewProps {
@@ -107,6 +115,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
   const [selectedDigitalProvider, setSelectedDigitalProvider] = useState<string>('');
   const [digitalTransactionRef, setDigitalTransactionRef] = useState<string>('');
   const [viewingDigitalQr, setViewingDigitalQr] = useState<DigitalPaymentMethodConfig | null>(null);
+  const [viewingBankQr, setViewingBankQr] = useState<StoreBankAccount | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [isCashModalOpen, setIsCashModalOpen] = useState(false);
@@ -135,17 +144,129 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
       if (active.length > 0) return active;
     }
     return [
-      { id: 'method-easypaisa', name: 'EasyPaisa', accountTitle: '', accountNumber: '', isActive: true, instructions: 'EasyPaisa mobile transfer' },
-      { id: 'method-jazzcash', name: 'JazzCash', accountTitle: '', accountNumber: '', isActive: true, instructions: 'JazzCash mobile account' },
-      { id: 'method-bank', name: 'Bank Transfer / Raast', accountTitle: '', accountNumber: '', isActive: true, instructions: 'Direct Bank or Raast' }
+      { id: 'method-card', name: 'Card', isActive: true, instructions: 'Debit / Credit Card POS swipe or tap' },
+      { id: 'method-easypaisa', name: 'EasyPaisa', isActive: true, instructions: 'EasyPaisa mobile account transfer' },
+      { id: 'method-jazzcash', name: 'JazzCash', isActive: true, instructions: 'JazzCash mobile account' },
+      { id: 'method-sadapay', name: 'SadaPay', isActive: true, instructions: 'SadaPay mobile wallet' },
+      { id: 'method-nayapay', name: 'NayaPay', isActive: true, instructions: 'NayaPay mobile wallet' },
+      { id: 'method-bank', name: 'Raast / Bank Transfer', isActive: true, instructions: 'Direct Bank or Raast interbank' }
     ];
   }, [store?.digitalPaymentMethods]);
+
+  // Custom / Manual Digital Payment method state
+  const [isCustomDigitalSelected, setIsCustomDigitalSelected] = useState<boolean>(false);
+  const [customDigitalProviderInput, setCustomDigitalProviderInput] = useState<string>('');
+
+  // Active store bank accounts configured by Admin in Payment Method option
+  const storeBankAccounts: StoreBankAccount[] = useMemo(() => {
+    if (store?.bankAccounts && store.bankAccounts.length > 0) {
+      const active = store.bankAccounts.filter(b => b.isActive !== false);
+      if (active.length > 0) return active;
+    }
+    if (store?.bankAccount && store.bankAccount.isActive !== false) {
+      return [store.bankAccount];
+    }
+    return [];
+  }, [store?.bankAccounts, store?.bankAccount]);
+
+  const [selectedBankAccountId, setSelectedBankAccountId] = useState<string>('');
+  const [copiedBankKey, setCopiedBankKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (storeBankAccounts.length > 0) {
+      const primary = storeBankAccounts.find(b => b.isPrimary) || storeBankAccounts[0];
+      setSelectedBankAccountId(primary.id);
+    }
+  }, [storeBankAccounts]);
+
+  const activeBankAccount = useMemo(() => {
+    return storeBankAccounts.find(b => b.id === selectedBankAccountId) || storeBankAccounts[0] || null;
+  }, [storeBankAccounts, selectedBankAccountId]);
+
+  const handleCopyBankAccountField = (text: string, key: string) => {
+    navigator.clipboard?.writeText(text);
+    setCopiedBankKey(key);
+    setTimeout(() => setCopiedBankKey(null), 2500);
+    showNotification('success', `Copied "${text}" to clipboard!`);
+  };
 
   // Auto-select first active platform if none selected
   useEffect(() => {
     if (!selectedDigitalProvider && configuredDigitalMethods.length > 0) {
       setSelectedDigitalProvider(configuredDigitalMethods[0].name);
     }
+  }, [configuredDigitalMethods, selectedDigitalProvider]);
+
+  // Helper to format styling and icons for each payment method
+  const getPaymentMethodMeta = (name: string) => {
+    const n = name.toLowerCase();
+    if (n.includes('cash') && !n.includes('jazz')) {
+      return {
+        icon: Banknote,
+        color: 'emerald',
+        bgClass: 'bg-emerald-50/90 text-emerald-900 border-emerald-200 hover:border-emerald-400',
+        activeClass: 'bg-emerald-600 text-white border-emerald-700 shadow-sm ring-2 ring-emerald-400/40 font-bold'
+      };
+    }
+    if (n.includes('card') || n.includes('pos') || n.includes('visa') || n.includes('master')) {
+      return {
+        icon: CreditCard,
+        color: 'indigo',
+        bgClass: 'bg-indigo-50/90 text-indigo-950 border-indigo-200 hover:border-indigo-400',
+        activeClass: 'bg-indigo-600 text-white border-indigo-700 shadow-sm ring-2 ring-indigo-400/40 font-bold'
+      };
+    }
+    if (n.includes('easy') || n.includes('paisa')) {
+      return {
+        icon: Smartphone,
+        color: 'emerald',
+        bgClass: 'bg-emerald-50/90 text-emerald-950 border-emerald-200 hover:border-emerald-400',
+        activeClass: 'bg-emerald-600 text-white border-emerald-700 shadow-sm ring-2 ring-emerald-400/40 font-bold'
+      };
+    }
+    if (n.includes('jazz')) {
+      return {
+        icon: Smartphone,
+        color: 'amber',
+        bgClass: 'bg-amber-50/90 text-amber-950 border-amber-200 hover:border-amber-400',
+        activeClass: 'bg-amber-600 text-white border-amber-700 shadow-sm ring-2 ring-amber-400/40 font-bold'
+      };
+    }
+    if (n.includes('sada')) {
+      return {
+        icon: Smartphone,
+        color: 'teal',
+        bgClass: 'bg-teal-50/90 text-teal-950 border-teal-200 hover:border-teal-400',
+        activeClass: 'bg-teal-600 text-white border-teal-700 shadow-sm ring-2 ring-teal-400/40 font-bold'
+      };
+    }
+    if (n.includes('naya')) {
+      return {
+        icon: Smartphone,
+        color: 'orange',
+        bgClass: 'bg-orange-50/90 text-orange-950 border-orange-200 hover:border-orange-400',
+        activeClass: 'bg-orange-600 text-white border-orange-700 shadow-sm ring-2 ring-orange-400/40 font-bold'
+      };
+    }
+    if (n.includes('bank') || n.includes('raast') || n.includes('hbl') || n.includes('meezan') || n.includes('mcb')) {
+      return {
+        icon: Landmark,
+        color: 'violet',
+        bgClass: 'bg-violet-50/90 text-violet-950 border-violet-200 hover:border-violet-400',
+        activeClass: 'bg-violet-600 text-white border-violet-700 shadow-sm ring-2 ring-violet-400/40 font-bold'
+      };
+    }
+    return {
+      icon: CreditCard,
+      color: 'blue',
+      bgClass: 'bg-blue-50/90 text-blue-950 border-blue-200 hover:border-blue-400',
+      activeClass: 'bg-blue-600 text-white border-blue-700 shadow-sm ring-2 ring-blue-400/40 font-bold'
+    };
+  };
+
+  // Selected Digital Payment Method configuration (instructions, QR)
+  const selectedMethodConfig = useMemo(() => {
+    return configuredDigitalMethods.find(m => m.name.toLowerCase().trim() === selectedDigitalProvider.toLowerCase().trim()) || null;
   }, [configuredDigitalMethods, selectedDigitalProvider]);
 
   // Weight Entry Modal State
@@ -193,6 +314,8 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
   const [showFullScreenShortcuts, setShowFullScreenShortcuts] = useState(false);
   const [fullScreenShortcutSearch, setFullScreenShortcutSearch] = useState('');
   const [fullScreenCategory, setFullScreenCategory] = useState<string>('all');
+  const [scannerLastScannedStatus, setScannerLastScannedStatus] = useState<string | null>(null);
+  const isProcessingScanRef = useRef<boolean>(false);
   const fullScreenScanInputRef = useRef<HTMLInputElement | null>(null);
 
   // Auto-focus input when entering full screen or cart updates
@@ -200,7 +323,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     if (isCartFullScreen) {
       const timer = setTimeout(() => {
         fullScreenScanInputRef.current?.focus();
-      }, 150);
+      }, 100);
       return () => clearTimeout(timer);
     }
   }, [isCartFullScreen]);
@@ -277,6 +400,31 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     setBarcodeInput('');
   }, [isVoiceAllowed, voiceEnabled]);
 
+  // Reliable autofocus helper that works in both standard mode and full-screen station
+  const focusActiveScanner = useCallback(() => {
+    const doFocus = () => {
+      if (isCartFullScreen) {
+        if (fullScreenScanInputRef.current) {
+          fullScreenScanInputRef.current.focus();
+        }
+      } else {
+        if (barcodeInputRef.current) {
+          barcodeInputRef.current.focus();
+        }
+      }
+    };
+
+    doFocus();
+    requestAnimationFrame(doFocus);
+    setTimeout(doFocus, 25);
+    setTimeout(doFocus, 80);
+    setTimeout(doFocus, 180);
+  }, [isCartFullScreen]);
+
+  const ensureBarcodeFocus = useCallback(() => {
+    focusActiveScanner();
+  }, [focusActiveScanner]);
+
   // Add Product to Cart by Full Barcode, Serial Number, or 4-digit Shortcut Code (Hands-free automatic support)
   const handleAddByBarcode = useCallback((targetBarcodeOrSerial: string, isExternalScanner: boolean = false) => {
     const rawCode = targetBarcodeOrSerial ? targetBarcodeOrSerial.replace(/[\r\n\t]/g, '').trim() : '';
@@ -323,6 +471,9 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
       playScanErrorBeep();
       showNotification('error', `No product matches "${rawCode}". Check barcode or 4-digit shortcut code.`);
       setBarcodeInput('');
+      setFullScreenScanInput('');
+      if (barcodeInputRef.current) barcodeInputRef.current.value = '';
+      if (fullScreenScanInputRef.current) fullScreenScanInputRef.current.value = '';
       ensureBarcodeFocus();
       return;
     }
@@ -334,6 +485,9 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
         speakMessage(`${found.name} is out of stock`);
       }
       setBarcodeInput('');
+      setFullScreenScanInput('');
+      if (barcodeInputRef.current) barcodeInputRef.current.value = '';
+      if (fullScreenScanInputRef.current) fullScreenScanInputRef.current.value = '';
       ensureBarcodeFocus();
       return;
     }
@@ -345,6 +499,9 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
       setWeightPromptProduct(found);
       setIsWeightModalOpen(true);
       setBarcodeInput('');
+      setFullScreenScanInput('');
+      if (barcodeInputRef.current) barcodeInputRef.current.value = '';
+      if (fullScreenScanInputRef.current) fullScreenScanInputRef.current.value = '';
       return;
     }
 
@@ -389,30 +546,110 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     });
 
     setBarcodeInput('');
+    setFullScreenScanInput('');
+    if (barcodeInputRef.current) barcodeInputRef.current.value = '';
+    if (fullScreenScanInputRef.current) fullScreenScanInputRef.current.value = '';
     ensureBarcodeFocus();
-  }, [products, isVoiceAllowed, voiceEnabled]);
+  }, [products, isVoiceAllowed, voiceEnabled, ensureBarcodeFocus]);
 
-  // Auto focus barcode input for fast hardware USB barcode scanner support
-  useEffect(() => {
-    const isAnyModalOpen = isScannerOpen || isReceiptOpen || isReturnModalOpen || isReturnSlipOpen || isCashModalOpen || isWeightModalOpen;
-    if (!isAnyModalOpen && barcodeInputRef.current) {
-      barcodeInputRef.current.focus();
-      barcodeInputRef.current.select();
-    }
-  }, [isScannerOpen, isReceiptOpen, isReturnModalOpen, isReturnSlipOpen, isCashModalOpen, isWeightModalOpen, cart.length]);
+  // Dedicated seamless scanner processor for Full Screen Mode:
+  // After scanning 1st product, immediately cleans & readies area for second product
+  // so cashier never needs to move cursor or click on that area.
+  const handleProcessFullScreenScan = useCallback((forcedCode?: string) => {
+    if (isProcessingScanRef.current) return;
+    
+    const inputVal = forcedCode !== undefined 
+      ? forcedCode 
+      : (fullScreenScanInputRef.current?.value || fullScreenScanInput || '');
+    const cleanVal = inputVal.replace(/[\r\n\t]/g, '').trim();
 
-  const ensureBarcodeFocus = () => {
-    setTimeout(() => {
-      if (barcodeInputRef.current) {
-        barcodeInputRef.current.focus();
-        barcodeInputRef.current.select();
+    if (!cleanVal) {
+      if (fullScreenScanInputRef.current) {
+        fullScreenScanInputRef.current.value = '';
+        fullScreenScanInputRef.current.focus();
       }
-    }, 50);
-  };
+      setFullScreenScanInput('');
+      return;
+    }
+
+    isProcessingScanRef.current = true;
+
+    // Immediately clear DOM value and state before processing so any follow-up keystrokes start on fresh input
+    if (fullScreenScanInputRef.current) {
+      fullScreenScanInputRef.current.value = '';
+    }
+    setFullScreenScanInput('');
+
+    // Process product add
+    handleAddByBarcode(cleanVal, true);
+
+    // Provide instant visual confirmation that scanner is armed & ready for next item
+    setScannerLastScannedStatus(`Scanned "${cleanVal}" • Ready for next product`);
+    setTimeout(() => {
+      setScannerLastScannedStatus(null);
+    }, 2000);
+
+    // Multi-phase focus retention and suffix clearing (catches asynchronous scanner \r\n suffixes)
+    const refocusAndWipe = () => {
+      if (fullScreenScanInputRef.current) {
+        fullScreenScanInputRef.current.value = '';
+        fullScreenScanInputRef.current.focus();
+      }
+      setFullScreenScanInput('');
+    };
+
+    refocusAndWipe();
+    requestAnimationFrame(refocusAndWipe);
+    setTimeout(refocusAndWipe, 30);
+    setTimeout(refocusAndWipe, 80);
+    setTimeout(refocusAndWipe, 160);
+    setTimeout(() => {
+      refocusAndWipe();
+      isProcessingScanRef.current = false;
+    }, 250);
+  }, [fullScreenScanInput, handleAddByBarcode]);
+
+  // Auto focus active barcode input for fast hardware USB barcode scanner support
+  useEffect(() => {
+    const isAnyModalOpen = isScannerOpen || isReceiptOpen || isReturnModalOpen || isReturnSlipOpen || isCashModalOpen || isWeightModalOpen || isHeldBillsModalOpen || isShortcutsModalOpen || Boolean(viewingDigitalQr) || Boolean(viewingBankQr);
+    if (!isAnyModalOpen) {
+      focusActiveScanner();
+    }
+  }, [isScannerOpen, isReceiptOpen, isReturnModalOpen, isReturnSlipOpen, isCashModalOpen, isWeightModalOpen, isHeldBillsModalOpen, isShortcutsModalOpen, viewingDigitalQr, viewingBankQr, isCartFullScreen, cart.length, focusActiveScanner]);
+
+  // Keep scanning area in full-screen mode continuously ready after adding items
+  useEffect(() => {
+    if (isCartFullScreen) {
+      focusActiveScanner();
+      const timer = setTimeout(focusActiveScanner, 60);
+      return () => clearTimeout(timer);
+    }
+  }, [cart, isCartFullScreen, focusActiveScanner]);
+
+  // Continuous click-retention in full screen so cashier never has to move cursor or click
+  useEffect(() => {
+    if (!isCartFullScreen) return;
+
+    const handleWindowClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+
+      const isAnyModalOpen = isScannerOpen || isReceiptOpen || isReturnModalOpen || isReturnSlipOpen || isCashModalOpen || isWeightModalOpen || isHeldBillsModalOpen || isShortcutsModalOpen || Boolean(viewingDigitalQr) || Boolean(viewingBankQr);
+      if (isAnyModalOpen) return;
+
+      const isInteractive = target.closest('button, input, select, textarea, a, [role="button"]');
+      if (isInteractive) return;
+
+      focusActiveScanner();
+    };
+
+    window.addEventListener('click', handleWindowClick);
+    return () => window.removeEventListener('click', handleWindowClick);
+  }, [isCartFullScreen, isScannerOpen, isReceiptOpen, isReturnModalOpen, isReturnSlipOpen, isCashModalOpen, isWeightModalOpen, isHeldBillsModalOpen, isShortcutsModalOpen, viewingDigitalQr, viewingBankQr, focusActiveScanner]);
 
   // External Hardware Barcode Scanner Listener (Hands-free continuous scanning without clicking any button)
   useEffect(() => {
-    const isAnyModalOpen = isScannerOpen || isReceiptOpen || isReturnModalOpen || isReturnSlipOpen || isCashModalOpen;
+    const isAnyModalOpen = isScannerOpen || isReceiptOpen || isReturnModalOpen || isReturnSlipOpen || isCashModalOpen || isWeightModalOpen || isHeldBillsModalOpen || isShortcutsModalOpen || Boolean(viewingDigitalQr) || Boolean(viewingBankQr);
     if (isAnyModalOpen) {
       return;
     }
@@ -421,9 +658,10 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
       const activeEl = document.activeElement;
       const tagName = activeEl?.tagName?.toUpperCase();
       const isInputActive = tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT';
+      const isScannerInput = activeEl === barcodeInputRef.current || activeEl === fullScreenScanInputRef.current;
       
-      // If user is actively typing in ANY input field or modal, skip auto-scanner buffer
-      if (isInputActive && activeEl !== barcodeInputRef.current) {
+      // If user is actively typing in ANY OTHER input field (e.g. search, modal), skip auto-scanner buffer
+      if (isInputActive && !isScannerInput) {
         return;
       }
 
@@ -433,42 +671,59 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
 
       // When Enter is received from external scanner or keyboard
       if (e.key === 'Enter') {
-        const isFocusedOnBarcodeInput = activeEl === barcodeInputRef.current;
-        const scannedText = isFocusedOnBarcodeInput
-          ? (barcodeInputRef.current?.value || barcodeInput || '').trim()
+        if (isCartFullScreen && activeEl === fullScreenScanInputRef.current) {
+          // Handled directly by input onKeyDown/onSubmit, do not process twice
+          return;
+        }
+
+        const scannedText = isScannerInput
+          ? ((activeEl as HTMLInputElement)?.value || (isCartFullScreen ? fullScreenScanInput : barcodeInput) || '').trim()
           : scannerBufferRef.current.trim();
 
         if (scannedText) {
           e.preventDefault();
-          handleAddByBarcode(scannedText, true);
+          if (isCartFullScreen) {
+            handleProcessFullScreenScan(scannedText);
+          } else {
+            handleAddByBarcode(scannedText, true);
+          }
           scannerBufferRef.current = '';
           setBarcodeInput('');
-          if (barcodeInputRef.current) {
-            barcodeInputRef.current.value = '';
-            barcodeInputRef.current.focus();
+          setFullScreenScanInput('');
+          if (barcodeInputRef.current) barcodeInputRef.current.value = '';
+          if (fullScreenScanInputRef.current) {
+            fullScreenScanInputRef.current.value = '';
+            fullScreenScanInputRef.current.focus();
           }
+          focusActiveScanner();
         }
         return;
       }
 
       // If key is printable character and user is NOT typing in an active input field
-      if (!isInputActive && e.key.length === 1) {
+      if (!isInputActive && e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
         if (timeDiff > 250) {
           scannerBufferRef.current = e.key;
         } else {
           scannerBufferRef.current += e.key;
         }
 
-        // Always keep focus inside barcode input
-        if (barcodeInputRef.current) {
-          barcodeInputRef.current.focus();
+        // Always keep focus inside active scanner input
+        if (isCartFullScreen) {
+          if (fullScreenScanInputRef.current) {
+            fullScreenScanInputRef.current.focus();
+          }
+        } else {
+          if (barcodeInputRef.current) {
+            barcodeInputRef.current.focus();
+          }
         }
       }
     };
 
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [isCashModalOpen, isReceiptOpen, isReturnModalOpen, isReturnSlipOpen, isScannerOpen, barcodeInput, handleAddByBarcode]);
+  }, [isCashModalOpen, isReceiptOpen, isReturnModalOpen, isReturnSlipOpen, isScannerOpen, barcodeInput, fullScreenScanInput, isCartFullScreen, handleAddByBarcode, handleProcessFullScreenScan, focusActiveScanner]);
 
   // Subscribe to products, sales, and returns in real-time for this store
   useEffect(() => {
@@ -961,11 +1216,15 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     if (paymentMethod === 'cash') {
       setIsCashModalOpen(true);
     } else {
-      // Compulsory selection of digital payment provider
-      if (!selectedDigitalProvider) {
-        showNotification('error', 'Please select one digital payment platform (e.g. EasyPaisa, JazzCash) to complete online checkout.');
+      const activeProvider = isCustomDigitalSelected
+        ? (customDigitalProviderInput.trim() || 'Other Digital')
+        : (selectedDigitalProvider || (configuredDigitalMethods[0]?.name || 'Card'));
+
+      if (!activeProvider) {
+        showNotification('error', 'Please select or enter a digital payment platform (e.g. Card, EasyPaisa, JazzCash).');
         return;
       }
+      setSelectedDigitalProvider(activeProvider);
       executeCheckoutSale(cartTotal, 0);
     }
   };
@@ -1041,6 +1300,10 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
         const expiresAtIso = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
         // 2. Create Sale Record
+        const finalDigitalProvider = isCustomDigitalSelected
+          ? (customDigitalProviderInput.trim() || 'Other Digital')
+          : (selectedDigitalProvider || (configuredDigitalMethods[0]?.name || 'Card'));
+
         const saleRecordData: Record<string, any> = {
           id: newSaleDocRef.id,
           storeId: store.id || '',
@@ -1061,7 +1324,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           saleRecordData.cashReceived = cashReceived ?? cartTotal;
           saleRecordData.changeReturned = changeReturned ?? 0;
         } else {
-          saleRecordData.onlinePaymentProvider = selectedDigitalProvider || 'Online / Digital';
+          saleRecordData.onlinePaymentProvider = finalDigitalProvider;
           if (digitalTransactionRef.trim()) {
             saleRecordData.onlineTransactionId = digitalTransactionRef.trim();
           }
@@ -1448,7 +1711,8 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                     id="barcode-hardware-input"
                     ref={barcodeInputRef}
                     type="text"
-                    autoFocus
+                    autoFocus={!isCartFullScreen}
+                    tabIndex={isCartFullScreen ? -1 : 1}
                     autoComplete="off"
                     autoCorrect="off"
                     spellCheck={false}
@@ -1844,111 +2108,176 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
             {/* PAYMENT METHOD & TOTAL SUMMARY */}
             <div className="pt-4 border-t border-slate-200 space-y-4">
               
-              {/* Payment Method Selector */}
+              {/* Payment Method Selector (All Admin-Selected & Configured Methods) */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                  Select Payment Method *
-                </label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                    Payment Method
+                  </label>
+                  <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
+                    {configuredDigitalMethods.length + 1} Admin Configured
+                  </span>
+                </div>
+
+                {/* Direct Grid of All Payment Methods (Cash + All Admin-Configured Digital Platforms + Other) */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {/* 1. CASH PAYMENT */}
                   <button
                     id="btn-payment-cash"
                     type="button"
-                    onClick={() => setPaymentMethod('cash')}
-                    className={`py-3 px-3 rounded-xl border text-xs font-extrabold flex items-center justify-center gap-2 cursor-pointer transition-all ${
+                    onClick={() => {
+                      setPaymentMethod('cash');
+                      setIsCustomDigitalSelected(false);
+                    }}
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer relative ${
                       paymentMethod === 'cash'
-                        ? 'bg-emerald-50 border-emerald-500 text-emerald-800 shadow-sm'
-                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900'
+                        ? 'bg-emerald-600 text-white border-emerald-700 shadow-md ring-2 ring-emerald-400/40 font-bold'
+                        : 'bg-emerald-50/70 border-emerald-200 hover:border-emerald-400 text-emerald-950'
                     }`}
                   >
-                    <Banknote className="w-4 h-4" /> CASH PAYMENT
+                    <div className="flex items-center justify-between mb-0.5">
+                      <Banknote className={`w-4 h-4 ${paymentMethod === 'cash' ? 'text-white' : 'text-emerald-600'}`} />
+                      {paymentMethod === 'cash' && <Check className="w-3.5 h-3.5 text-white" />}
+                    </div>
+                    <div className="font-extrabold text-xs truncate">Cash</div>
+                    <div className={`text-[10px] truncate ${paymentMethod === 'cash' ? 'text-emerald-100' : 'text-slate-400'}`}>
+                      Physical Cash
+                    </div>
                   </button>
 
+                  {/* 2. ALL ADMIN-CONFIGURED DIGITAL METHODS (Card, EasyPaisa, JazzCash, SadaPay, etc.) */}
+                  {configuredDigitalMethods.map((method) => {
+                    const isSelected = paymentMethod === 'online' && !isCustomDigitalSelected && selectedDigitalProvider.toLowerCase().trim() === method.name.toLowerCase().trim();
+                    const meta = getPaymentMethodMeta(method.name);
+                    const IconComponent = meta.icon;
+
+                    return (
+                      <button
+                        key={method.id}
+                        type="button"
+                        onClick={() => {
+                          setPaymentMethod('online');
+                          setIsCustomDigitalSelected(false);
+                          setSelectedDigitalProvider(method.name);
+                        }}
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer relative ${
+                          isSelected
+                            ? meta.activeClass
+                            : `${meta.bgClass}`
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-0.5">
+                          <IconComponent className={`w-4 h-4 ${isSelected ? 'text-white' : 'text-slate-600'}`} />
+                          <div className="flex items-center gap-1">
+                            {method.qrCodeUrl && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setViewingDigitalQr(method);
+                                }}
+                                className={`text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 shrink-0 ${
+                                  isSelected
+                                    ? 'bg-white/20 text-white hover:bg-white/30'
+                                    : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                }`}
+                                title="View QR Code"
+                              >
+                                <QrCode className="w-3 h-3" /> QR
+                              </button>
+                            )}
+                            {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
+                          </div>
+                        </div>
+                        <div className="font-extrabold text-xs truncate">{method.name}</div>
+                        <div className={`text-[10px] truncate ${isSelected ? 'text-white/80' : 'text-slate-400'}`}>
+                          {method.instructions || 'Digital Payment'}
+                        </div>
+                      </button>
+                    );
+                  })}
+
+                  {/* 3. OTHER / CUSTOM MANUAL METHOD */}
                   <button
-                    id="btn-payment-online"
                     type="button"
                     onClick={() => {
                       setPaymentMethod('online');
-                      if (!selectedDigitalProvider && configuredDigitalMethods.length > 0) {
-                        setSelectedDigitalProvider(configuredDigitalMethods[0].name);
-                      }
+                      setIsCustomDigitalSelected(true);
                     }}
-                    className={`py-3 px-3 rounded-xl border text-xs font-extrabold flex items-center justify-center gap-2 cursor-pointer transition-all ${
-                      paymentMethod === 'online'
-                        ? 'bg-blue-50 border-blue-500 text-blue-800 shadow-sm ring-2 ring-blue-500/20'
-                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900'
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer relative ${
+                      paymentMethod === 'online' && isCustomDigitalSelected
+                        ? 'bg-blue-600 text-white border-blue-700 shadow-md ring-2 ring-blue-400/40 font-bold'
+                        : 'bg-slate-50 border-dashed border-slate-300 hover:border-blue-400 text-slate-700 hover:bg-blue-50/50'
                     }`}
                   >
-                    <CreditCard className="w-4 h-4" /> ONLINE / DIGITAL
+                    <div className="flex items-center justify-between mb-0.5">
+                      <Edit2 className={`w-4 h-4 ${paymentMethod === 'online' && isCustomDigitalSelected ? 'text-white' : 'text-slate-500'}`} />
+                      {paymentMethod === 'online' && isCustomDigitalSelected && <Check className="w-3.5 h-3.5 text-white" />}
+                    </div>
+                    <div className="font-extrabold text-xs truncate">Other / Manual</div>
+                    <div className={`text-[10px] truncate ${paymentMethod === 'online' && isCustomDigitalSelected ? 'text-blue-100' : 'text-slate-400'}`}>
+                      Custom Method
+                    </div>
                   </button>
                 </div>
 
-                {/* DIGITAL PAYMENT PLATFORMS SELECTOR (COMPULSORY WHEN ONLINE IS CHOSEN) */}
+                {/* ACTIVE DIGITAL METHOD DETAILS (INSTRUCTIONS, QR PREVIEW & TRX ID) */}
                 {paymentMethod === 'online' && (
                   <motion.div
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: 'auto' }}
                     exit={{ opacity: 0, height: 0 }}
-                    className="mt-3 p-3.5 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-3"
+                    className="mt-3 p-3.5 bg-blue-50/80 border border-blue-200 rounded-2xl space-y-3"
                   >
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] font-black text-blue-950 uppercase tracking-wider flex items-center gap-1.5">
-                        <Smartphone className="w-3.5 h-3.5 text-blue-600" />
-                        Select Digital Platform
-                      </label>
-                      <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 border border-rose-200">
-                        * Compulsory
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {configuredDigitalMethods.map((method) => {
-                        const isSelected = selectedDigitalProvider === method.name;
-                        return (
-                          <button
-                            key={method.id}
-                            type="button"
-                            onClick={() => setSelectedDigitalProvider(method.name)}
-                            className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer relative ${
-                              isSelected
-                                ? 'bg-white border-blue-600 shadow-xs ring-2 ring-blue-500/30 text-slate-900'
-                                : 'bg-white/70 border-slate-200 hover:border-blue-300 text-slate-700'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="font-extrabold text-xs flex items-center gap-1">
-                                {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
-                                {method.name}
+                    {/* Manual name entry if "Other" is chosen */}
+                    {isCustomDigitalSelected ? (
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-black uppercase text-blue-900">
+                          Custom Payment Method Name *
+                        </label>
+                        <input
+                          type="text"
+                          autoFocus
+                          placeholder="e.g. Voucher, Gift Card, Cheque, Custom POS..."
+                          value={customDigitalProviderInput}
+                          onChange={(e) => setCustomDigitalProviderInput(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-blue-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    ) : (
+                      selectedMethodConfig && (
+                        <div className="flex items-center justify-between bg-white p-2.5 rounded-xl border border-blue-200">
+                          <div>
+                            <div className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                              <span>{selectedMethodConfig.name}</span>
+                              <span className="text-[10px] text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded font-bold">
+                                Active Method
                               </span>
-                              {method.qrCodeUrl && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setViewingDigitalQr(method);
-                                  }}
-                                  className="text-[10px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-1.5 py-0.5 rounded flex items-center gap-0.5"
-                                  title="View QR Code"
-                                >
-                                  <QrCode className="w-3 h-3" /> QR
-                                </button>
-                              )}
                             </div>
-                            {(method.accountTitle || method.accountNumber) && (
-                              <div className="text-[10px] text-slate-500 mt-1 truncate">
-                                {method.accountNumber ? `A/C: ${method.accountNumber}` : ''}
-                                {method.accountTitle && method.accountNumber ? ' • ' : ''}
-                                {method.accountTitle ? method.accountTitle : ''}
+                            {selectedMethodConfig.instructions && (
+                              <div className="text-[11px] text-slate-600 mt-0.5">
+                                {selectedMethodConfig.instructions}
                               </div>
                             )}
-                          </button>
-                        );
-                      })}
-                    </div>
+                          </div>
+                          {selectedMethodConfig.qrCodeUrl && (
+                            <button
+                              type="button"
+                              onClick={() => setViewingDigitalQr(selectedMethodConfig)}
+                              className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                            >
+                              <QrCode className="w-3.5 h-3.5" /> View QR
+                            </button>
+                          )}
+                        </div>
+                      )
+                    )}
 
                     {/* Optional Reference / Transaction ID Input */}
-                    <div className="pt-2 border-t border-blue-200/60">
+                    <div>
                       <label className="block text-[10px] font-bold text-slate-600 mb-1">
-                        Transaction Ref / Confirmation ID (Optional)
+                        Transaction Ref / TRX ID (Optional)
                       </label>
                       <input
                         type="text"
@@ -2017,7 +2346,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
 
         {/* Digital Payment Provider QR & Account Details Modal */}
         {viewingDigitalQr && (
-          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto overscroll-contain">
+          <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto overscroll-contain">
             <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-slate-200 text-center space-y-4 animate-scale-up my-auto max-h-[92vh] overflow-y-auto overscroll-contain custom-scrollbar">
               <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                 <div className="flex items-center gap-2">
@@ -2048,29 +2377,121 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                 </div>
               )}
 
-              <div className="bg-blue-50/70 p-3.5 rounded-2xl border border-blue-200 text-left space-y-1 text-xs">
-                {viewingDigitalQr.accountTitle && (
-                  <div>
-                    <span className="text-slate-500 font-medium">Account Title: </span>
-                    <strong className="text-slate-900">{viewingDigitalQr.accountTitle}</strong>
-                  </div>
-                )}
-                {viewingDigitalQr.accountNumber && (
-                  <div>
-                    <span className="text-slate-500 font-medium">Account Number: </span>
-                    <strong className="text-blue-700 font-mono text-sm">{viewingDigitalQr.accountNumber}</strong>
-                  </div>
-                )}
-                {viewingDigitalQr.instructions && (
-                  <div className="text-[11px] text-slate-500 pt-1 border-t border-blue-100">
+              {viewingDigitalQr.instructions && (
+                <div className="bg-blue-50/70 p-3.5 rounded-2xl border border-blue-200 text-left text-xs">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 block mb-0.5">Instructions:</span>
+                  <div className="text-slate-700">
                     {viewingDigitalQr.instructions}
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setViewingDigitalQr(null)}
+                className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl cursor-pointer shadow-sm transition-colors"
+              >
+                Close QR Code
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Store Bank Account QR & Full Transfer Details Modal */}
+        {viewingBankQr && (
+          <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto overscroll-contain">
+            <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-slate-200 text-center space-y-4 animate-scale-up my-auto max-h-[92vh] overflow-y-auto overscroll-contain custom-scrollbar">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-blue-600" />
+                  <h3 className="text-base font-black text-slate-900">{viewingBankQr.bankName}</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setViewingBankQr(null)}
+                  className="p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {viewingBankQr.qrCodeUrl ? (
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 inline-block">
+                  <img
+                    src={viewingBankQr.qrCodeUrl}
+                    alt={`${viewingBankQr.bankName} QR`}
+                    className="w-56 h-56 object-contain mx-auto rounded-xl shadow-xs"
+                  />
+                </div>
+              ) : (
+                <div className="py-8 bg-slate-50 rounded-2xl border border-dashed border-slate-300 text-slate-400 text-xs">
+                  <QrCode className="w-12 h-12 mx-auto mb-2 opacity-50 text-slate-400" />
+                  No QR picture uploaded for {viewingBankQr.bankName}.
+                </div>
+              )}
+
+              <div className="bg-blue-50/70 p-3.5 rounded-2xl border border-blue-200 text-left space-y-2 text-xs">
+                <div>
+                  <span className="text-slate-500 font-medium block text-[10px] uppercase">Account Title:</span>
+                  <strong className="text-slate-900 text-sm">{viewingBankQr.accountTitle}</strong>
+                </div>
+
+                <div className="flex items-center justify-between gap-2 bg-white p-2.5 rounded-xl border border-blue-100">
+                  <div className="min-w-0">
+                    <span className="text-slate-500 font-medium block text-[10px] uppercase">Account Number:</span>
+                    <strong className="text-blue-700 font-mono text-sm block truncate select-all">{viewingBankQr.accountNumber}</strong>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyBankAccountField(viewingBankQr.accountNumber, `modal-acc-${viewingBankQr.id}`)}
+                    className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-lg text-xs cursor-pointer shrink-0 transition-colors"
+                  >
+                    Copy
+                  </button>
+                </div>
+
+                {viewingBankQr.iban && (
+                  <div className="flex items-center justify-between gap-2 bg-white p-2.5 rounded-xl border border-blue-100">
+                    <div className="min-w-0">
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">IBAN:</span>
+                      <strong className="text-slate-800 font-mono text-xs block truncate select-all">{viewingBankQr.iban}</strong>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyBankAccountField(viewingBankQr.iban!, `modal-iban-${viewingBankQr.id}`)}
+                      className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-lg text-xs cursor-pointer shrink-0 transition-colors"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                )}
+
+                {viewingBankQr.raastId && (
+                  <div className="flex items-center justify-between gap-2 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200">
+                    <div className="min-w-0">
+                      <span className="text-emerald-700 font-bold block text-[10px] uppercase">Raast ID:</span>
+                      <strong className="text-emerald-950 font-mono text-xs block truncate select-all">{viewingBankQr.raastId}</strong>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyBankAccountField(viewingBankQr.raastId!, `modal-raast-${viewingBankQr.id}`)}
+                      className="px-2 py-1 bg-white hover:bg-emerald-100 text-emerald-800 font-bold rounded-lg text-xs cursor-pointer shrink-0 transition-colors"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                )}
+
+                {viewingBankQr.instructions && (
+                  <div className="text-[11px] text-slate-600 pt-1 border-t border-blue-100">
+                    {viewingBankQr.instructions}
                   </div>
                 )}
               </div>
 
               <button
                 type="button"
-                onClick={() => setViewingDigitalQr(null)}
+                onClick={() => setViewingBankQr(null)}
                 className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl cursor-pointer shadow-sm transition-colors"
               >
                 Close QR Code
@@ -2306,15 +2727,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  const val = (fullScreenScanInput || fullScreenScanInputRef.current?.value || '').trim();
-                  if (val) {
-                    handleAddByBarcode(val);
-                  }
-                  setFullScreenScanInput('');
-                  if (fullScreenScanInputRef.current) {
-                    fullScreenScanInputRef.current.value = '';
-                    fullScreenScanInputRef.current.focus();
-                  }
+                  handleProcessFullScreenScan();
                 }}
                 className="flex items-center gap-2 max-w-5xl mx-auto"
               >
@@ -2324,16 +2737,46 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                     ref={fullScreenScanInputRef}
                     id="fullscreen-barcode-input"
                     type="text"
-                    autoFocus
+                    autoFocus={isCartFullScreen}
                     autoComplete="off"
                     autoCorrect="off"
                     spellCheck={false}
                     placeholder="Scan barcode with laser reader or type 4-digit shortcut code (e.g. 1001) / SKU..."
                     value={fullScreenScanInput}
-                    onChange={(e) => setFullScreenScanInput(e.target.value)}
+                    onChange={(e) => {
+                      const cleaned = e.target.value.replace(/[\r\n]/g, '');
+                      setFullScreenScanInput(cleaned);
+                    }}
+                    onFocus={(e) => {
+                      e.target.select();
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleProcessFullScreenScan();
+                      }
+                    }}
+                    onBlur={(e) => {
+                      const related = e.relatedTarget as HTMLElement | null;
+                      const isInteractive = related?.tagName === 'BUTTON' || related?.tagName === 'INPUT' || related?.tagName === 'SELECT' || related?.tagName === 'TEXTAREA' || related?.tagName === 'A';
+                      const isAnyModalOpen = isScannerOpen || isReceiptOpen || isReturnModalOpen || isReturnSlipOpen || isCashModalOpen || isWeightModalOpen || isHeldBillsModalOpen || isShortcutsModalOpen || Boolean(viewingDigitalQr) || Boolean(viewingBankQr);
+                      if (!isInteractive && !isAnyModalOpen && isCartFullScreen) {
+                        setTimeout(focusActiveScanner, 20);
+                      }
+                    }}
                     className="w-full pl-11 pr-24 py-2.5 bg-slate-50 border-2 border-orange-300 focus:border-orange-600 focus:bg-white rounded-xl text-slate-900 font-mono text-xs sm:text-sm font-bold shadow-inner focus:outline-none transition-all"
                   />
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 pointer-events-none">
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none">
+                    {scannerLastScannedStatus ? (
+                      <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full animate-pulse">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" /> {scannerLastScannedStatus}
+                      </span>
+                    ) : (
+                      <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" /> Ready for scan
+                      </span>
+                    )}
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-bold">↵ ENTER</span>
                   </div>
                 </div>
@@ -2757,36 +3200,138 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                     </span>
                   </h3>
 
-                  {/* Payment Method Selector in Full Screen */}
+                  {/* Payment Method Selector in Full Screen (All Admin Selected & Configured Methods) */}
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">
-                      Payment Mode
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-[11px] font-black text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                        Payment Method
+                      </label>
+                      <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                        {paymentMethod === 'cash' ? 'Cash' : (isCustomDigitalSelected ? (customDigitalProviderInput.trim() || 'Custom') : selectedDigitalProvider)}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {/* Cash */}
                       <button
                         type="button"
-                        onClick={() => setPaymentMethod('cash')}
-                        className={`py-2.5 px-2 rounded-xl border text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                        onClick={() => {
+                          setPaymentMethod('cash');
+                          setIsCustomDigitalSelected(false);
+                        }}
+                        className={`p-2 rounded-xl border text-left transition-all cursor-pointer text-xs ${
                           paymentMethod === 'cash'
-                            ? 'bg-emerald-50 border-emerald-500 text-emerald-800 shadow-xs'
-                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900'
+                            ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs font-bold'
+                            : 'bg-emerald-50/70 border-emerald-200 hover:border-emerald-400 text-emerald-950'
                         }`}
                       >
-                        <Banknote className="w-3.5 h-3.5" /> Cash
+                        <div className="flex items-center justify-between">
+                          <span className="font-extrabold flex items-center gap-1 truncate">
+                            <Banknote className="w-3.5 h-3.5 shrink-0" />
+                            Cash
+                          </span>
+                          {paymentMethod === 'cash' && <Check className="w-3 h-3 text-white shrink-0" />}
+                        </div>
                       </button>
 
+                      {/* Admin Configured Digital Methods */}
+                      {configuredDigitalMethods.map((method) => {
+                        const isSelected = paymentMethod === 'online' && !isCustomDigitalSelected && selectedDigitalProvider.toLowerCase().trim() === method.name.toLowerCase().trim();
+                        const meta = getPaymentMethodMeta(method.name);
+                        const IconComponent = meta.icon;
+
+                        return (
+                          <button
+                            key={method.id}
+                            type="button"
+                            onClick={() => {
+                              setPaymentMethod('online');
+                              setIsCustomDigitalSelected(false);
+                              setSelectedDigitalProvider(method.name);
+                            }}
+                            className={`p-2 rounded-xl border text-left transition-all cursor-pointer text-xs ${
+                              isSelected
+                                ? `${meta.activeClass} text-white`
+                                : `${meta.bgClass}`
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-extrabold flex items-center gap-1 truncate">
+                                <IconComponent className="w-3.5 h-3.5 shrink-0" />
+                                {method.name}
+                              </span>
+                              <div className="flex items-center gap-1">
+                                {method.qrCodeUrl && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setViewingDigitalQr(method);
+                                    }}
+                                    className={`text-[9px] font-bold px-1 rounded flex items-center gap-0.5 shrink-0 ${
+                                      isSelected ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-700'
+                                    }`}
+                                  >
+                                    <QrCode className="w-2.5 h-2.5" /> QR
+                                  </button>
+                                )}
+                                {isSelected && <Check className="w-3 h-3 text-white shrink-0" />}
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+
+                      {/* Other / Custom Manual */}
                       <button
                         type="button"
-                        onClick={() => setPaymentMethod('online')}
-                        className={`py-2.5 px-2 rounded-xl border text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
-                          paymentMethod === 'online'
-                            ? 'bg-blue-50 border-blue-500 text-blue-800 shadow-xs'
-                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900'
+                        onClick={() => {
+                          setPaymentMethod('online');
+                          setIsCustomDigitalSelected(true);
+                        }}
+                        className={`p-2 rounded-xl border text-left transition-all cursor-pointer text-xs ${
+                          paymentMethod === 'online' && isCustomDigitalSelected
+                            ? 'bg-blue-600 text-white border-blue-700 shadow-xs font-bold'
+                            : 'bg-slate-50 border-dashed border-slate-300 hover:border-blue-400 text-slate-700 hover:bg-blue-50/50'
                         }`}
                       >
-                        <CreditCard className="w-3.5 h-3.5" /> Digital
+                        <div className="flex items-center justify-between">
+                          <span className="font-extrabold flex items-center gap-1 truncate">
+                            <Edit2 className="w-3.5 h-3.5 shrink-0" />
+                            Other / Manual
+                          </span>
+                          {paymentMethod === 'online' && isCustomDigitalSelected && <Check className="w-3 h-3 text-white shrink-0" />}
+                        </div>
                       </button>
                     </div>
+
+                    {/* Custom Input Field in Full Screen */}
+                    {paymentMethod === 'online' && isCustomDigitalSelected && (
+                      <div className="pt-1.5">
+                        <input
+                          type="text"
+                          autoFocus
+                          placeholder="Type payment platform (e.g. Voucher, POS, Bank)..."
+                          value={customDigitalProviderInput}
+                          onChange={(e) => setCustomDigitalProviderInput(e.target.value)}
+                          className="w-full px-2.5 py-1.5 bg-white border border-blue-300 rounded-lg text-xs font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    )}
+
+                    {/* Optional Transaction Ref ID */}
+                    {paymentMethod === 'online' && (
+                      <div className="pt-1.5">
+                        <input
+                          type="text"
+                          placeholder="Optional TRX ID or Sender..."
+                          value={digitalTransactionRef}
+                          onChange={(e) => setDigitalTransactionRef(e.target.value)}
+                          className="w-full px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-[11px] text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                    )}
                   </div>
 
                   {/* Pricing Breakdown */}

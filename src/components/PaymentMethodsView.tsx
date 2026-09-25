@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Store, Sale, ProductReturn, DigitalPaymentMethodConfig } from '../types';
+import { Store, Sale, ProductReturn, DigitalPaymentMethodConfig, StoreBankAccount } from '../types';
 import { db } from '../lib/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import { 
@@ -28,7 +28,11 @@ import {
   Sparkles,
   Info,
   ExternalLink,
-  ShieldCheck
+  ShieldCheck,
+  Copy,
+  Star,
+  CheckCheck,
+  Landmark
 } from 'lucide-react';
 
 interface PaymentMethodsViewProps {
@@ -44,11 +48,12 @@ type DatePreset = 'all' | 'today' | 'yesterday' | 'last_7_days' | 'this_month' |
 type MethodFilter = 'all' | 'cash' | 'online' | string;
 
 const DEFAULT_PRESET_METHODS: Omit<DigitalPaymentMethodConfig, 'id'>[] = [
-  { name: 'EasyPaisa', accountTitle: '', accountNumber: '', isActive: true, instructions: 'Send payment via EasyPaisa app or mobile number' },
-  { name: 'JazzCash', accountTitle: '', accountNumber: '', isActive: true, instructions: 'Send payment via JazzCash mobile account' },
-  { name: 'Raast / Bank Transfer', accountTitle: '', accountNumber: '', isActive: true, instructions: 'Instant interbank transfer via Raast ID or IBAN' },
-  { name: 'SadaPay', accountTitle: '', accountNumber: '', isActive: false, instructions: 'Send to SadaPay wallet or IBAN' },
-  { name: 'NayaPay', accountTitle: '', accountNumber: '', isActive: false, instructions: 'Send to NayaPay wallet or Nayatag' }
+  { name: 'Card', isActive: true, instructions: 'Debit / Credit Card swipe or tap on POS terminal' },
+  { name: 'EasyPaisa', isActive: true, instructions: 'Send payment via EasyPaisa app or mobile number' },
+  { name: 'JazzCash', isActive: true, instructions: 'Send payment via JazzCash mobile account' },
+  { name: 'SadaPay', isActive: true, instructions: 'Send to SadaPay wallet' },
+  { name: 'NayaPay', isActive: true, instructions: 'Send to NayaPay wallet' },
+  { name: 'Raast / Bank Transfer', isActive: true, instructions: 'Instant interbank transfer via Raast or Online Banking' }
 ];
 
 function getLocalDateString(isoOrDate: string | Date): string {
@@ -92,8 +97,6 @@ export const PaymentMethodsView: React.FC<PaymentMethodsViewProps> = ({
   const [isAddingMethod, setIsAddingMethod] = useState(false);
   const [editingMethodId, setEditingMethodId] = useState<string | null>(null);
   const [newMethodName, setNewMethodName] = useState('');
-  const [newAccountTitle, setNewAccountTitle] = useState('');
-  const [newAccountNumber, setNewAccountNumber] = useState('');
   const [newInstructions, setNewInstructions] = useState('');
   const [newQrCodeUrl, setNewQrCodeUrl] = useState('');
   const [savingSettings, setSavingSettings] = useState(false);
@@ -113,9 +116,12 @@ export const PaymentMethodsView: React.FC<PaymentMethodsViewProps> = ({
     }
     // Default fallback list
     return [
-      { id: 'method-easypaisa', name: 'EasyPaisa', accountTitle: '', accountNumber: '', isActive: true, instructions: 'EasyPaisa mobile transfer' },
-      { id: 'method-jazzcash', name: 'JazzCash', accountTitle: '', accountNumber: '', isActive: true, instructions: 'JazzCash mobile account' },
-      { id: 'method-bank', name: 'Bank Transfer / Raast', accountTitle: '', accountNumber: '', isActive: true, instructions: 'Direct Bank or Raast' }
+      { id: 'method-card', name: 'Card', isActive: true, instructions: 'Debit / Credit Card POS swipe' },
+      { id: 'method-easypaisa', name: 'EasyPaisa', isActive: true, instructions: 'EasyPaisa mobile transfer' },
+      { id: 'method-jazzcash', name: 'JazzCash', isActive: true, instructions: 'JazzCash mobile account' },
+      { id: 'method-sadapay', name: 'SadaPay', isActive: true, instructions: 'SadaPay wallet' },
+      { id: 'method-nayapay', name: 'NayaPay', isActive: true, instructions: 'NayaPay wallet' },
+      { id: 'method-bank', name: 'Raast / Bank Transfer', isActive: true, instructions: 'Direct Bank or Raast' }
     ];
   }, [store.digitalPaymentMethods]);
 
@@ -401,7 +407,7 @@ export const PaymentMethodsView: React.FC<PaymentMethodsViewProps> = ({
         onUpdateStore({ digitalPaymentMethods: methodsToSave });
       }
 
-      showNotification('success', 'Digital payment methods updated and synchronized with Cashier Counters!');
+      showNotification('success', 'Digital payment platforms updated and synchronized with Cashier Counters!');
     } catch (err: any) {
       console.error('Error updating digital payment methods:', err);
       showNotification('error', err.message || 'Failed to save digital payment methods.');
@@ -410,7 +416,7 @@ export const PaymentMethodsView: React.FC<PaymentMethodsViewProps> = ({
     }
   };
 
-  // Admin: Add or update method
+  // Admin: Add or update digital method (DO NOT ask bank details)
   const handleSaveNewMethod = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMethodName.trim()) {
@@ -423,8 +429,6 @@ export const PaymentMethodsView: React.FC<PaymentMethodsViewProps> = ({
       updated = digitalMethods.map(m => m.id === editingMethodId ? {
         ...m,
         name: newMethodName.trim(),
-        accountTitle: newAccountTitle.trim(),
-        accountNumber: newAccountNumber.trim(),
         instructions: newInstructions.trim(),
         qrCodeUrl: newQrCodeUrl.trim()
       } : m);
@@ -432,8 +436,6 @@ export const PaymentMethodsView: React.FC<PaymentMethodsViewProps> = ({
       const newMethod: DigitalPaymentMethodConfig = {
         id: `method-${Date.now()}`,
         name: newMethodName.trim(),
-        accountTitle: newAccountTitle.trim(),
-        accountNumber: newAccountNumber.trim(),
         instructions: newInstructions.trim(),
         qrCodeUrl: newQrCodeUrl.trim(),
         isActive: true
@@ -445,8 +447,6 @@ export const PaymentMethodsView: React.FC<PaymentMethodsViewProps> = ({
     setIsAddingMethod(false);
     setEditingMethodId(null);
     setNewMethodName('');
-    setNewAccountTitle('');
-    setNewAccountNumber('');
     setNewInstructions('');
     setNewQrCodeUrl('');
   };
@@ -466,8 +466,6 @@ export const PaymentMethodsView: React.FC<PaymentMethodsViewProps> = ({
   const handleStartEditMethod = (method: DigitalPaymentMethodConfig) => {
     setEditingMethodId(method.id);
     setNewMethodName(method.name);
-    setNewAccountTitle(method.accountTitle || '');
-    setNewAccountNumber(method.accountNumber || '');
     setNewInstructions(method.instructions || '');
     setNewQrCodeUrl(method.qrCodeUrl || '');
     setIsAddingMethod(true);
@@ -575,15 +573,13 @@ export const PaymentMethodsView: React.FC<PaymentMethodsViewProps> = ({
               onClick={() => {
                 setEditingMethodId(null);
                 setNewMethodName('');
-                setNewAccountTitle('');
-                setNewAccountNumber('');
                 setNewInstructions('');
                 setNewQrCodeUrl('');
                 setIsAddingMethod(true);
               }}
               className="px-3.5 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
             >
-              <Plus className="w-4 h-4" /> Add Digital Method
+              <Plus className="w-4 h-4" /> Add Digital Platform
             </button>
             <button
               onClick={handleExportCsv}
@@ -652,65 +648,112 @@ export const PaymentMethodsView: React.FC<PaymentMethodsViewProps> = ({
         </div>
       </div>
 
-      {/* 2. ADMIN CONFIGURATION: DIGITAL PAYMENT METHODS (EasyPaisa, JazzCash, etc.) */}
+      {/* 2. ADMIN CONFIGURATION: DIGITAL PAYMENT PLATFORMS (Card, EasyPaisa, JazzCash, SadaPay, etc.) */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="p-4 sm:p-5 border-b border-slate-200 bg-gradient-to-r from-orange-50/50 via-white to-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="p-4 sm:p-5 border-b border-slate-200 bg-gradient-to-r from-orange-50/60 via-white to-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center font-black">
+            <div className="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center font-black shadow-xs">
               <Smartphone className="w-5 h-5" />
             </div>
             <div>
-              <h4 className="text-base font-black text-slate-900">Configured Digital Payment Platforms</h4>
+              <div className="flex items-center gap-2">
+                <h4 className="text-base font-black text-slate-900">Configured Digital Payment Platforms</h4>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-orange-100 text-orange-800 border border-orange-200">
+                  {digitalMethods.length} {digitalMethods.length === 1 ? 'Platform' : 'Platforms'}
+                </span>
+              </div>
               <p className="text-xs text-slate-500">
-                These options appear to the Cashier when "ONLINE / DIGITAL" is selected at checkout. Cashiers are required to pick one.
+                Manage digital payment options (Card, EasyPaisa, JazzCash, etc.) available for cashiers at checkout. Bank details are not required.
               </p>
             </div>
           </div>
-          <button
-            onClick={() => {
-              setEditingMethodId(null);
-              setNewMethodName('');
-              setNewAccountTitle('');
-              setNewAccountNumber('');
-              setNewInstructions('');
-              setNewQrCodeUrl('');
-              setIsAddingMethod(true);
-            }}
-            className="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer self-start sm:self-auto shrink-0 shadow-xs"
-          >
-            <Plus className="w-4 h-4" /> Add Platform
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => {
+                setEditingMethodId(null);
+                setNewMethodName('');
+                setNewInstructions('');
+                setNewQrCodeUrl('');
+                setIsAddingMethod(true);
+              }}
+              className="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer self-start sm:self-auto shrink-0 shadow-xs"
+            >
+              <Plus className="w-4 h-4" /> Add Payment Platform
+            </button>
+          </div>
         </div>
 
-        {/* Modal / Inline Form to Add / Edit Digital Method */}
+        {/* Quick Add Presets Bar */}
+        <div className="px-4 sm:px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2 flex-wrap text-xs">
+          <span className="font-bold text-slate-500 flex items-center gap-1 shrink-0">
+            <Sparkles className="w-3.5 h-3.5 text-orange-500" /> Quick Add:
+          </span>
+          {DEFAULT_PRESET_METHODS.map((preset) => {
+            const alreadyExists = digitalMethods.some(
+              (m) => m.name.toLowerCase().trim() === preset.name.toLowerCase().trim()
+            );
+            return (
+              <button
+                key={preset.name}
+                type="button"
+                disabled={alreadyExists || savingSettings}
+                onClick={async () => {
+                  const newMethod: DigitalPaymentMethodConfig = {
+                    id: `method-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                    name: preset.name,
+                    instructions: preset.instructions,
+                    isActive: true
+                  };
+                  await handleSaveMethodsToDb([...digitalMethods, newMethod]);
+                }}
+                className={`px-2.5 py-1 rounded-lg font-bold text-xs flex items-center gap-1 transition-all cursor-pointer ${
+                  alreadyExists
+                    ? 'bg-slate-200/70 text-slate-400 cursor-not-allowed'
+                    : 'bg-white hover:bg-orange-50 hover:text-orange-700 hover:border-orange-300 text-slate-700 border border-slate-200 shadow-2xs'
+                }`}
+                title={alreadyExists ? 'Already added' : `Add ${preset.name}`}
+              >
+                {alreadyExists ? <Check className="w-3 h-3 text-emerald-600" /> : <Plus className="w-3 h-3 text-orange-500" />}
+                <span>{preset.name}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Modal / Inline Form to Add / Edit Digital Method (DO NOT ASK BANK DETAILS) */}
         {isAddingMethod && (
-          <form onSubmit={handleSaveNewMethod} className="p-5 bg-orange-50/30 border-b border-orange-200 space-y-4 animate-fade-in">
+          <form onSubmit={handleSaveNewMethod} className="p-5 bg-orange-50/40 border-b border-orange-200 space-y-4 animate-fade-in">
             <div className="flex items-center justify-between">
-              <h5 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-orange-600" />
-                {editingMethodId ? 'Edit Digital Payment Platform' : 'Add New Digital Payment Platform'}
-              </h5>
+              <div>
+                <h5 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-orange-600" />
+                  {editingMethodId ? 'Edit Digital Payment Platform' : 'Add New Digital Payment Platform'}
+                </h5>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Enter payment method or platform name (e.g. Card, EasyPaisa, JazzCash, SadaPay).
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => {
                   setIsAddingMethod(false);
                   setEditingMethodId(null);
                 }}
-                className="text-slate-400 hover:text-slate-600 p-1"
+                className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Platform / Provider Name *
+                  Payment Platform / Method Name *
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. EasyPaisa, JazzCash, SadaPay"
+                  placeholder="e.g. Card, EasyPaisa, JazzCash, SadaPay, NayaPay"
                   value={newMethodName}
                   onChange={(e) => setNewMethodName(e.target.value)}
                   className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-hidden focus:ring-2 focus:ring-orange-500"
@@ -719,70 +762,42 @@ export const PaymentMethodsView: React.FC<PaymentMethodsViewProps> = ({
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Account Title / Registered Name
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Mart Store Official"
-                  value={newAccountTitle}
-                  onChange={(e) => setNewAccountTitle(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-hidden focus:ring-2 focus:ring-orange-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Account Number / Mobile / IBAN
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. 0300-1234567 or PK..."
-                  value={newAccountNumber}
-                  onChange={(e) => setNewAccountNumber(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-hidden focus:ring-2 focus:ring-orange-500"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
                   Cashier Instructions / Notes (Optional)
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Customer can scan store QR or transfer directly"
+                  placeholder="e.g. Swipe card on terminal or verify mobile payment"
                   value={newInstructions}
                   onChange={(e) => setNewInstructions(e.target.value)}
                   className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-hidden focus:ring-2 focus:ring-orange-500"
                 />
               </div>
+            </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Platform QR Code Picture (Optional)
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Platform Specific QR Code (Optional)
+              </label>
+              <div className="flex items-center gap-3">
+                <label className="px-3 py-2 bg-white border border-slate-300 hover:border-orange-500 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs">
+                  <ImageIcon className="w-3.5 h-3.5 text-orange-600" /> Upload QR Code
+                  <input type="file" accept="image/*" onChange={handleQrImageUpload} className="hidden" />
                 </label>
-                <div className="flex items-center gap-3">
-                  <label className="px-3 py-2 bg-white border border-slate-300 hover:border-orange-500 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs">
-                    <ImageIcon className="w-3.5 h-3.5 text-orange-600" /> Upload QR Code
-                    <input type="file" accept="image/*" onChange={handleQrImageUpload} className="hidden" />
-                  </label>
-                  {newQrCodeUrl ? (
-                    <div className="flex items-center gap-2 bg-white px-2 py-1 rounded-lg border border-slate-200">
-                      <img src={newQrCodeUrl} alt="QR" className="w-6 h-6 object-contain rounded" />
-                      <span className="text-[10px] text-emerald-600 font-bold">QR Loaded</span>
-                      <button
-                        type="button"
-                        onClick={() => setNewQrCodeUrl('')}
-                        className="text-rose-500 hover:text-rose-700 text-xs ml-1"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ) : (
-                    <span className="text-[11px] text-slate-400 italic">No QR picture attached</span>
-                  )}
-                </div>
+                {newQrCodeUrl ? (
+                  <div className="flex items-center gap-2 bg-white px-2 py-1 rounded-lg border border-slate-200">
+                    <img src={newQrCodeUrl} alt="QR" className="w-6 h-6 object-contain rounded" />
+                    <span className="text-[10px] text-emerald-600 font-bold">QR Loaded</span>
+                    <button
+                      type="button"
+                      onClick={() => setNewQrCodeUrl('')}
+                      className="text-rose-500 hover:text-rose-700 text-xs ml-1"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-[11px] text-slate-400 italic">No QR picture attached</span>
+                )}
               </div>
             </div>
 
@@ -802,7 +817,7 @@ export const PaymentMethodsView: React.FC<PaymentMethodsViewProps> = ({
                 disabled={savingSettings}
                 className="px-5 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 shadow-xs"
               >
-                {savingSettings ? 'Saving...' : editingMethodId ? 'Update Platform' : 'Add Platform'}
+                {savingSettings ? 'Saving...' : editingMethodId ? 'Update Platform' : 'Save Platform'}
               </button>
             </div>
           </form>
@@ -822,7 +837,7 @@ export const PaymentMethodsView: React.FC<PaymentMethodsViewProps> = ({
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-100 text-blue-700 flex items-center justify-center font-black">
+                    <div className="w-9 h-9 rounded-xl bg-orange-50 border border-orange-100 text-orange-600 flex items-center justify-center font-black">
                       <Smartphone className="w-4 h-4" />
                     </div>
                     <div>
@@ -839,7 +854,7 @@ export const PaymentMethodsView: React.FC<PaymentMethodsViewProps> = ({
                         )}
                       </h5>
                       <p className="text-[11px] text-slate-500 font-medium">
-                        {method.accountTitle ? `A/C: ${method.accountTitle}` : 'Digital Payment Channel'}
+                        Digital Payment Platform
                       </p>
                     </div>
                   </div>
@@ -877,16 +892,11 @@ export const PaymentMethodsView: React.FC<PaymentMethodsViewProps> = ({
                   </div>
                 </div>
 
-                {/* Account details & QR preview */}
+                {/* Instructions & QR preview */}
                 <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
                   <div className="space-y-0.5">
-                    {method.accountNumber && (
-                      <div className="font-mono text-slate-800 text-[11px] font-bold">
-                        {method.accountNumber}
-                      </div>
-                    )}
                     {method.instructions && (
-                      <div className="text-[10px] text-slate-400">
+                      <div className="text-[10px] text-slate-500">
                         {method.instructions}
                       </div>
                     )}
@@ -1426,7 +1436,7 @@ export const PaymentMethodsView: React.FC<PaymentMethodsViewProps> = ({
         )}
       </div>
 
-      {/* Delete Payment Method Confirmation Modal */}
+      {/* Delete Digital Platform Confirmation Modal */}
       {methodToDelete && (
         <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-scale-up">
@@ -1435,15 +1445,10 @@ export const PaymentMethodsView: React.FC<PaymentMethodsViewProps> = ({
             </div>
 
             <div className="text-center space-y-1.5">
-              <h3 className="text-base font-black text-slate-900">Delete Payment Method?</h3>
+              <h3 className="text-base font-black text-slate-900">Delete Payment Platform?</h3>
               <p className="text-xs text-slate-500">
-                Are you sure you want to remove <strong className="text-slate-900 font-extrabold">{methodToDelete.name}</strong> from your accepted digital payment methods?
+                Are you sure you want to remove <strong className="text-slate-900 font-extrabold">{methodToDelete.name}</strong> from your accepted digital platforms?
               </p>
-              {methodToDelete.accountNumber && (
-                <div className="text-[11px] font-mono text-slate-600 bg-slate-50 p-2 rounded-xl border border-slate-200 mt-2">
-                  A/C: {methodToDelete.accountNumber}
-                </div>
-              )}
             </div>
 
             <div className="flex items-center gap-2 pt-2">

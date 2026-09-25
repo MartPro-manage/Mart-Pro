@@ -45,7 +45,24 @@ export interface Store {
   soundEffectsEnabled?: boolean;
   customCategories?: string[];
   digitalPaymentMethods?: DigitalPaymentMethodConfig[];
+  bankAccount?: StoreBankAccount; // Store bank account entered by admin in payment method option
+  bankAccounts?: StoreBankAccount[]; // All configured store bank accounts
   createdAt: string;
+}
+
+export interface StoreBankAccount {
+  id: string;
+  bankName: string; // e.g. "Meezan Bank", "Habib Bank Limited (HBL)", "MCB", "Allied Bank", etc.
+  accountTitle: string; // e.g. "Supermarket Mart Official"
+  accountNumber: string; // e.g. "0101-2345678-01"
+  iban?: string; // e.g. "PK36MEZN0001012345678001"
+  raastId?: string; // e.g. "03001234567"
+  branchName?: string;
+  branchCode?: string;
+  qrCodeUrl?: string; // custom QR picture for scanning to pay
+  instructions?: string; // cashier or customer guidance
+  isActive: boolean;
+  isPrimary?: boolean;
 }
 
 export interface DigitalPaymentMethodConfig {

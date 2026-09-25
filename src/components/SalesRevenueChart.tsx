@@ -13,6 +13,7 @@ import {
   Legend
 } from 'recharts';
 import { Sale, ProductReturn, Product } from '../types';
+import { HourlySales24hChart } from './HourlySales24hChart';
 import { 
   TrendingUp, 
   Calendar, 
@@ -25,7 +26,8 @@ import {
   CheckCircle2,
   CalendarDays,
   CreditCard,
-  Banknote
+  Banknote,
+  Clock
 } from 'lucide-react';
 
 interface SalesRevenueChartProps {
@@ -35,7 +37,7 @@ interface SalesRevenueChartProps {
   className?: string;
 }
 
-type TimeframeMode = 'daily' | 'weekly';
+type TimeframeMode = 'hourly' | 'daily' | 'weekly';
 type DailyRange = '7d' | '14d' | '30d' | 'all';
 type WeeklyRange = '4w' | '8w' | '12w' | 'all';
 type ChartStyle = 'area' | 'bar';
@@ -617,19 +619,30 @@ export const SalesRevenueChart: React.FC<SalesRevenueChartProps> = ({
           <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight mt-1 flex items-center gap-2">
             <span>Sales & Revenue Trends</span>
             <span className="text-xs font-bold text-orange-600 bg-orange-100/60 px-2 py-0.5 rounded-lg">
-              {timeframe === 'daily' ? 'Daily View' : 'Weekly Aggregations'}
+              {timeframe === 'hourly' ? '24h Hourly View' : timeframe === 'daily' ? 'Daily View' : 'Weekly Aggregations'}
             </span>
           </h2>
           <p className="text-xs text-slate-500 font-medium mt-0.5">
-            Analyze revenue flow, customer refund impacts, and realized profit margins over time.
+            Analyze revenue flow, customer refund impacts, and hourly transaction speed over time.
           </p>
         </div>
 
         {/* Controls Toolbar */}
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           
-          {/* Daily vs Weekly Toggle */}
+          {/* Hourly vs Daily vs Weekly Toggle */}
           <div className="bg-slate-100 p-1 rounded-xl flex items-center border border-slate-200 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => setTimeframe('hourly')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                timeframe === 'hourly'
+                  ? 'bg-white text-orange-600 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5" /> 24h Hourly
+            </button>
             <button
               type="button"
               onClick={() => setTimeframe('daily')}
@@ -731,8 +744,13 @@ export const SalesRevenueChart: React.FC<SalesRevenueChartProps> = ({
         </div>
       </div>
 
-      {/* KPI Performance Summary Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/80">
+      {/* Conditional 24h Hourly Graph vs Daily/Weekly Charts */}
+      {timeframe === 'hourly' ? (
+        <HourlySales24hChart sales={sales} returns={returns} products={products} />
+      ) : (
+        <>
+          {/* KPI Performance Summary Strip */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/80">
         
         {/* Total Window Revenue */}
         <div className="space-y-0.5">
@@ -934,6 +952,8 @@ export const SalesRevenueChart: React.FC<SalesRevenueChartProps> = ({
           Auto-updates via Cloud Firestore
         </span>
       </div>
+        </>
+      )}
 
     </div>
   );

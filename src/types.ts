@@ -216,6 +216,7 @@ export interface HeldBill {
   discountAmount?: number;
   total: number;
   heldAt: string; // ISO string
+  isAutoHeld?: boolean; // True if held automatically due to logout or computer shutdown
 }
 
 export interface SupplierOrderItem {

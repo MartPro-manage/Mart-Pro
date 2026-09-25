@@ -89,6 +89,12 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
   const [heldBills, setHeldBills] = useState<HeldBill[]>([]);
   const [isHeldBillsModalOpen, setIsHeldBillsModalOpen] = useState(false);
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
+  const [recoveredBillPrompt, setRecoveredBillPrompt] = useState<HeldBill | null>(null);
+
+  // Storage key for keeping an auto-saved draft during billing
+  const draftStorageKey = useMemo(() => {
+    return `martpro_active_cart_draft_${store?.id || 'default'}_${currentUser?.id || currentUser?.username || 'default'}`;
+  }, [store?.id, currentUser?.id, currentUser?.username]);
 
   // Inbuilt Camera Scanner and Voice Announcements are controlled by Super Admin per store
   const isCameraScannerAllowed = store?.cameraScannerEnabled !== false;
@@ -601,6 +607,151 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     return cartSubtotal;
   }, [cartSubtotal]);
 
+  const cartRef = useRef(cart);
+  cartRef.current = cart;
+  const cartSubtotalRef = useRef(cartSubtotal);
+  cartSubtotalRef.current = cartSubtotal;
+  const cartTotalRef = useRef(cartTotal);
+  cartTotalRef.current = cartTotal;
+
+  // Real-time synchronization of billing cart to localStorage to safeguard against sudden power loss, shutdown, or accidental logout
+  useEffect(() => {
+    try {
+      if (cart.length > 0) {
+        localStorage.setItem(draftStorageKey, JSON.stringify({
+          items: cart,
+          subtotal: cartSubtotal,
+          total: cartTotal,
+          timestamp: new Date().toISOString(),
+          counterNumber: currentUser.counterNumber,
+          cashierUsername: currentUser.username,
+          storeId: store.id
+        }));
+      } else {
+        localStorage.removeItem(draftStorageKey);
+      }
+    } catch (err) {
+      console.warn('Error saving billing draft to localStorage:', err);
+    }
+  }, [cart, cartSubtotal, cartTotal, draftStorageKey, currentUser, store.id]);
+
+  // Window beforeunload & pagehide event protection for shutdown / tab close
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (cartRef.current && cartRef.current.length > 0) {
+        try {
+          localStorage.setItem(draftStorageKey, JSON.stringify({
+            items: cartRef.current,
+            subtotal: cartSubtotalRef.current,
+            total: cartTotalRef.current,
+            timestamp: new Date().toISOString(),
+            counterNumber: currentUser.counterNumber,
+            cashierUsername: currentUser.username,
+            storeId: store.id,
+            isAutoHeld: true
+          }));
+        } catch (err) {
+          console.warn(err);
+        }
+        e.preventDefault();
+        e.returnValue = 'You have an active receipt in progress. It will be automatically held.';
+        return e.returnValue;
+      }
+    };
+
+    const handlePageHide = () => {
+      if (cartRef.current && cartRef.current.length > 0) {
+        try {
+          localStorage.setItem(draftStorageKey, JSON.stringify({
+            items: cartRef.current,
+            subtotal: cartSubtotalRef.current,
+            total: cartTotalRef.current,
+            timestamp: new Date().toISOString(),
+            counterNumber: currentUser.counterNumber,
+            cashierUsername: currentUser.username,
+            storeId: store.id,
+            isAutoHeld: true
+          }));
+        } catch (err) {
+          console.warn(err);
+        }
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handlePageHide);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handlePageHide);
+    };
+  }, [draftStorageKey, currentUser, store.id]);
+
+  // Check for recovered draft from shutdown / unexpected close upon initial component mount
+  useEffect(() => {
+    const checkAndRecoverUnfinishedBill = async () => {
+      try {
+        const rawDraft = localStorage.getItem(draftStorageKey);
+        if (!rawDraft) return;
+        const draft = JSON.parse(rawDraft);
+        if (draft.items && draft.items.length > 0) {
+          const heldId = `autoheld_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+          const payload: HeldBill = {
+            id: heldId,
+            storeId: store.id,
+            counterId: currentUser.counterNumber?.toString() || '1',
+            counterName: `Counter #${currentUser.counterNumber || 1}`,
+            cashierUsername: currentUser.username,
+            items: draft.items,
+            subtotal: draft.subtotal || 0,
+            total: draft.total || 0,
+            heldAt: draft.timestamp || new Date().toISOString(),
+            isAutoHeld: true,
+            notes: 'Auto-held after computer shutdown / session exit'
+          };
+
+          // Save to Firestore held_bills
+          await setDoc(doc(db, 'held_bills', heldId), payload);
+          // Clear local draft now that it's safely in Firestore
+          localStorage.removeItem(draftStorageKey);
+
+          setRecoveredBillPrompt(payload);
+          showNotification('success', `Unfinished receipt with ${draft.items.length} items was automatically held for safety!`);
+        }
+      } catch (err) {
+        console.warn('Error recovering unfinished bill:', err);
+      }
+    };
+
+    checkAndRecoverUnfinishedBill();
+  }, [draftStorageKey, store.id, currentUser]);
+
+  // Handle back button with auto-hold
+  const handleBackWithAutoHold = async () => {
+    if (cart.length > 0) {
+      try {
+        const heldId = `autoheld_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        const payload: HeldBill = {
+          id: heldId,
+          storeId: store.id,
+          counterId: currentUser.counterNumber?.toString() || '1',
+          counterName: `Counter #${currentUser.counterNumber || 1}`,
+          cashierUsername: currentUser.username,
+          items: [...cart],
+          subtotal: cartSubtotal,
+          total: cartTotal,
+          heldAt: new Date().toISOString(),
+          isAutoHeld: true,
+          notes: 'Auto-held when exiting counter'
+        };
+        await setDoc(doc(db, 'held_bills', heldId), payload);
+        localStorage.removeItem(draftStorageKey);
+      } catch (err) {
+        console.warn('Auto-holding bill on exit error:', err);
+      }
+    }
+    if (onBack) onBack();
+  };
+
   // Extract unique categories for shortcuts directory & full screen tray
   const uniqueCategories = useMemo(() => {
     const set = new Set<string>();
@@ -649,6 +800,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
 
       await setDoc(doc(db, 'held_bills', heldId), payload);
       setCart([]);
+      localStorage.removeItem(draftStorageKey);
       playScanSuccessBeep();
       showNotification('success', `Bill held successfully (${payload.items.length} items)! Press A+S to resume.`);
       if (isVoiceAllowed && voiceEnabled) {
@@ -658,12 +810,13 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
       console.error('Error holding bill:', err);
       showNotification('error', 'Failed to hold bill: ' + err.message);
     }
-  }, [cart, cartSubtotal, cartTotal, store.id, currentUser, isVoiceAllowed, voiceEnabled]);
+  }, [cart, cartSubtotal, cartTotal, store.id, currentUser, isVoiceAllowed, voiceEnabled, draftStorageKey]);
 
   // Restore Parked Bill to Active Cart
   const handleRestoreBill = useCallback(async (bill: HeldBill) => {
     try {
       setCart(bill.items);
+      setRecoveredBillPrompt(null);
 
       await deleteDoc(doc(db, 'held_bills', bill.id));
       playScanSuccessBeep();
@@ -676,6 +829,13 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
       showNotification('error', 'Failed to resume held bill: ' + err.message);
     }
   }, [isVoiceAllowed, voiceEnabled]);
+
+  // Resume the auto-recovered bill prompt
+  const handleResumeRecoveredBill = async () => {
+    if (!recoveredBillPrompt) return;
+    await handleRestoreBill(recoveredBillPrompt);
+    setRecoveredBillPrompt(null);
+  };
 
   // Discard / Delete Held Bill
   const handleDeleteHeldBill = useCallback(async (billId: string) => {
@@ -1014,7 +1174,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
 
           <div className="flex items-center gap-3 z-10">
             {onBack && (
-              <UniversalBackButton onBack={onBack} label="Back to Dashboard" />
+              <UniversalBackButton onBack={handleBackWithAutoHold} label="Back to Dashboard" />
             )}
             <motion.div 
               whileHover={{ rotate: 5, scale: 1.05 }}
@@ -1067,6 +1227,53 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
             )}
           </div>
         </motion.div>
+
+        {/* Auto-Held Receipt Recovery Banner (when recovering from computer shutdown, power loss, or logout) */}
+        {recoveredBillPrompt && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/5 border-2 border-amber-400/80 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+          >
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20 shrink-0">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="px-2 py-0.5 rounded-md bg-amber-200 text-amber-900 font-black text-[10px] uppercase tracking-wide">
+                    Auto-Protected Receipt
+                  </span>
+                  <span className="text-xs text-amber-900 font-bold">
+                    Safely Held on Computer Shutdown / Logout
+                  </span>
+                </div>
+                <p className="text-xs text-slate-700 mt-0.5">
+                  An unfinished receipt with <strong>{recoveredBillPrompt.items.length} items</strong> (Total: <strong>Rs. {Number(recoveredBillPrompt.total || 0).toFixed(2)}</strong>) was safely preserved in your Held Receipts queue.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleResumeRecoveredBill}
+                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>Resume This Bill</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setRecoveredBillPrompt(null)}
+                className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs border border-slate-200 transition-colors cursor-pointer"
+              >
+                Keep in Queue
+              </button>
+            </div>
+          </motion.div>
+        )}
 
         {/* Recent Returns Shift Banner (if returns processed today) */}
         {recentReturns.length > 0 && (

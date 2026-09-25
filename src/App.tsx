@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AuthState, Store, Sale } from './types';
-import { ensureSuperAdminExists, db, doc, updateDoc } from './lib/firebase';
+import { ensureSuperAdminExists, db, doc, updateDoc, setDoc } from './lib/firebase';
 import { Login } from './components/Login';
 import { Navbar, AppNavView } from './components/Navbar';
 import { SuperAdminDashboard } from './components/SuperAdminDashboard';
@@ -99,6 +99,44 @@ export default function App() {
   };
 
   const handleLogout = async () => {
+    // If there is an active in-progress billing cart, automatically hold it before completing logout
+    try {
+      const keysToProcess: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('martpro_active_cart_draft_')) {
+          keysToProcess.push(key);
+        }
+      }
+
+      for (const key of keysToProcess) {
+        const rawDraft = localStorage.getItem(key);
+        if (rawDraft) {
+          const draft = JSON.parse(rawDraft);
+          if (draft.items && draft.items.length > 0) {
+            const heldId = `autoheld_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+            const storeId = draft.storeId || auth.store?.id || 'default';
+            await setDoc(doc(db, 'held_bills', heldId), {
+              id: heldId,
+              storeId: storeId,
+              counterId: draft.counterNumber?.toString() || auth.user?.counterNumber?.toString() || '1',
+              counterName: `Counter #${draft.counterNumber || auth.user?.counterNumber || 1}`,
+              cashierUsername: draft.cashierUsername || auth.user?.username || 'cashier',
+              items: draft.items,
+              subtotal: draft.subtotal || 0,
+              total: draft.total || 0,
+              heldAt: new Date().toISOString(),
+              isAutoHeld: true,
+              notes: 'Auto-held during logout'
+            });
+            localStorage.removeItem(key);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Auto-holding bill on logout warning:', err);
+    }
+
     const activeSessionId = localStorage.getItem('martpro_current_session_id');
     if (activeSessionId) {
       try {

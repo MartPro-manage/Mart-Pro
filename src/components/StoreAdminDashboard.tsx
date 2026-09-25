@@ -20,6 +20,7 @@ import { ReceiptModal } from './ReceiptModal';
 import { StoreSettingsView } from './StoreSettingsView';
 import { SalesRevenueChart } from './SalesRevenueChart';
 import { SevenDaySalesVolumeChart } from './SevenDaySalesVolumeChart';
+import { HourlySales24hChart } from './HourlySales24hChart';
 import { StoreAiAssistantModal } from './StoreAiAssistantModal';
 import { ExcelManagerModal } from './ExcelManagerModal';
 import { DiscountManagerModal } from './DiscountManagerModal';
@@ -2229,10 +2230,18 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                               </td>
                             </tr>
 
-                            {/* EXPANDED INVOICES LIST FOR THIS DATE */}
+                             {/* EXPANDED INVOICES LIST FOR THIS DATE */}
                             {isExpanded && (
                               <tr className="bg-slate-50/90 border-b border-orange-200">
-                                <td colSpan={7} className="p-4 sm:p-6">
+                                <td colSpan={7} className="p-4 sm:p-6 space-y-4">
+                                  {/* 24-Hour Hourly Breakdown Chart for this specific date */}
+                                  <HourlySales24hChart 
+                                    sales={sales} 
+                                    returns={returns} 
+                                    products={products} 
+                                    initialDate={daySummary.date}
+                                  />
+
                                   <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
                                     <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
                                       <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">

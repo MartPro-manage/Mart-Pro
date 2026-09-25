@@ -94,6 +94,12 @@ export const HeldBillsModal: React.FC<HeldBillsModalProps> = ({
                       <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200 font-bold text-xs">
                         Held Bill #{index + 1}
                       </span>
+                      {(bill.isAutoHeld || bill.notes?.toLowerCase().includes('auto-held') || bill.notes?.toLowerCase().includes('shutdown') || bill.notes?.toLowerCase().includes('logout')) && (
+                        <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-bold text-[11px] flex items-center gap-1 shadow-2xs">
+                          <AlertCircle className="w-3 h-3 text-amber-700" />
+                          Auto-Saved on Shutdown / Logout
+                        </span>
+                      )}
                       <span className="text-xs text-slate-500 flex items-center gap-1">
                         <Clock className="w-3.5 h-3.5 text-slate-400" />
                         {formattedTime} • {formattedDate}

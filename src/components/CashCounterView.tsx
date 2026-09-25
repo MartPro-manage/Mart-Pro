@@ -146,6 +146,29 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
   const [weightPromptProduct, setWeightPromptProduct] = useState<Product | null>(null);
   const [isWeightModalOpen, setIsWeightModalOpen] = useState(false);
 
+  // Manual Quantity Modal State
+  const [manualQtyItem, setManualQtyItem] = useState<CartItem | null>(null);
+  const [manualQtyInput, setManualQtyInput] = useState<string>('');
+  const [isManualQtyModalOpen, setIsManualQtyModalOpen] = useState(false);
+
+  const openManualQtyModal = (item: CartItem) => {
+    setManualQtyItem(item);
+    setManualQtyInput(String(item.quantity));
+    setIsManualQtyModalOpen(true);
+  };
+
+  const handleSaveManualQty = () => {
+    if (!manualQtyItem) return;
+    const val = parseFloat(manualQtyInput);
+    if (!isNaN(val) && val >= 0) {
+      handleUpdateQuantity(manualQtyItem.product.id, val);
+      setIsManualQtyModalOpen(false);
+      setManualQtyItem(null);
+    } else {
+      showNotification('error', 'Please enter a valid quantity.');
+    }
+  };
+
   // Return Product State
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
   const [isReturnSlipOpen, setIsReturnSlipOpen] = useState(false);
@@ -703,6 +726,12 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
         setIsShortcutsModalOpen(true);
         return;
       }
+      if (pressedKeys.has('R') && pressedKeys.has('N')) {
+        e.preventDefault();
+        pressedKeys.clear();
+        setIsReturnModalOpen(true);
+        return;
+      }
 
       // Check rapid sequential key presses (within 700ms)
       const now = Date.now();
@@ -723,6 +752,12 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
         if (combo === 'SK') {
           e.preventDefault();
           setIsShortcutsModalOpen(true);
+          lastKey = '';
+          return;
+        }
+        if (combo === 'RN') {
+          e.preventDefault();
+          setIsReturnModalOpen(true);
           lastKey = '';
           return;
         }
@@ -1009,9 +1044,13 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
               id="btn-return-product-modal"
               onClick={() => setIsReturnModalOpen(true)}
               className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-extrabold text-xs rounded-xl border border-rose-200 shadow-xs transition-all flex items-center gap-2 cursor-pointer"
-              title="Process product return, restock item to inventory, and issue customer refund"
+              title="Process product return, restock item to inventory, and issue customer refund (Shortcut: R + N)"
             >
-              <RotateCcw className="w-4 h-4 text-rose-600" /> Return / Refund Item
+              <RotateCcw className="w-4 h-4 text-rose-600" />
+              <span>Return / Refund Item</span>
+              <span className="px-1.5 py-0.2 rounded-md bg-rose-200 text-rose-900 text-[10px] font-mono font-black">
+                R+N
+              </span>
             </motion.button>
 
             {isCameraScannerAllowed && (
@@ -1544,7 +1583,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                                   handleUpdateQuantity(item.product.id, val);
                                 }
                               }}
-                              className="w-14 text-center bg-transparent text-slate-900 font-black text-xs focus:outline-none font-mono"
+                              className="w-12 text-center bg-transparent text-slate-900 font-black text-xs focus:outline-none font-mono"
                               title="Type exact weight or quantity directly"
                             />
 
@@ -1555,6 +1594,16 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                               title={`Add quantity (+${qtyStep})`}
                             >
                               <Plus className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => openManualQtyModal(item)}
+                              className="px-2 py-1 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 font-black text-[10px] transition-colors cursor-pointer flex items-center gap-0.5 shadow-2xs"
+                              title="Enter exact manual quantity"
+                            >
+                              <Calculator className="w-3 h-3" />
+                              <span>Qty</span>
                             </button>
                           </div>
 
@@ -2600,6 +2649,87 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                     className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                   >
                     <ArrowLeft className="w-4 h-4" /> Exit Full Screen (Come Back)
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MANUAL QUANTITY MODAL */}
+        {isManualQtyModalOpen && manualQtyItem && (
+          <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+              <div className="p-5 bg-gradient-to-r from-orange-600 to-amber-600 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center font-bold">
+                    <Calculator className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-base">Enter Manual Quantity</h3>
+                    <p className="text-xs text-orange-100 truncate max-w-[220px]">{manualQtyItem.product.name}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsManualQtyModalOpen(false)}
+                  className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-5">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Exact Quantity / Weight ({manualQtyItem.product.unitType || 'units'})
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step={manualQtyItem.product.sellBy === 'weight' ? '0.001' : '1'}
+                      min="0.001"
+                      max={manualQtyItem.product.stockQuantity}
+                      value={manualQtyInput}
+                      onChange={(e) => setManualQtyInput(e.target.value)}
+                      autoFocus
+                      className="w-full px-4 py-3.5 bg-slate-50 border-2 border-orange-500 rounded-2xl font-black text-2xl text-slate-900 font-mono text-center focus:outline-none focus:bg-white transition-colors"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
+                    <span>Available Stock: <strong className="text-slate-800">{manualQtyItem.product.stockQuantity}</strong></span>
+                    <span>Unit Price: <strong className="text-orange-600">Rs. {manualQtyItem.product.price.toFixed(2)}</strong></span>
+                  </div>
+                </div>
+
+                {/* Quick Preset Buttons */}
+                <div className="grid grid-cols-4 gap-2">
+                  {[1, 2, 5, 10, 20, 50].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setManualQtyInput(String(preset))}
+                      className="py-2.5 rounded-xl bg-slate-100 hover:bg-orange-100 hover:text-orange-700 font-black text-xs text-slate-700 transition-colors cursor-pointer"
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsManualQtyModalOpen(false)}
+                    className="flex-1 py-3 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveManualQty}
+                    className="flex-1 py-3 px-4 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-black text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <CheckCircle2 className="w-4 h-4" /> Update Quantity
                   </button>
                 </div>
               </div>

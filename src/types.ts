@@ -240,6 +240,12 @@ export interface SupplierOrder {
   contactNumber: string;
   items: SupplierOrderItem[];
   status: 'pending' | 'ordered' | 'delivered';
+  paymentTerms?: 'advance' | 'cod';
+  advancePaidAmount?: number;
+  codPaidAmount?: number;
+  totalPaidAmount?: number;
+  paymentExpenseId?: string;
+  deliveryExpenseId?: string;
   notes?: string;
   totalEstimatedAmount?: number;
   createdAt: string;
@@ -273,6 +279,20 @@ export interface Sale {
   slipDeletedAt?: string;
 }
 
+export interface ProductReturnItem {
+  productId: string;
+  productName: string;
+  barcode?: string;
+  serialNumber?: string;
+  shortcutCode?: string;
+  price: number;
+  quantity: number;
+  sellBy?: 'unit' | 'weight';
+  unitType?: string;
+  refundAmount: number;
+  reason?: string;
+}
+
 export interface ProductReturn {
   id: string;
   storeId: string;
@@ -291,6 +311,7 @@ export interface ProductReturn {
   refundAmount: number;
   refundMethod: 'cash' | 'online';
   reason?: string;
+  items?: ProductReturnItem[];
   originalReceiptNumber?: string;
   returnSlipNumber: string;
   timestamp: string;

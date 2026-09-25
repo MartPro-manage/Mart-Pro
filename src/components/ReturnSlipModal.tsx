@@ -31,6 +31,20 @@ export const ReturnSlipModal: React.FC<ReturnSlipModalProps> = ({
 
   if (!isOpen || !returnRecord) return null;
 
+  const itemsList = returnRecord.items && returnRecord.items.length > 0
+    ? returnRecord.items
+    : [{
+        productId: returnRecord.productId,
+        productName: returnRecord.productName,
+        barcode: returnRecord.barcode,
+        price: returnRecord.price,
+        quantity: returnRecord.quantity,
+        refundAmount: returnRecord.refundAmount,
+        reason: returnRecord.reason
+      }];
+
+  const totalUnits = itemsList.reduce((sum, item) => sum + (item.quantity || 0), 0);
+
   const handlePrint = () => {
     setPrintStatus('Preparing return slip printer...');
 
@@ -101,15 +115,17 @@ export const ReturnSlipModal: React.FC<ReturnSlipModalProps> = ({
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td>
-                  <strong>${returnRecord.productName}</strong>
-                  ${returnRecord.barcode ? `<div style="font-size: 9px; color: #555;">Code: ${returnRecord.barcode}</div>` : ''}
-                </td>
-                <td class="text-center font-bold">${returnRecord.quantity}</td>
-                <td class="text-right">Rs. ${(returnRecord.price ?? (returnRecord as any).unitPrice ?? 0).toFixed(2)}</td>
-                <td class="text-right font-bold">Rs. ${(returnRecord.refundAmount ?? 0).toFixed(2)}</td>
-              </tr>
+              ${itemsList.map(item => `
+                <tr>
+                  <td>
+                    <strong>${item.productName}</strong>
+                    ${item.barcode ? `<div style="font-size: 9px; color: #555;">Code: ${item.barcode}</div>` : ''}
+                  </td>
+                  <td class="text-center font-bold">${item.quantity}</td>
+                  <td class="text-right">Rs. ${(item.price || 0).toFixed(2)}</td>
+                  <td class="text-right font-bold">Rs. ${(item.refundAmount || 0).toFixed(2)}</td>
+                </tr>
+              `).join('')}
             </tbody>
           </table>
 
@@ -127,7 +143,7 @@ export const ReturnSlipModal: React.FC<ReturnSlipModalProps> = ({
           ` : ''}
 
           <div style="margin-top: 6px; font-size: 10px; color: #047857;">
-            ✔ Restock Status: <strong>${returnRecord.quantity} unit(s) returned to store inventory</strong>
+            ✔ Restock Status: <strong>${totalUnits} unit(s) returned to store inventory</strong>
           </div>
 
           <div class="divider"></div>
@@ -302,12 +318,14 @@ export const ReturnSlipModal: React.FC<ReturnSlipModalProps> = ({
               <span className="col-span-2 text-right">Refund</span>
             </div>
 
-            <div className="grid grid-cols-12 text-slate-900 text-[11px] py-0.5 items-center">
-              <span className="col-span-6 font-semibold truncate">{returnRecord.productName}</span>
-              <span className="col-span-2 text-center font-bold text-rose-600">+{returnRecord.quantity}</span>
-              <span className="col-span-2 text-right text-slate-600">Rs. {(returnRecord.price ?? (returnRecord as any).unitPrice ?? 0).toFixed(2)}</span>
-              <span className="col-span-2 text-right font-extrabold text-rose-700">Rs. {(returnRecord.refundAmount ?? 0).toFixed(2)}</span>
-            </div>
+            {itemsList.map((item, idx) => (
+              <div key={idx} className="grid grid-cols-12 text-slate-900 text-[11px] py-0.5 items-center">
+                <span className="col-span-6 font-semibold truncate">{item.productName}</span>
+                <span className="col-span-2 text-center font-bold text-rose-600">+{item.quantity}</span>
+                <span className="col-span-2 text-right text-slate-600">Rs. {(item.price || 0).toFixed(2)}</span>
+                <span className="col-span-2 text-right font-extrabold text-rose-700">Rs. {(item.refundAmount || 0).toFixed(2)}</span>
+              </div>
+            ))}
           </div>
 
           <div className="pt-3 border-t-2 border-slate-900 space-y-1">

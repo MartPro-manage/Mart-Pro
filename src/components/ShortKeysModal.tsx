@@ -9,7 +9,8 @@ import {
   PauseCircle, 
   Scan,
   Maximize2,
-  FileSpreadsheet
+  FileSpreadsheet,
+  RotateCcw
 } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -22,6 +23,13 @@ export const ShortKeysModal: React.FC<ShortKeysModalProps> = ({ isOpen, onClose 
   if (!isOpen) return null;
 
   const keyCombos = [
+    {
+      keys: ['R', '+', 'N'],
+      title: 'Product Return & Refund',
+      description: 'Press R and N simultaneously to open the batch product return modal.',
+      badgeColor: 'bg-rose-50 text-rose-700 border-rose-200',
+      icon: RotateCcw
+    },
     {
       keys: ['H', '+', 'D'],
       title: 'Hold Billing',

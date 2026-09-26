@@ -57,7 +57,9 @@ export const HardwarePermissionsBar: React.FC<HardwarePermissionsBarProps> = ({
     try {
       setPermissionMsg('Requesting Camera Access...');
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      setActiveCamStream(stream);
+      // Immediately stop test tracks so the camera is free for Html5Qrcode scanner
+      stream.getTracks().forEach(track => track.stop());
+      setActiveCamStream(null);
       setCameraState('granted');
       setPermissionMsg('Camera permission ALLOWED! Barcode scanner is ready.');
       setTimeout(() => setPermissionMsg(null), 4000);
@@ -83,7 +85,9 @@ export const HardwarePermissionsBar: React.FC<HardwarePermissionsBarProps> = ({
     try {
       setPermissionMsg('Requesting Microphone Access...');
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      setActiveMicStream(stream);
+      // Immediately stop test tracks
+      stream.getTracks().forEach(track => track.stop());
+      setActiveMicStream(null);
       setMicState('granted');
       setPermissionMsg('Microphone permission ALLOWED!');
       setTimeout(() => setPermissionMsg(null), 4000);

@@ -17,7 +17,10 @@ import {
   Copy, 
   CheckCircle2,
   ArrowRight,
-  RotateCcw
+  RotateCcw,
+  ShieldAlert,
+  Lock,
+  Unlock
 } from 'lucide-react';
 
 interface BarcodeScannerModalProps {
@@ -39,6 +42,8 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const [detectedBarcode, setDetectedBarcode] = useState<string | null>(null);
   const [scannedHistory, setScannedHistory] = useState<string[]>([]);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [permissionDenied, setPermissionDenied] = useState<boolean>(false);
+  const [isRequestingPermission, setIsRequestingPermission] = useState<boolean>(false);
   const [cameras, setCameras] = useState<Array<{ id: string; label: string }>>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string>('');
   const [isScanning, setIsScanning] = useState(false);
@@ -98,28 +103,6 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     Html5QrcodeSupportedFormats.AZTEC
   ];
 
-  // Fetch available cameras
-  useEffect(() => {
-    if (isOpen) {
-      Html5Qrcode.getCameras()
-        .then((devices) => {
-          if (devices && devices.length > 0) {
-            setCameras(devices);
-            const backCam = devices.find(d => 
-              d.label.toLowerCase().includes('back') || 
-              d.label.toLowerCase().includes('rear') || 
-              d.label.toLowerCase().includes('environment') ||
-              d.label.toLowerCase().includes('wide')
-            );
-            setSelectedCameraId(backCam ? backCam.id : devices[0].id);
-          }
-        })
-        .catch((err) => {
-          console.warn('Could not enumerate cameras:', err);
-        });
-    }
-  }, [isOpen]);
-
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
@@ -178,111 +161,228 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     }
   }, [playBeepSound, autoSendEnabled, onScanSuccess]);
 
-  // Start Scanner
+  // Request browser camera permission directly with user gesture and discover cameras
+  const requestCameraPermissionAndStart = useCallback(async () => {
+    setIsRequestingPermission(true);
+    setCameraError(null);
+    setPermissionDenied(false);
+
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('MediaDevices API not supported on this browser/device.');
+      }
+
+      // Explicitly trigger the browser's permission prompt if not yet allowed
+      const testStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } }
+      });
+
+      // Immediately release test tracks so Html5Qrcode has exclusive access
+      testStream.getTracks().forEach(track => track.stop());
+
+      // Query available video devices
+      const devices = await Html5Qrcode.getCameras();
+      if (devices && devices.length > 0) {
+        setCameras(devices);
+        const backCam = devices.find(d => 
+          d.label.toLowerCase().includes('back') || 
+          d.label.toLowerCase().includes('rear') || 
+          d.label.toLowerCase().includes('environment') ||
+          d.label.toLowerCase().includes('wide')
+        );
+        const chosenId = backCam ? backCam.id : devices[0].id;
+        setSelectedCameraId(chosenId);
+      }
+
+      setPermissionDenied(false);
+      return true;
+    } catch (err: any) {
+      console.warn('Camera permission request error:', err);
+      const isDenied = err.name === 'NotAllowedError' || 
+                       err.name === 'PermissionDeniedError' ||
+                       String(err).toLowerCase().includes('permission') ||
+                       String(err).toLowerCase().includes('denied');
+      
+      setPermissionDenied(isDenied);
+      if (isDenied) {
+        setCameraError('Camera access was blocked by browser permissions. Please click "Allow Camera Access" or enable camera in your browser address bar.');
+      } else {
+        setCameraError(`Camera connection error (${err.name || 'Unavailable'}). You can enter the barcode manually or upload a photo.`);
+      }
+      return false;
+    } finally {
+      setIsRequestingPermission(false);
+    }
+  }, []);
+
+  // Multi-tier resilient scanner startup
+  const startScanner = useCallback(async () => {
+    if (isStartingRef.current) return;
+    isStartingRef.current = true;
+
+    try {
+      await stopScanner();
+
+      if (!isMountedRef.current) return;
+
+      const container = document.getElementById(qrRegionId);
+      if (!container) return;
+
+      const html5QrcodeScanner = new Html5Qrcode(qrRegionId, {
+        formatsToSupport,
+        verbose: false,
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true
+        }
+      });
+      scannerRef.current = html5QrcodeScanner;
+
+      // Custom horizontal scanner box tailored for 1D product barcodes and 2D QR
+      const qrboxFunction = (viewfinderWidth: number, viewfinderHeight: number) => {
+        const width = Math.min(viewfinderWidth * 0.88, 360);
+        const height = Math.min(viewfinderHeight * 0.55, 180);
+        return { width: Math.max(width, 220), height: Math.max(height, 120) };
+      };
+
+      const scanConfig = {
+        fps: 20,
+        qrbox: qrboxFunction,
+        aspectRatio: 1.3333
+      };
+
+      let started = false;
+
+      // Tier 1: Try with selected Camera Device ID if available
+      if (selectedCameraId) {
+        try {
+          await html5QrcodeScanner.start(
+            selectedCameraId,
+            scanConfig,
+            (decodedText) => {
+              if (isMountedRef.current) handleBarcodeDecoded(decodedText);
+            },
+            () => {}
+          );
+          started = true;
+        } catch (e) {
+          console.warn('Tier 1 camera start failed, falling back to facingMode:', e);
+        }
+      }
+
+      // Tier 2: Try with environment facingMode
+      if (!started) {
+        try {
+          await html5QrcodeScanner.start(
+            { facingMode: 'environment' },
+            scanConfig,
+            (decodedText) => {
+              if (isMountedRef.current) handleBarcodeDecoded(decodedText);
+            },
+            () => {}
+          );
+          started = true;
+        } catch (e) {
+          console.warn('Tier 2 environment camera start failed, falling back to user camera:', e);
+        }
+      }
+
+      // Tier 3: Try with user facingMode / any available camera
+      if (!started) {
+        try {
+          await html5QrcodeScanner.start(
+            { facingMode: 'user' },
+            scanConfig,
+            (decodedText) => {
+              if (isMountedRef.current) handleBarcodeDecoded(decodedText);
+            },
+            () => {}
+          );
+          started = true;
+        } catch (e) {
+          console.warn('Tier 3 user camera start failed:', e);
+          throw e;
+        }
+      }
+
+      if (!isMountedRef.current) {
+        await stopScanner();
+      } else {
+        setIsScanning(true);
+        setCameraError(null);
+        setPermissionDenied(false);
+
+        // Check if torch/flashlight capability exists
+        try {
+          // @ts-ignore
+          const track = html5QrcodeScanner.getRunningTrackCameraCapabilities?.();
+          // @ts-ignore
+          if (track && track.torchFeature && track.torchFeature().isSupported()) {
+            setHasTorch(true);
+          }
+        } catch (e) {
+          // ignore torch detection error
+        }
+      }
+    } catch (err: any) {
+      console.warn('Camera scanner initialization error:', err);
+      if (isMountedRef.current) {
+        setIsScanning(false);
+        const isDenied = err?.name === 'NotAllowedError' || 
+                         err?.name === 'PermissionDeniedError' ||
+                         String(err).toLowerCase().includes('permission') ||
+                         String(err).toLowerCase().includes('denied');
+        setPermissionDenied(isDenied);
+        if (isDenied) {
+          setCameraError('Camera access permission was denied. Tap "Allow Camera Access" below to enable camera.');
+        } else {
+          setCameraError('Live camera stream unavailable. You can retry camera or enter barcode manually.');
+        }
+      }
+    } finally {
+      isStartingRef.current = false;
+    }
+  }, [selectedCameraId, stopScanner, handleBarcodeDecoded, formatsToSupport]);
+
+  // Initial startup when modal opens
   useEffect(() => {
     if (!isOpen) {
       stopScanner();
       setDetectedBarcode(null);
       setManualBarcode('');
+      setCameraError(null);
+      setPermissionDenied(false);
       return;
     }
 
-    setCameraError(null);
-
-    const startScanner = async () => {
-      if (isStartingRef.current) return;
-      isStartingRef.current = true;
-
-      try {
-        await stopScanner();
-
-        if (!isMountedRef.current) return;
-
-        const container = document.getElementById(qrRegionId);
-        if (!container) return;
-
-        const html5QrcodeScanner = new Html5Qrcode(qrRegionId, {
-          formatsToSupport,
-          verbose: false,
-          experimentalFeatures: {
-            useBarCodeDetectorIfSupported: true
+    const init = async () => {
+      // First check or query cameras if list is empty
+      if (cameras.length === 0) {
+        try {
+          const devices = await Html5Qrcode.getCameras();
+          if (devices && devices.length > 0) {
+            setCameras(devices);
+            const backCam = devices.find(d => 
+              d.label.toLowerCase().includes('back') || 
+              d.label.toLowerCase().includes('rear') || 
+              d.label.toLowerCase().includes('environment') ||
+              d.label.toLowerCase().includes('wide')
+            );
+            setSelectedCameraId(backCam ? backCam.id : devices[0].id);
           }
-        });
-        scannerRef.current = html5QrcodeScanner;
-
-        // Custom horizontal scanner box tailored for 1D product barcodes and 2D QR
-        const qrboxFunction = (viewfinderWidth: number, viewfinderHeight: number) => {
-          const width = Math.min(viewfinderWidth * 0.88, 360);
-          const height = Math.min(viewfinderHeight * 0.55, 180);
-          return { width: Math.max(width, 220), height: Math.max(height, 120) };
-        };
-
-        const cameraConfig = selectedCameraId 
-          ? { deviceId: { exact: selectedCameraId } } 
-          : { facingMode: 'environment' };
-
-        await html5QrcodeScanner.start(
-          cameraConfig,
-          {
-            fps: 20,
-            qrbox: qrboxFunction,
-            aspectRatio: 1.3333,
-            videoConstraints: {
-              facingMode: 'environment',
-              width: { ideal: 1280, min: 640 },
-              height: { ideal: 720, min: 480 },
-              // @ts-ignore
-              advanced: [{ focusMode: 'continuous' }]
-            }
-          },
-          (decodedText) => {
-            if (isMountedRef.current) {
-              handleBarcodeDecoded(decodedText);
-            }
-          },
-          () => {
-            // frame parse fail, silent continuous scan
-          }
-        );
-
-        if (!isMountedRef.current) {
-          await stopScanner();
-        } else {
-          setIsScanning(true);
-          // Check if torch/flashlight capability exists
-          try {
-            // @ts-ignore
-            const track = html5QrcodeScanner.getRunningTrackCameraCapabilities?.();
-            // @ts-ignore
-            if (track && track.torchFeature && track.torchFeature().isSupported()) {
-              setHasTorch(true);
-            }
-          } catch (e) {
-            // ignore torch detection error
-          }
+        } catch (e) {
+          // ignore enumeration error on startup
         }
-      } catch (err: any) {
-        console.warn('Camera scanner initialization error:', err);
-        if (isMountedRef.current) {
-          setIsScanning(false);
-          setCameraError(
-            'Live camera stream unavailable or permission denied. You can upload an image or enter the barcode number below.'
-          );
-        }
-      } finally {
-        isStartingRef.current = false;
       }
+      startScanner();
     };
 
-    const timer = setTimeout(() => {
-      startScanner();
-    }, 200);
+    const timer = setTimeout(init, 150);
 
     return () => {
       clearTimeout(timer);
       stopScanner();
     };
-  }, [isOpen, selectedCameraId, stopScanner, handleBarcodeDecoded]);
+  }, [isOpen, selectedCameraId, startScanner, stopScanner]);
 
   // Toggle Torch/Flashlight
   const handleToggleTorch = async () => {
@@ -339,7 +439,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     setManualBarcode('');
     lastScannedCodeRef.current = '';
     
-    // Auto-close if not in continuous mode, or keep open if cashier prefers
+    // Close modal
     onClose();
   };
 
@@ -420,22 +520,35 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
             </div>
           )}
 
-          {hasTorch && (
+          <div className="flex items-center gap-1.5 shrink-0">
+            {hasTorch && (
+              <button
+                type="button"
+                onClick={handleToggleTorch}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                  torchOn ? 'bg-amber-400 text-slate-950 shadow-sm' : 'bg-white text-slate-700 border border-slate-300'
+                }`}
+              >
+                {torchOn ? <Flashlight className="w-3.5 h-3.5" /> : <FlashlightOff className="w-3.5 h-3.5" />}
+                <span>{torchOn ? 'Flash On' : 'Flash'}</span>
+              </button>
+            )}
+
             <button
               type="button"
-              onClick={handleToggleTorch}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                torchOn ? 'bg-amber-400 text-slate-950 shadow-sm' : 'bg-white text-slate-700 border border-slate-300'
-              }`}
+              onClick={requestCameraPermissionAndStart}
+              disabled={isRequestingPermission}
+              className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
+              title="Refresh / Grant Camera Permission"
             >
-              {torchOn ? <Flashlight className="w-3.5 h-3.5" /> : <FlashlightOff className="w-3.5 h-3.5" />}
-              <span>{torchOn ? 'Flash On' : 'Flash'}</span>
+              <RefreshCw className={`w-3.5 h-3.5 text-orange-600 ${isRequestingPermission ? 'animate-spin' : ''}`} />
+              <span>{isRequestingPermission ? 'Requesting...' : 'Reload Cam'}</span>
             </button>
-          )}
+          </div>
         </div>
 
         {/* Camera Region Viewfinder */}
-        <div className="relative rounded-2xl overflow-hidden bg-slate-950 border border-slate-300 min-h-[200px] flex items-center justify-center shadow-inner">
+        <div className="relative rounded-2xl overflow-hidden bg-slate-950 border border-slate-300 min-h-[220px] flex items-center justify-center shadow-inner">
           <div id={qrRegionId} className="w-full" />
           
           {/* Laser overlay animation when scanning */}
@@ -451,10 +564,42 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
             </div>
           )}
 
+          {/* Camera Permission / Error Recovery View */}
           {cameraError && (
-            <div className="p-5 text-center space-y-2 max-w-xs text-xs text-amber-800 bg-amber-50 rounded-xl border border-amber-200">
-              <AlertCircle className="w-7 h-7 text-amber-600 mx-auto" />
-              <p className="font-semibold">{cameraError}</p>
+            <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-xs flex flex-col items-center justify-center p-5 text-center space-y-3.5 z-20">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30 shadow-lg">
+                {permissionDenied ? <Lock className="w-6 h-6" /> : <AlertCircle className="w-6 h-6" />}
+              </div>
+
+              <div className="max-w-xs space-y-1">
+                <h4 className="text-sm font-bold text-white">
+                  {permissionDenied ? 'Camera Permission Required' : 'Camera Access Notice'}
+                </h4>
+                <p className="text-xs text-slate-300 leading-relaxed font-medium">
+                  {cameraError}
+                </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2 w-full max-w-xs pt-1">
+                <button
+                  type="button"
+                  onClick={requestCameraPermissionAndStart}
+                  disabled={isRequestingPermission}
+                  className="flex-1 py-2.5 px-4 bg-orange-600 hover:bg-orange-500 active:bg-orange-700 text-white font-black text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <Unlock className="w-4 h-4" />
+                  <span>{isRequestingPermission ? 'Prompting...' : 'Allow Camera Access'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 transition-colors cursor-pointer flex items-center justify-center gap-1"
+                >
+                  <Upload className="w-3.5 h-3.5 text-orange-400" />
+                  <span>Upload Photo</span>
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -583,7 +728,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           </button>
         </div>
 
-        {/* Recently Scanned Items History (Helps verification for continuous multi-item scanning) */}
+        {/* Recently Scanned Items History */}
         {scannedHistory.length > 0 && (
           <div className="pt-2 border-t border-slate-200">
             <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1.5">

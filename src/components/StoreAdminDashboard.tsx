@@ -508,7 +508,11 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
 
     // Compute Net Profit, Net Units, and Margins for every day
     Object.values(dateMap).forEach((d) => {
-      d.netRevenue = d.grossRevenue - d.totalRefunds;
+      const dayOrderCost = (expenses || [])
+        .filter(e => (e.date || getLocalDateString(e.timestamp)) === d.date && (e.category === 'Transport & Logistics' || e.title?.toLowerCase().includes('supply') || e.title?.toLowerCase().includes('order') || e.title?.toLowerCase().includes('balance')))
+        .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+      d.netRevenue = Math.max(0, d.grossRevenue - d.totalRefunds - dayOrderCost);
       d.netCost = Math.max(0, d.grossCost - d.returnedCost);
       d.netProfit = d.netRevenue - d.netCost;
       d.profitMargin = d.netRevenue > 0 ? (d.netProfit / d.netRevenue) * 100 : 0;
@@ -517,7 +521,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
 
     // Sort descending by date
     return Object.values(dateMap).sort((a, b) => b.date.localeCompare(a.date));
-  }, [sales, returns, products]);
+  }, [sales, returns, products, expenses]);
 
   // Compute Aggregations for Active Date Filter
   const filteredGrossRevenue = useMemo(() => {
@@ -527,40 +531,6 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
   const filteredRefundsTotal = useMemo(() => {
     return filteredReturnsByDate.reduce((sum, r) => sum + (r.refundAmount || 0), 0);
   }, [filteredReturnsByDate]);
-
-  const filteredNetRevenue = useMemo(() => {
-    return filteredGrossRevenue - filteredRefundsTotal;
-  }, [filteredGrossRevenue, filteredRefundsTotal]);
-
-  const filteredCostOfGoods = useMemo(() => {
-    let totalCost = 0;
-    (filteredSalesByDate || []).forEach((sale) => {
-      (sale.items || []).forEach((item) => {
-        const qty = item.quantity || 0;
-        let unitCost = 0;
-        if (typeof item.costPrice === 'number' && item.costPrice >= 0) {
-          unitCost = item.costPrice;
-        } else {
-          const matching = products.find(p => (item.productId && p.id === item.productId) || (item.barcode && p.barcode === item.barcode));
-          unitCost = matching?.costPrice || 0;
-        }
-        totalCost += unitCost * qty;
-      });
-    });
-
-    (filteredReturnsByDate || []).forEach((ret) => {
-      const retQty = ret.quantity || 0;
-      const matching = products.find(p => (ret.productId && p.id === ret.productId) || (ret.barcode && p.barcode === ret.barcode));
-      const retCost = (matching?.costPrice || 0) * retQty;
-      totalCost -= retCost;
-    });
-
-    return Math.max(0, totalCost);
-  }, [filteredSalesByDate, filteredReturnsByDate, products]);
-
-  const filteredNetProfit = useMemo(() => {
-    return filteredNetRevenue - filteredCostOfGoods;
-  }, [filteredNetRevenue, filteredCostOfGoods]);
 
   // Filter Expenses according to selected Date Range
   const filteredExpensesByDate = useMemo(() => {
@@ -597,6 +567,46 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
     }
     return expenses;
   }, [expenses, dateFilter, todayStr, yesterdayStr, selectedSingleDate, customStartDate, customEndDate]);
+
+  const filteredSupplierOrdersCost = useMemo(() => {
+    return filteredExpensesByDate
+      .filter(e => e.category === 'Transport & Logistics' || e.title?.toLowerCase().includes('supply') || e.title?.toLowerCase().includes('order') || e.title?.toLowerCase().includes('balance'))
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  }, [filteredExpensesByDate]);
+
+  const filteredNetRevenue = useMemo(() => {
+    return Math.max(0, filteredGrossRevenue - filteredRefundsTotal - filteredSupplierOrdersCost);
+  }, [filteredGrossRevenue, filteredRefundsTotal, filteredSupplierOrdersCost]);
+
+  const filteredCostOfGoods = useMemo(() => {
+    let totalCost = 0;
+    (filteredSalesByDate || []).forEach((sale) => {
+      (sale.items || []).forEach((item) => {
+        const qty = item.quantity || 0;
+        let unitCost = 0;
+        if (typeof item.costPrice === 'number' && item.costPrice >= 0) {
+          unitCost = item.costPrice;
+        } else {
+          const matching = products.find(p => (item.productId && p.id === item.productId) || (item.barcode && p.barcode === item.barcode));
+          unitCost = matching?.costPrice || 0;
+        }
+        totalCost += unitCost * qty;
+      });
+    });
+
+    (filteredReturnsByDate || []).forEach((ret) => {
+      const retQty = ret.quantity || 0;
+      const matching = products.find(p => (ret.productId && p.id === ret.productId) || (ret.barcode && p.barcode === ret.barcode));
+      const retCost = (matching?.costPrice || 0) * retQty;
+      totalCost -= retCost;
+    });
+
+    return Math.max(0, totalCost);
+  }, [filteredSalesByDate, filteredReturnsByDate, products]);
+
+  const filteredNetProfit = useMemo(() => {
+    return filteredNetRevenue - filteredCostOfGoods;
+  }, [filteredNetRevenue, filteredCostOfGoods]);
 
   const filteredTotalExpenses = useMemo(() => {
     return filteredExpensesByDate.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);

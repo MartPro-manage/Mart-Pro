@@ -233,12 +233,6 @@ export const StoreAdminSidebar: React.FC<StoreAdminSidebarProps> = ({
       group: 'Store Management',
       items: [
         {
-          id: 'suppliers' as StoreAdminTab,
-          label: 'Supplier Orders',
-          icon: Truck,
-          badge: null
-        },
-        {
           id: 'staff' as StoreAdminTab,
           label: 'Staff & Salaries',
           icon: Users,

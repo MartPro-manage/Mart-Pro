@@ -2133,173 +2133,111 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                   </span>
                 </div>
 
-                {/* Direct Grid of All Payment Methods (Cash + All Admin-Configured Digital Platforms + Other) */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {/* 2 Main Options: Cash and Digital Method */}
+                <div className="grid grid-cols-2 gap-2">
                   {/* 1. CASH PAYMENT */}
                   <button
                     id="btn-payment-cash"
                     type="button"
                     onClick={() => {
                       setPaymentMethod('cash');
-                      setIsCustomDigitalSelected(false);
                     }}
-                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer relative ${
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer relative ${
                       paymentMethod === 'cash'
                         ? 'bg-emerald-600 text-white border-emerald-700 shadow-md ring-2 ring-emerald-400/40 font-bold'
                         : 'bg-emerald-50/70 border-emerald-200 hover:border-emerald-400 text-emerald-950'
                     }`}
                   >
-                    <div className="flex items-center justify-between mb-0.5">
-                      <Banknote className={`w-4 h-4 ${paymentMethod === 'cash' ? 'text-white' : 'text-emerald-600'}`} />
-                      {paymentMethod === 'cash' && <Check className="w-3.5 h-3.5 text-white" />}
+                    <div className="flex items-center justify-between mb-1">
+                      <Banknote className={`w-5 h-5 ${paymentMethod === 'cash' ? 'text-white' : 'text-emerald-600'}`} />
+                      {paymentMethod === 'cash' && <Check className="w-4 h-4 text-white" />}
                     </div>
-                    <div className="font-extrabold text-xs truncate">Cash</div>
-                    <div className={`text-[10px] truncate ${paymentMethod === 'cash' ? 'text-emerald-100' : 'text-slate-400'}`}>
-                      Physical Cash
+                    <div className="font-extrabold text-sm truncate">Cash</div>
+                    <div className={`text-[10px] truncate ${paymentMethod === 'cash' ? 'text-emerald-100' : 'text-slate-500'}`}>
+                      Physical Currency
                     </div>
                   </button>
 
-                  {/* 2. ALL ADMIN-CONFIGURED DIGITAL METHODS (Card, EasyPaisa, JazzCash, SadaPay, etc.) */}
-                  {configuredDigitalMethods.map((method) => {
-                    const isSelected = paymentMethod === 'online' && !isCustomDigitalSelected && selectedDigitalProvider.toLowerCase().trim() === method.name.toLowerCase().trim();
-                    const meta = getPaymentMethodMeta(method.name);
-                    const IconComponent = meta.icon;
-
-                    return (
-                      <button
-                        key={method.id}
-                        type="button"
-                        onClick={() => {
-                          setPaymentMethod('online');
-                          setIsCustomDigitalSelected(false);
-                          setSelectedDigitalProvider(method.name);
-                        }}
-                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer relative ${
-                          isSelected
-                            ? meta.activeClass
-                            : `${meta.bgClass}`
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-0.5">
-                          <IconComponent className={`w-4 h-4 ${isSelected ? 'text-white' : 'text-slate-600'}`} />
-                          <div className="flex items-center gap-1">
-                            {method.qrCodeUrl && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setViewingDigitalQr(method);
-                                }}
-                                className={`text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 shrink-0 ${
-                                  isSelected
-                                    ? 'bg-white/20 text-white hover:bg-white/30'
-                                    : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                                }`}
-                                title="View QR Code"
-                              >
-                                <QrCode className="w-3 h-3" /> QR
-                              </button>
-                            )}
-                            {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
-                          </div>
-                        </div>
-                        <div className="font-extrabold text-xs truncate">{method.name}</div>
-                        <div className={`text-[10px] truncate ${isSelected ? 'text-white/80' : 'text-slate-400'}`}>
-                          {method.instructions || 'Digital Payment'}
-                        </div>
-                      </button>
-                    );
-                  })}
-
-                  {/* 3. OTHER / CUSTOM MANUAL METHOD */}
+                  {/* 2. DIGITAL METHOD */}
                   <button
+                    id="btn-payment-digital"
                     type="button"
                     onClick={() => {
                       setPaymentMethod('online');
-                      setIsCustomDigitalSelected(true);
+                      if (!selectedDigitalProvider && configuredDigitalMethods.length > 0) {
+                        setSelectedDigitalProvider(configuredDigitalMethods[0].name);
+                      }
                     }}
-                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer relative ${
-                      paymentMethod === 'online' && isCustomDigitalSelected
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer relative ${
+                      paymentMethod === 'online'
                         ? 'bg-blue-600 text-white border-blue-700 shadow-md ring-2 ring-blue-400/40 font-bold'
-                        : 'bg-slate-50 border-dashed border-slate-300 hover:border-blue-400 text-slate-700 hover:bg-blue-50/50'
+                        : 'bg-blue-50/70 border-blue-200 hover:border-blue-400 text-blue-950'
                     }`}
                   >
-                    <div className="flex items-center justify-between mb-0.5">
-                      <Edit2 className={`w-4 h-4 ${paymentMethod === 'online' && isCustomDigitalSelected ? 'text-white' : 'text-slate-500'}`} />
-                      {paymentMethod === 'online' && isCustomDigitalSelected && <Check className="w-3.5 h-3.5 text-white" />}
+                    <div className="flex items-center justify-between mb-1">
+                      <CreditCard className={`w-5 h-5 ${paymentMethod === 'online' ? 'text-white' : 'text-blue-600'}`} />
+                      {paymentMethod === 'online' && <Check className="w-4 h-4 text-white" />}
                     </div>
-                    <div className="font-extrabold text-xs truncate">Other / Manual</div>
-                    <div className={`text-[10px] truncate ${paymentMethod === 'online' && isCustomDigitalSelected ? 'text-blue-100' : 'text-slate-400'}`}>
-                      Custom Method
+                    <div className="font-extrabold text-sm truncate">Digital Method</div>
+                    <div className={`text-[10px] truncate ${paymentMethod === 'online' ? 'text-blue-100' : 'text-slate-500'}`}>
+                      Cards & Mobile Wallets
                     </div>
                   </button>
                 </div>
 
-                {/* ACTIVE DIGITAL METHOD DETAILS (INSTRUCTIONS, QR PREVIEW & TRX ID) */}
+                {/* SUB-GRID: Show all admin-added digital payment platforms when Digital Method is chosen */}
                 {paymentMethod === 'online' && (
                   <motion.div
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: 'auto' }}
                     exit={{ opacity: 0, height: 0 }}
-                    className="mt-3 p-3.5 bg-blue-50/80 border border-blue-200 rounded-2xl space-y-3"
+                    className="mt-3 p-3.5 bg-blue-50/90 border border-blue-200 rounded-2xl space-y-2.5"
                   >
-                    {/* Manual name entry if "Other" is chosen */}
-                    {isCustomDigitalSelected ? (
-                      <div className="space-y-1">
-                        <label className="block text-[10px] font-black uppercase text-blue-900">
-                          Custom Payment Method Name *
-                        </label>
-                        <input
-                          type="text"
-                          autoFocus
-                          placeholder="e.g. Voucher, Gift Card, Cheque, Custom POS..."
-                          value={customDigitalProviderInput}
-                          onChange={(e) => setCustomDigitalProviderInput(e.target.value)}
-                          className="w-full px-3 py-2 bg-white border border-blue-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                    ) : (
-                      selectedMethodConfig && (
-                        <div className="flex items-center justify-between bg-white p-2.5 rounded-xl border border-blue-200">
-                          <div>
-                            <div className="text-xs font-black text-slate-900 flex items-center gap-1.5">
-                              <span>{selectedMethodConfig.name}</span>
-                              <span className="text-[10px] text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded font-bold">
-                                Active Method
-                              </span>
-                            </div>
-                            {selectedMethodConfig.instructions && (
-                              <div className="text-[11px] text-slate-600 mt-0.5">
-                                {selectedMethodConfig.instructions}
-                              </div>
-                            )}
-                          </div>
-                          {selectedMethodConfig.qrCodeUrl && (
-                            <button
-                              type="button"
-                              onClick={() => setViewingDigitalQr(selectedMethodConfig)}
-                              className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
-                            >
-                              <QrCode className="w-3.5 h-3.5" /> View QR
-                            </button>
-                          )}
-                        </div>
-                      )
-                    )}
-
-                    {/* Optional Reference / Transaction ID Input */}
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-600 mb-1">
-                        Transaction Ref / TRX ID (Optional)
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. TRX-982183 or Sender Phone"
-                        value={digitalTransactionRef}
-                        onChange={(e) => setDigitalTransactionRef(e.target.value)}
-                        className="w-full px-3 py-1.5 bg-white border border-blue-200 rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
-                      />
+                    <div className="flex items-center justify-between text-xs font-black text-blue-950">
+                      <span>Select Digital Platform ({configuredDigitalMethods.length} Available):</span>
+                      <span className="text-[10px] bg-blue-200 text-blue-900 px-2 py-0.5 rounded-full font-bold">
+                        {selectedDigitalProvider || 'Choose one'}
+                      </span>
                     </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {configuredDigitalMethods.map((method) => {
+                        const isSubSelected = selectedDigitalProvider.toLowerCase().trim() === method.name.toLowerCase().trim();
+                        const meta = getPaymentMethodMeta(method.name);
+                        const IconComponent = meta.icon;
+
+                        return (
+                          <button
+                            key={method.id}
+                            type="button"
+                            onClick={() => setSelectedDigitalProvider(method.name)}
+                            className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer relative ${
+                              isSubSelected
+                                ? meta.activeClass
+                                : `${meta.bgClass}`
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-0.5">
+                              <IconComponent className={`w-4 h-4 ${isSubSelected ? 'text-white' : 'text-slate-600'}`} />
+                              {isSubSelected && <Check className="w-3.5 h-3.5 text-white" />}
+                            </div>
+                            <div className="font-extrabold text-xs truncate">{method.name}</div>
+                            <div className={`text-[10px] truncate ${isSubSelected ? 'text-white/80' : 'text-slate-400'}`}>
+                              {method.instructions || 'Digital Payment'}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {selectedMethodConfig && (
+                      <div className="bg-white p-2.5 rounded-xl border border-blue-200 text-xs">
+                        <span className="font-bold text-slate-800">{selectedMethodConfig.name}</span>
+                        {selectedMethodConfig.instructions && (
+                          <p className="text-[11px] text-slate-600 mt-0.5">{selectedMethodConfig.instructions}</p>
+                        )}
+                      </div>
+                    )}
                   </motion.div>
                 )}
               </div>
@@ -3225,15 +3163,15 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                       </span>
                     </div>
 
+                    {/* 2 Main Options: Cash and Digital Method */}
                     <div className="grid grid-cols-2 gap-1.5">
                       {/* Cash */}
                       <button
                         type="button"
                         onClick={() => {
                           setPaymentMethod('cash');
-                          setIsCustomDigitalSelected(false);
                         }}
-                        className={`p-2 rounded-xl border text-left transition-all cursor-pointer text-xs ${
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer text-xs ${
                           paymentMethod === 'cash'
                             ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs font-bold'
                             : 'bg-emerald-50/70 border-emerald-200 hover:border-emerald-400 text-emerald-950'
@@ -3241,108 +3179,72 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                       >
                         <div className="flex items-center justify-between">
                           <span className="font-extrabold flex items-center gap-1 truncate">
-                            <Banknote className="w-3.5 h-3.5 shrink-0" />
+                            <Banknote className="w-4 h-4 shrink-0" />
                             Cash
                           </span>
-                          {paymentMethod === 'cash' && <Check className="w-3 h-3 text-white shrink-0" />}
+                          {paymentMethod === 'cash' && <Check className="w-3.5 h-3.5 text-white shrink-0" />}
                         </div>
                       </button>
 
-                      {/* Admin Configured Digital Methods */}
-                      {configuredDigitalMethods.map((method) => {
-                        const isSelected = paymentMethod === 'online' && !isCustomDigitalSelected && selectedDigitalProvider.toLowerCase().trim() === method.name.toLowerCase().trim();
-                        const meta = getPaymentMethodMeta(method.name);
-                        const IconComponent = meta.icon;
-
-                        return (
-                          <button
-                            key={method.id}
-                            type="button"
-                            onClick={() => {
-                              setPaymentMethod('online');
-                              setIsCustomDigitalSelected(false);
-                              setSelectedDigitalProvider(method.name);
-                            }}
-                            className={`p-2 rounded-xl border text-left transition-all cursor-pointer text-xs ${
-                              isSelected
-                                ? `${meta.activeClass} text-white`
-                                : `${meta.bgClass}`
-                            }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="font-extrabold flex items-center gap-1 truncate">
-                                <IconComponent className="w-3.5 h-3.5 shrink-0" />
-                                {method.name}
-                              </span>
-                              <div className="flex items-center gap-1">
-                                {method.qrCodeUrl && (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setViewingDigitalQr(method);
-                                    }}
-                                    className={`text-[9px] font-bold px-1 rounded flex items-center gap-0.5 shrink-0 ${
-                                      isSelected ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-700'
-                                    }`}
-                                  >
-                                    <QrCode className="w-2.5 h-2.5" /> QR
-                                  </button>
-                                )}
-                                {isSelected && <Check className="w-3 h-3 text-white shrink-0" />}
-                              </div>
-                            </div>
-                          </button>
-                        );
-                      })}
-
-                      {/* Other / Custom Manual */}
+                      {/* Digital Method */}
                       <button
                         type="button"
                         onClick={() => {
                           setPaymentMethod('online');
-                          setIsCustomDigitalSelected(true);
+                          if (!selectedDigitalProvider && configuredDigitalMethods.length > 0) {
+                            setSelectedDigitalProvider(configuredDigitalMethods[0].name);
+                          }
                         }}
-                        className={`p-2 rounded-xl border text-left transition-all cursor-pointer text-xs ${
-                          paymentMethod === 'online' && isCustomDigitalSelected
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer text-xs ${
+                          paymentMethod === 'online'
                             ? 'bg-blue-600 text-white border-blue-700 shadow-xs font-bold'
-                            : 'bg-slate-50 border-dashed border-slate-300 hover:border-blue-400 text-slate-700 hover:bg-blue-50/50'
+                            : 'bg-blue-50/70 border-blue-200 hover:border-blue-400 text-blue-950'
                         }`}
                       >
                         <div className="flex items-center justify-between">
                           <span className="font-extrabold flex items-center gap-1 truncate">
-                            <Edit2 className="w-3.5 h-3.5 shrink-0" />
-                            Other / Manual
+                            <CreditCard className="w-4 h-4 shrink-0" />
+                            Digital Method
                           </span>
-                          {paymentMethod === 'online' && isCustomDigitalSelected && <Check className="w-3 h-3 text-white shrink-0" />}
+                          {paymentMethod === 'online' && <Check className="w-3.5 h-3.5 text-white shrink-0" />}
                         </div>
                       </button>
                     </div>
 
-                    {/* Custom Input Field in Full Screen */}
-                    {paymentMethod === 'online' && isCustomDigitalSelected && (
-                      <div className="pt-1.5">
-                        <input
-                          type="text"
-                          autoFocus
-                          placeholder="Type payment platform (e.g. Voucher, POS, Bank)..."
-                          value={customDigitalProviderInput}
-                          onChange={(e) => setCustomDigitalProviderInput(e.target.value)}
-                          className="w-full px-2.5 py-1.5 bg-white border border-blue-300 rounded-lg text-xs font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                    )}
-
-                    {/* Optional Transaction Ref ID */}
+                    {/* Sub-grid for Digital Platforms when Digital Method is chosen */}
                     {paymentMethod === 'online' && (
-                      <div className="pt-1.5">
-                        <input
-                          type="text"
-                          placeholder="Optional TRX ID or Sender..."
-                          value={digitalTransactionRef}
-                          onChange={(e) => setDigitalTransactionRef(e.target.value)}
-                          className="w-full px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-[11px] text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
-                        />
+                      <div className="mt-2.5 p-2.5 bg-blue-50/90 border border-blue-200 rounded-xl space-y-2">
+                        <div className="text-[10px] font-black uppercase text-blue-950">
+                          Select Platform ({configuredDigitalMethods.length}):
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {configuredDigitalMethods.map((method) => {
+                            const isSubSelected = selectedDigitalProvider.toLowerCase().trim() === method.name.toLowerCase().trim();
+                            const meta = getPaymentMethodMeta(method.name);
+                            const IconComponent = meta.icon;
+
+                            return (
+                              <button
+                                key={method.id}
+                                type="button"
+                                onClick={() => setSelectedDigitalProvider(method.name)}
+                                className={`p-2 rounded-lg border text-left transition-all cursor-pointer text-[11px] ${
+                                  isSubSelected
+                                    ? `${meta.activeClass} text-white font-bold`
+                                    : `${meta.bgClass}`
+                                }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="font-bold truncate flex items-center gap-1">
+                                    <IconComponent className="w-3 h-3 shrink-0" />
+                                    {method.name}
+                                  </span>
+                                  {isSubSelected && <Check className="w-3 h-3 text-white shrink-0" />}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
                   </div>

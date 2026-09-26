@@ -1342,7 +1342,7 @@ export const SupplierManagementView: React.FC<SupplierManagementViewProps> = ({
                   <div className="flex items-center gap-1.5 font-bold text-xs">
                     <Banknote className="w-4 h-4 text-emerald-600" /> Advance
                   </div>
-                  <span className="text-[10px] text-slate-500 font-normal">Pay now (Deducted from revenue)</span>
+                  <span className="text-[10px] text-slate-500 font-normal">Pay now (Deducted from store profit)</span>
                 </button>
 
                 <button
@@ -1378,7 +1378,7 @@ export const SupplierManagementView: React.FC<SupplierManagementViewProps> = ({
                     />
                   </div>
                   <p className="text-[11px] text-emerald-800 font-medium pt-0.5">
-                    ✔ Notice: This advance payment of <strong>Rs. {parseFloat(advanceAmountInput) || 0}</strong> will be recorded as a Store Expense and automatically deducted from system revenue.
+                    ✔ Notice: This advance payment of <strong>Rs. {parseFloat(advanceAmountInput) || 0}</strong> will be recorded as a Store Expense and automatically deducted from store net profit.
                   </p>
                 </div>
               ) : (
@@ -1387,7 +1387,7 @@ export const SupplierManagementView: React.FC<SupplierManagementViewProps> = ({
                     <Clock className="w-4 h-4 text-amber-600" /> Cash on Delivery (COD)
                   </div>
                   <p className="text-[11px] text-amber-800 font-medium">
-                    No payment will be deducted right now. When you click "Delivered" upon receiving the supply, you will enter the COD payment amount to deduct from revenue.
+                    No payment will be deducted right now. When you click "Delivered" upon receiving the supply, you will enter the COD payment amount to deduct from store profit.
                   </p>
                 </div>
               )}
@@ -1478,7 +1478,7 @@ export const SupplierManagementView: React.FC<SupplierManagementViewProps> = ({
                   />
                 </div>
                 <p className="text-[11px] text-amber-800 font-medium pt-0.5">
-                  ✔ Notice: This COD payment of <strong>Rs. {parseFloat(codAmountInput) || 0}</strong> will be recorded as a Store Expense and deducted from store revenue.
+                  ✔ Notice: This COD payment of <strong>Rs. {parseFloat(codAmountInput) || 0}</strong> will be recorded as a Store Expense and deducted from store net profit.
                 </p>
               </div>
             ) : (
@@ -1498,7 +1498,7 @@ export const SupplierManagementView: React.FC<SupplierManagementViewProps> = ({
                   />
                 </div>
                 <p className="text-[11px] text-blue-800 font-medium pt-0.5">
-                  ✔ Advance paid: Rs. {deliveryModalOrder.advancePaidAmount || 0}. Remaining balance of <strong>Rs. {parseFloat(remainingBalanceInput) || 0}</strong> will be recorded as a Store Expense and deducted from revenue.
+                  ✔ Advance paid: Rs. {deliveryModalOrder.advancePaidAmount || 0}. Remaining balance of <strong>Rs. {parseFloat(remainingBalanceInput) || 0}</strong> will be recorded as a Store Expense and deducted from store net profit.
                 </p>
               </div>
             )}

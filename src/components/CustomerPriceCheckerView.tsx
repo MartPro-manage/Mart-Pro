@@ -979,6 +979,8 @@ export const CustomerPriceCheckerView: React.FC<CustomerPriceCheckerViewProps> =
             handleLookupBarcode(code);
             setIsScannerOpen(false);
           }}
+          title="Price Checker Barcode Scanner"
+          subtitle="Point camera at product barcode or enter code & press Send"
         />
       )}
 

@@ -894,7 +894,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
   };
 
   return (
-    <div className="w-full min-h-full pb-20 bg-slate-50 text-slate-900 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+    <div className="w-full min-h-full pb-28 bg-slate-50 text-slate-900 p-4 sm:p-6 lg:p-8">
       {/* 8-Digit Safety PIN Verification Modal Gate */}
       {!isPinVerified && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50">

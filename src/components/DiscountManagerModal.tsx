@@ -14,11 +14,13 @@ import {
   TrendingDown,
   Layers,
   ArrowRight,
-  Filter
+  Filter,
+  Calendar,
+  Clock
 } from 'lucide-react';
 import { Product, Store } from '../types';
 import { db, doc, updateDoc, writeBatch, cleanFirestoreData } from '../lib/firebase';
-import { getEffectiveProductPrice, getProductDiscountInfo } from '../utils/discountUtils';
+import { getEffectiveProductPrice, getProductDiscountInfo, formatShortDate, checkDiscountDateValidity } from '../utils/discountUtils';
 
 interface DiscountManagerModalProps {
   isOpen: boolean;
@@ -39,6 +41,16 @@ export const DiscountManagerModal: React.FC<DiscountManagerModalProps> = ({
   const [targetScope, setTargetScope] = useState<'all' | 'selected'>('selected');
   const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage');
   const [discountValue, setDiscountValue] = useState<number | ''>(10);
+  
+  // Date limit controls
+  const getTodayISO = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const [discountStartDate, setDiscountStartDate] = useState<string>(getTodayISO());
+  const [discountEndDate, setDiscountEndDate] = useState<string>('');
+  const [hasDateLimit, setHasDateLimit] = useState<boolean>(false);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
@@ -47,6 +59,38 @@ export const DiscountManagerModal: React.FC<DiscountManagerModalProps> = ({
   const [isConfirmClearAllOpen, setIsConfirmClearAllOpen] = useState(false);
 
   const curr = store?.currencySymbol || 'Rs.';
+
+  // Quick Date Range Presets Helper
+  const applyDatePreset = (days: number | 'today' | 'end_month' | 'none') => {
+    const today = new Date();
+    const todayStr = getTodayISO();
+    setDiscountStartDate(todayStr);
+
+    if (days === 'none') {
+      setHasDateLimit(false);
+      setDiscountEndDate('');
+      return;
+    }
+
+    setHasDateLimit(true);
+
+    if (days === 'today') {
+      setDiscountEndDate(todayStr);
+      return;
+    }
+
+    if (days === 'end_month') {
+      const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      const endStr = `${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
+      setDiscountEndDate(endStr);
+      return;
+    }
+
+    const future = new Date();
+    future.setDate(future.getDate() + (days - 1));
+    const endStr = `${future.getFullYear()}-${String(future.getMonth() + 1).padStart(2, '0')}-${String(future.getDate()).padStart(2, '0')}`;
+    setDiscountEndDate(endStr);
+  };
 
   // All distinct categories
   const categories = useMemo(() => {
@@ -121,6 +165,9 @@ export const DiscountManagerModal: React.FC<DiscountManagerModalProps> = ({
 
     setIsProcessing(true);
     try {
+      const finalStartDate = hasDateLimit && discountStartDate ? discountStartDate : undefined;
+      const finalEndDate = hasDateLimit && discountEndDate ? discountEndDate : undefined;
+
       // Use batch writes in chunks of 450 to adhere to Firestore limits
       const chunkSize = 400;
       for (let i = 0; i < targetList.length; i += chunkSize) {
@@ -133,6 +180,8 @@ export const DiscountManagerModal: React.FC<DiscountManagerModalProps> = ({
             discountActive: true,
             discountType: discountType,
             discountValue: numValue,
+            discountStartDate: finalStartDate || null,
+            discountEndDate: finalEndDate || null,
             updatedAt: new Date().toISOString()
           }));
         });
@@ -140,9 +189,13 @@ export const DiscountManagerModal: React.FC<DiscountManagerModalProps> = ({
         await batch.commit();
       }
 
+      const dateLimitInfo = hasDateLimit && finalEndDate
+        ? ` (Valid: ${formatShortDate(finalStartDate || getTodayISO())} → ${formatShortDate(finalEndDate)})`
+        : ' (Ongoing promotion)';
+
       showStatus(
         'success',
-        `Successfully applied ${numValue}${discountType === 'percentage' ? '%' : ` ${curr}`} discount to ${targetList.length} product${targetList.length > 1 ? 's' : ''}!`
+        `Successfully applied ${numValue}${discountType === 'percentage' ? '%' : ` ${curr}`} discount to ${targetList.length} product${targetList.length > 1 ? 's' : ''}${dateLimitInfo}!`
       );
       if (onRefresh) onRefresh();
       setSelectedProductIds([]);
@@ -162,6 +215,8 @@ export const DiscountManagerModal: React.FC<DiscountManagerModalProps> = ({
         discountActive: false,
         discountType: 'percentage',
         discountValue: 0,
+        discountStartDate: null,
+        discountEndDate: null,
         updatedAt: new Date().toISOString()
       }));
       showStatus('success', `Removed discount from "${productName}".`);
@@ -189,6 +244,8 @@ export const DiscountManagerModal: React.FC<DiscountManagerModalProps> = ({
             discountActive: false,
             discountType: 'percentage',
             discountValue: 0,
+            discountStartDate: null,
+            discountEndDate: null,
             updatedAt: new Date().toISOString()
           }));
         });
@@ -420,7 +477,103 @@ export const DiscountManagerModal: React.FC<DiscountManagerModalProps> = ({
               </div>
             </div>
 
-            {/* 3. PRODUCT SELECTOR (When targetScope === 'selected') */}
+            {/* 3. TIME LIMIT & SCHEDULE DURATION (FROM DATE TO TO DATE) */}
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <Calendar className="w-4 h-4 text-rose-600" />
+                  <span>Discount Time Limit / Validity Period</span>
+                </div>
+                <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={hasDateLimit}
+                    onChange={(e) => {
+                      setHasDateLimit(e.target.checked);
+                      if (e.target.checked && !discountEndDate) {
+                        applyDatePreset(7); // Default 7 days
+                      }
+                    }}
+                    className="w-4 h-4 text-rose-600 rounded border-slate-300 focus:ring-rose-500 cursor-pointer"
+                  />
+                  <span>Set Expiration / Date Range</span>
+                </label>
+              </div>
+
+              {hasDateLimit ? (
+                <div className="space-y-3 pt-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-slate-400" />
+                        <span>Valid From (Start Date) *</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={discountStartDate}
+                        onChange={(e) => setDiscountStartDate(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-rose-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-rose-500" />
+                        <span>Valid Until (Expiry Date) *</span>
+                      </label>
+                      <input
+                        type="date"
+                        min={discountStartDate}
+                        value={discountEndDate}
+                        onChange={(e) => setDiscountEndDate(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-rose-300 rounded-xl text-xs font-bold text-rose-800 focus:outline-none focus:border-rose-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Quick Duration Presets */}
+                  <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase mr-1">Quick Durations:</span>
+                    {[
+                      { label: 'Today Only (1 Day)', val: 'today' as const },
+                      { label: '3 Days', val: 3 },
+                      { label: '1 Week (7 Days)', val: 7 },
+                      { label: '15 Days', val: 15 },
+                      { label: '1 Month (30 Days)', val: 30 },
+                      { label: 'End of Month', val: 'end_month' as const }
+                    ].map((preset) => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => applyDatePreset(preset.val)}
+                        className="px-2 py-1 rounded-lg text-[10px] font-bold bg-white border border-slate-200 text-slate-700 hover:border-rose-300 hover:text-rose-600 transition-all cursor-pointer"
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {discountStartDate && discountEndDate && (
+                    <div className="p-2.5 bg-rose-50/80 border border-rose-200 rounded-xl text-xs flex items-center justify-between">
+                      <span className="text-rose-950 font-bold flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-rose-600" />
+                        Active Period: <strong>{formatShortDate(discountStartDate)}</strong> to <strong>{formatShortDate(discountEndDate)}</strong>
+                      </span>
+                      <span className="text-[10px] font-black uppercase text-rose-700 bg-rose-100 px-2 py-0.5 rounded-full border border-rose-200">
+                        Auto-Expires After {formatShortDate(discountEndDate)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="p-2.5 bg-white rounded-xl border border-slate-200 text-[11px] text-slate-500 flex items-center gap-2">
+                  <Clock className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Ongoing promotion without end date. Enable checkbox above to limit discounts to specific dates.</span>
+                </div>
+              )}
+            </div>
+
+            {/* 4. PRODUCT SELECTOR (When targetScope === 'selected') */}
             {targetScope === 'selected' && (
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-2.5">
@@ -608,6 +761,7 @@ export const DiscountManagerModal: React.FC<DiscountManagerModalProps> = ({
                       <th className="p-3 text-right">Original Price</th>
                       <th className="p-3 text-center">Discount</th>
                       <th className="p-3 text-right">Discounted Price</th>
+                      <th className="p-3 text-center">Time Limit / Validity</th>
                       <th className="p-3 text-center">Action</th>
                     </tr>
                   </thead>
@@ -640,6 +794,29 @@ export const DiscountManagerModal: React.FC<DiscountManagerModalProps> = ({
                           </td>
                           <td className="p-3 text-right font-black font-mono text-emerald-700 text-xs">
                             {curr} {finalPrice.toFixed(2)}
+                          </td>
+                          <td className="p-3 text-center">
+                            {product.discountEndDate ? (
+                              <div className="space-y-0.5">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black inline-flex items-center gap-1 ${
+                                  discountInfo.isExpired
+                                    ? 'bg-rose-100 text-rose-700 border border-rose-200'
+                                    : discountInfo.isUpcoming
+                                    ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                    : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                }`}>
+                                  <Clock className="w-2.5 h-2.5" />
+                                  {discountInfo.dateStatusMessage}
+                                </span>
+                                <div className="text-[9px] text-slate-400 font-mono">
+                                  {formatShortDate(product.discountStartDate || '')} → {formatShortDate(product.discountEndDate)}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full text-[10px] font-bold">
+                                Ongoing (No Expiry)
+                              </span>
+                            )}
                           </td>
                           <td className="p-3 text-center">
                             <button

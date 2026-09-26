@@ -28,7 +28,7 @@ import { downloadBarcodeForProduct } from '../lib/barcodeDownload';
 import { BatchProductRow } from '../lib/excelParser';
 import { getAllCategories, addCustomCategoryToStore, saveNewCategoryToStore } from '../lib/categories';
 import { generateNextShortcutCode } from '../utils/productShortcuts';
-import { getProductDiscountInfo } from '../utils/discountUtils';
+import { getProductDiscountInfo, formatShortDate } from '../utils/discountUtils';
 import { 
   Package,
   PackagePlus, 
@@ -63,7 +63,9 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronUp,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Calendar,
+  Clock
 } from 'lucide-react';
 
 interface ProductRegisterViewProps {
@@ -107,6 +109,46 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   const [discountActive, setDiscountActive] = useState<boolean>(false);
   const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage');
   const [discountValue, setDiscountValue] = useState<number | ''>('');
+  
+  const getTodayISO = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const [discountStartDate, setDiscountStartDate] = useState<string>(getTodayISO());
+  const [discountEndDate, setDiscountEndDate] = useState<string>('');
+  const [hasDateLimit, setHasDateLimit] = useState<boolean>(false);
+
+  const applyDiscountDatePreset = (days: number | 'today' | 'end_month' | 'none') => {
+    const todayStr = getTodayISO();
+    setDiscountStartDate(todayStr);
+
+    if (days === 'none') {
+      setHasDateLimit(false);
+      setDiscountEndDate('');
+      return;
+    }
+
+    setHasDateLimit(true);
+
+    if (days === 'today') {
+      setDiscountEndDate(todayStr);
+      return;
+    }
+
+    if (days === 'end_month') {
+      const today = new Date();
+      const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      const endStr = `${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
+      setDiscountEndDate(endStr);
+      return;
+    }
+
+    const future = new Date();
+    future.setDate(future.getDate() + (days - 1));
+    const endStr = `${future.getFullYear()}-${String(future.getMonth() + 1).padStart(2, '0')}-${String(future.getDate()).padStart(2, '0')}`;
+    setDiscountEndDate(endStr);
+  };
+
   const [stockQuantityToAdd, setStockQuantityToAdd] = useState<number | ''>('');
   const [stockAdjustmentMode, setStockAdjustmentMode] = useState<'keep' | 'add' | 'set'>('keep');
   const [minStockLevel, setMinStockLevel] = useState<number>(5);
@@ -311,6 +353,9 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     setDiscountActive(false);
     setDiscountType('percentage');
     setDiscountValue('');
+    setDiscountStartDate(getTodayISO());
+    setDiscountEndDate('');
+    setHasDateLimit(false);
     setStockQuantityToAdd('');
     setStockAdjustmentMode('keep');
     setExistingProduct(null);
@@ -338,6 +383,9 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     setDiscountActive(p.discountActive || false);
     setDiscountType(p.discountType || 'percentage');
     setDiscountValue(p.discountValue !== undefined && p.discountValue > 0 ? p.discountValue : '');
+    setDiscountStartDate(p.discountStartDate || getTodayISO());
+    setDiscountEndDate(p.discountEndDate || '');
+    setHasDateLimit(Boolean(p.discountEndDate));
     setMinStockLevel(p.minStockLevel || 5);
     setSellBy(p.sellBy || (p.unitType === 'kg' ? 'weight' : 'unit'));
     setUnitType((p.unitType as any) || (p.sellBy === 'weight' ? 'kg' : 'piece'));
@@ -522,6 +570,8 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
         const shortcutCode = targetProduct.shortcutCode || generateNextShortcutCode(products);
 
         const numDiscountValue = discountActive && discountValue !== '' ? Number(discountValue) : undefined;
+        const finalStartDate = discountActive && hasDateLimit && discountStartDate ? discountStartDate : undefined;
+        const finalEndDate = discountActive && hasDateLimit && discountEndDate ? discountEndDate : undefined;
 
         await updateDoc(productDocRef, cleanFirestoreData({
           barcode: trimmedBarcode || '',
@@ -540,6 +590,8 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
           discountActive: discountActive && !!numDiscountValue,
           discountType: discountType || 'percentage',
           discountValue: numDiscountValue || undefined,
+          discountStartDate: finalStartDate || null,
+          discountEndDate: finalEndDate || null,
           stockQuantity: finalTotalStock,
           minStockLevel: minStockLevel || 5,
           updatedAt: new Date().toISOString()
@@ -554,6 +606,8 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
         const productDocRef = doc(collection(db, 'products'));
         const shortcutCode = generateNextShortcutCode(products);
         const numDiscountValue = discountActive && discountValue !== '' ? Number(discountValue) : undefined;
+        const finalStartDate = discountActive && hasDateLimit && discountStartDate ? discountStartDate : undefined;
+        const finalEndDate = discountActive && hasDateLimit && discountEndDate ? discountEndDate : undefined;
 
         const newProduct: Product = {
           id: productDocRef.id,
@@ -574,6 +628,8 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
           discountActive: discountActive && !!numDiscountValue,
           discountType: discountType || 'percentage',
           discountValue: numDiscountValue || undefined,
+          discountStartDate: finalStartDate,
+          discountEndDate: finalEndDate,
           stockQuantity: finalTotalStock,
           minStockLevel: minStockLevel || 5,
           createdAt: new Date().toISOString(),
@@ -1610,6 +1666,92 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                         </div>
                       </div>
 
+                      {/* Time Limit & Date Range Settings */}
+                      <div className="p-3 bg-white/80 border border-rose-200 rounded-xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={hasDateLimit}
+                              onChange={(e) => {
+                                setHasDateLimit(e.target.checked);
+                                if (e.target.checked && !discountEndDate) {
+                                  applyDiscountDatePreset(7);
+                                }
+                              }}
+                              className="w-3.5 h-3.5 text-rose-600 rounded border-slate-300 focus:ring-rose-500 cursor-pointer"
+                            />
+                            <Calendar className="w-3.5 h-3.5 text-rose-600" />
+                            <span>Set Time Limit / Expiry Date</span>
+                          </label>
+                          {hasDateLimit && (
+                            <span className="text-[9px] font-black uppercase text-rose-700 bg-rose-100 px-2 py-0.5 rounded-full border border-rose-200">
+                              Time-Limited
+                            </span>
+                          )}
+                        </div>
+
+                        {hasDateLimit ? (
+                          <div className="space-y-2 pt-0.5">
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5">
+                                  Valid From *
+                                </label>
+                                <input
+                                  type="date"
+                                  value={discountStartDate}
+                                  onChange={(e) => setDiscountStartDate(e.target.value)}
+                                  className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-rose-500"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5">
+                                  Valid Until *
+                                </label>
+                                <input
+                                  type="date"
+                                  min={discountStartDate}
+                                  value={discountEndDate}
+                                  onChange={(e) => setDiscountEndDate(e.target.value)}
+                                  className="w-full px-2 py-1.5 bg-white border border-rose-300 rounded-lg text-xs font-bold text-rose-800 focus:outline-none focus:border-rose-500"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="flex flex-wrap gap-1">
+                              {[
+                                { label: 'Today Only', val: 'today' as const },
+                                { label: '3 Days', val: 3 },
+                                { label: '7 Days', val: 7 },
+                                { label: '14 Days', val: 14 },
+                                { label: '30 Days', val: 30 }
+                              ].map((preset) => (
+                                <button
+                                  key={preset.label}
+                                  type="button"
+                                  onClick={() => applyDiscountDatePreset(preset.val)}
+                                  className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-50 border border-slate-200 text-slate-600 hover:text-rose-600 hover:border-rose-300 transition-all cursor-pointer"
+                                >
+                                  {preset.label}
+                                </button>
+                              ))}
+                            </div>
+
+                            {discountStartDate && discountEndDate && (
+                              <div className="text-[10px] text-rose-800 font-bold bg-rose-50/80 p-1.5 rounded-lg border border-rose-200 flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-rose-600 shrink-0" />
+                                <span>Active: <strong>{formatShortDate(discountStartDate)}</strong> → <strong>{formatShortDate(discountEndDate)}</strong></span>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-[10px] text-slate-400">
+                            No time limit. Discount will remain active indefinitely until unchecked.
+                          </p>
+                        )}
+                      </div>
+
                       {/* Live calculation preview */}
                       {(() => {
                         const originalP = typeof price === 'number' ? price : (price ? parseFloat(price as any) : 0);
@@ -1910,7 +2052,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                               const discInfo = getProductDiscountInfo(p);
                               if (discInfo.hasDiscount) {
                                 return (
-                                  <div>
+                                  <div className="space-y-0.5">
                                     <div className="font-black text-rose-600 flex items-center justify-center gap-1">
                                       <span>Rs. {discInfo.discountedPrice.toFixed(2)}{isWeighted ? '/kg' : ''}</span>
                                       <span className="text-[10px] font-extrabold bg-rose-100 text-rose-800 px-1.5 py-0.2 rounded-full border border-rose-200">
@@ -1919,6 +2061,29 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                                     </div>
                                     <div className="text-[11px] text-slate-400 line-through">
                                       Was Rs. {(p.price ?? 0).toFixed(2)}
+                                    </div>
+                                    {p.discountEndDate && (
+                                      <div className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-flex items-center gap-1">
+                                        <Clock className="w-2.5 h-2.5" />
+                                        <span>{discInfo.dateStatusMessage}</span>
+                                      </div>
+                                    )}
+                                    <div className="text-[10px] text-slate-500 font-semibold">
+                                      Cost: Rs. {(cost || 0).toFixed(2)}
+                                    </div>
+                                  </div>
+                                );
+                              } else if (p.discountActive && (discInfo.isExpired || discInfo.isUpcoming)) {
+                                return (
+                                  <div className="space-y-0.5">
+                                    <div className="font-black text-orange-600">
+                                      Rs. {(p.price ?? 0).toFixed(2)}{isWeighted ? '/kg' : ''}
+                                    </div>
+                                    <div className={`text-[9px] font-bold px-1.5 py-0.5 rounded border inline-flex items-center gap-1 ${
+                                      discInfo.isExpired ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-amber-50 text-amber-800 border-amber-200'
+                                    }`}>
+                                      <Clock className="w-2.5 h-2.5" />
+                                      <span>{discInfo.dateStatusMessage}</span>
                                     </div>
                                     <div className="text-[10px] text-slate-500 font-semibold">
                                       Cost: Rs. {(cost || 0).toFixed(2)}
@@ -2045,7 +2210,12 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
           onScanSuccess={(scannedCode) => {
             setBarcode(scannedCode);
             showNotification('success', `Scanned Barcode: ${scannedCode}`);
+            if (barcodeInputRef.current) {
+              barcodeInputRef.current.focus();
+            }
           }}
+          title="Product Barcode Scanner"
+          subtitle="Scan product barcode number to fill barcode field"
         />
 
         {/* Single Product Delete Confirmation Modal */}

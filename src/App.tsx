@@ -275,7 +275,7 @@ export default function App() {
                   </div>
                 </div>
               ) : (
-                <div className="h-full w-full flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+                <div className="h-full w-full flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain">
                   <SuperAdminDashboard
                     onSelectStoreToManage={(store) => setInspectedStore(store)}
                   />

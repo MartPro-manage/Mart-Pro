@@ -1735,6 +1735,19 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                 >
                   <Plus className="w-4 h-4" /> Add Item
                 </motion.button>
+                {isCameraScannerAllowed && (
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    type="button"
+                    onClick={() => setIsScannerOpen(true)}
+                    className="px-3.5 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl shadow-sm transition-all cursor-pointer text-sm shrink-0 flex items-center gap-1.5 border border-slate-800"
+                    title="Open Camera Barcode Scanner"
+                  >
+                    <Camera className="w-4 h-4 text-orange-400" />
+                    <span className="hidden sm:inline">Camera</span>
+                  </motion.button>
+                )}
               </form>
               <p className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
@@ -3487,6 +3500,20 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
               </div>
             </div>
           </div>
+        )}
+
+        {/* CAMERA BARCODE SCANNER MODAL */}
+        {isCameraScannerAllowed && (
+          <BarcodeScannerModal
+            isOpen={isScannerOpen}
+            onClose={() => setIsScannerOpen(false)}
+            onScanSuccess={(scannedCode) => {
+              handleAddByBarcode(scannedCode, true);
+              setIsScannerOpen(false);
+            }}
+            title="POS Live Barcode Scanner"
+            subtitle="Point camera at product barcode or type code and press Send"
+          />
         )}
 
       </div>

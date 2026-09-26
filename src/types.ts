@@ -191,6 +191,8 @@ export interface Product {
   discountType?: 'percentage' | 'fixed'; // percentage (%) or fixed (Rs.)
   discountValue?: number; // e.g. 10 for 10% or 50 for Rs. 50
   discountActive?: boolean; // Whether discount is currently active on this product
+  discountStartDate?: string; // Date (YYYY-MM-DD) from which discount is applicable
+  discountEndDate?: string; // Date (YYYY-MM-DD) until which discount is applicable (expiry date)
   updatedAt: string;
   createdAt: string;
 }

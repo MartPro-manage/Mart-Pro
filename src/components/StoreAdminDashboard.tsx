@@ -34,6 +34,7 @@ import { StoreAdminExpenses } from './StoreAdminExpenses';
 import { SupplierManagementView } from './SupplierManagementView';
 import { StaffSessionsView } from './StaffSessionsView';
 import { PaymentMethodsView } from './PaymentMethodsView';
+import { StoreStaffTrackerView } from './StoreStaffTrackerView';
 import { 
   TrendingUp, 
   Package, 
@@ -44,6 +45,9 @@ import {
   Calculator, 
   PackageCheck, 
   Receipt, 
+  ReceiptText,
+  Scale,
+  Activity,
   Eye, 
   ArrowUpRight, 
   RefreshCw,
@@ -78,7 +82,6 @@ import {
   Store as StoreIcon,
   ShieldCheck,
   ArrowRight,
-  ReceiptText,
   Truck,
   Boxes,
   PackagePlus,
@@ -139,7 +142,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
   const [storeUsers, setStoreUsers] = useState<UserAccount[]>([]);
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<StoreAdminTab>('overview');
+  const [activeTab, setActiveTab] = useState<StoreAdminTab>('sales_by_date');
   const [isSidebarOpenMobile, setIsSidebarOpenMobile] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [showChartInSalesByDate, setShowChartInSalesByDate] = useState<boolean>(true);
@@ -859,6 +862,14 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       .reduce((acc, curr) => acc + (curr.amount || 0), 0);
   }, [expenses]);
 
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    products.forEach(p => {
+      if (p.category) set.add(p.category);
+    });
+    return Array.from(set);
+  }, [products]);
+
   // Payment methods breakdown stats
   const paymentMethodStats = useMemo(() => {
     let cashSum = 0;
@@ -1037,11 +1048,6 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
 
   // Tab metadata for navigation and header
   const tabTitles: Record<StoreAdminTab, { title: string; subtitle: string; icon: React.ComponentType<{ className?: string }> }> = {
-    overview: {
-      title: 'Executive Overview',
-      subtitle: 'Realtime KPIs, live financial metrics, inventory status, and sales breakdown',
-      icon: LayoutDashboard
-    },
     sales_by_date: {
       title: 'Sales by Date',
       subtitle: 'Day-by-day revenue, profit margin, units sold, and deep day inspection',
@@ -1106,6 +1112,26 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       title: 'Settings & Configuration',
       subtitle: 'Store identity, address, receipt formats, black & white logo, and product categories',
       icon: Settings
+    },
+    net_profit_revenue: {
+      title: 'Net Profit & Sales Revenue',
+      subtitle: 'Total net profit, net sales revenue, and profit margins filtered by time',
+      icon: DollarSign
+    },
+    product_valuation: {
+      title: 'Store Product Valuation Analytics',
+      subtitle: 'Cost of goods sold, total units sold, product categories, wholesale investment, retail value, and stock health',
+      icon: Scale
+    },
+    recent_receipts: {
+      title: 'Recent Customer Receipts',
+      subtitle: 'All recent customer checkout slips and transaction history',
+      icon: ReceiptText
+    },
+    staff_operations: {
+      title: 'Staff & Operations (Online / Offline Status)',
+      subtitle: 'Realtime view of online active staff members vs offline accounts across roles',
+      icon: Activity
     }
   };
 
@@ -1210,8 +1236,8 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                 {tabTitles[activeTab]?.subtitle || 'View sales filtered by date, day-by-day revenue breakdown, product sales velocity, real-time inventory levels, and cashier checkout logs.'}
               </p>
 
-              {/* Quick Live Revenue and Profit Highlight Badges - ONLY visible on overview / dashboard */}
-              {activeTab === 'overview' && (
+              {/* Quick Live Revenue and Profit Highlight Badges */}
+              {activeTab === 'sales_by_date' && (
                 <div className="flex flex-wrap items-center justify-start gap-3 pt-2">
                   <div className="px-3.5 py-1.5 rounded-xl bg-orange-50 border border-orange-200 flex items-center gap-2 shadow-2xs">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-orange-700">Total Revenue:</span>
@@ -1233,43 +1259,10 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                 </div>
               )}
             </div>
-
-            {/* Quick Shortcuts for Admin */}
-            <div className="flex flex-wrap items-center justify-start gap-3 z-10 shrink-0">
-              <button
-                type="button"
-                onClick={() => setIsExcelModalOpen(true)}
-                className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 cursor-pointer transition-all shadow-sm"
-                title="Upload Excel file from device or create spreadsheet with products & barcodes"
-              >
-                <FileSpreadsheet className="w-4 h-4 text-emerald-200" /> Excel / Spreadsheet
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsAiAssistantOpen(true)}
-                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-bold text-xs flex items-center gap-2 cursor-pointer transition-all shadow-sm"
-                title="Open AI Assistant to query cheapest, most selling, least selling items or software guides"
-              >
-                <Sparkles className="w-4 h-4 text-amber-200" /> Mart Pro AI Copilot
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab('settings')}
-                className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 cursor-pointer transition-all shadow-sm ${
-                  activeTab === 'settings'
-                    ? 'bg-orange-600 text-white'
-                    : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
-                }`}
-              >
-                <Settings className="w-4 h-4 text-orange-600" /> Settings & Configuration
-              </button>
-            </div>
           </div>
 
-        {/* EXECUTIVE ANALYTICS: DATE FILTERING & KPIS (ONLY SHOWN ON DASHBOARD / OVERVIEW) */}
-        {activeTab === 'overview' && (
+        {/* DATE FILTERING & KPIS FOR SPECIFIC DATE AND DATE RANGE */}
+        {activeTab === 'sales_by_date' && (
           <>
             {/* DATE FILTERING CONTROL TOOLBAR */}
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
@@ -1698,16 +1691,16 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
         )}
 
         {/* VIEW HEADER & SEARCH BAR */}
-        {activeTab !== 'overview' && (
+        {activeTab !== 'sales_by_date' && (
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => setActiveTab('overview')}
+                onClick={() => setActiveTab('sales_by_date')}
                 className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
-                title="Return to Executive Overview"
+                title="Return to Sales by Date"
               >
-                <ChevronLeft className="w-3.5 h-3.5" /> Overview
+                <ChevronLeft className="w-3.5 h-3.5" /> Sales by Date
               </button>
               <div>
                 <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
@@ -1740,301 +1733,6 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
               </div>
             )}
           </div>
-        )}
-
-        {/* TAB 0: EXECUTIVE OVERVIEW */}
-        {activeTab === 'overview' && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.25 }}
-            className="space-y-6"
-          >
-            {/* Quick Chart Preview in Overview */}
-            <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-                <div>
-                  <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                    <LineChartIcon className="w-5 h-5 text-orange-600" /> 7-Day Sales Volume Line Chart
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Live operational volume trends over the last 7 calendar days
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('volume_chart')}
-                  className="px-3.5 py-1.5 rounded-xl bg-orange-50 text-orange-700 hover:bg-orange-100 border border-orange-200 text-xs font-bold flex items-center gap-1 self-start sm:self-auto cursor-pointer transition-colors"
-                >
-                  Full Volume Analytics <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              <SevenDaySalesVolumeChart sales={sales} returns={returns} />
-            </div>
-
-            {/* Bento Grid: Top Selling, Low Stock, Recent Receipts, Staff */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Top Selling Products */}
-              <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between space-y-4">
-                <div>
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center font-bold">
-                        <Tag className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-extrabold text-slate-900">Top Selling Products</h4>
-                        <p className="text-[11px] text-slate-500 font-medium">Ranked by net units sold</p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('sold_products')}
-                      className="text-xs font-bold text-orange-600 hover:text-orange-700 flex items-center gap-1 cursor-pointer"
-                    >
-                      View All ({soldProductsSummary.length}) <ArrowRight className="w-3 h-3" />
-                    </button>
-                  </div>
-
-                  <div className="divide-y divide-slate-100 mt-2">
-                    {topSellingProducts.length === 0 ? (
-                      <p className="text-xs text-slate-400 py-6 text-center italic">No sales recorded yet</p>
-                    ) : (
-                      topSellingProducts.map((p, idx) => (
-                        <div key={p.productId || idx} className="py-2.5 flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <span className="w-6 h-6 rounded-lg bg-slate-100 text-slate-700 font-mono font-black text-xs flex items-center justify-center shrink-0">
-                              #{idx + 1}
-                            </span>
-                            <div className="min-w-0">
-                              <p className="text-xs font-bold text-slate-900 truncate">{p.productName}</p>
-                              <p className="text-[10px] text-slate-500 font-mono">{p.barcode}</p>
-                            </div>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <span className="text-xs font-black text-slate-900 font-mono">{p.netUnitsSold} units</span>
-                            <p className="text-[10px] text-emerald-600 font-bold">+Rs. {(p.netRealizedProfit || 0).toFixed(0)}</p>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('sold_products')}
-                  className="w-full py-2.5 rounded-xl bg-slate-50 hover:bg-orange-50 hover:text-orange-700 text-slate-700 font-bold text-xs border border-slate-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  Open Complete Sold Products Report <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              {/* Low Stock Inventory Alert */}
-              <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between space-y-4">
-                <div>
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
-                        <AlertTriangle className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-extrabold text-slate-900">Low Stock Inventory Alerts</h4>
-                        <p className="text-[11px] text-slate-500 font-medium">Items running low (threshold: {liveStore.lowStockAlertThreshold || 5})</p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('stock_remaining')}
-                      className="text-xs font-bold text-orange-600 hover:text-orange-700 flex items-center gap-1 cursor-pointer"
-                    >
-                      View All Stock <ArrowRight className="w-3 h-3" />
-                    </button>
-                  </div>
-
-                  <div className="divide-y divide-slate-100 mt-2">
-                    {lowStockItems.length === 0 ? (
-                      <div className="py-6 text-center space-y-1">
-                        <PackageCheck className="w-8 h-8 text-emerald-500 mx-auto" />
-                        <p className="text-xs font-bold text-emerald-700">Healthy Inventory</p>
-                        <p className="text-[11px] text-slate-500">All products have stock above the minimum alert threshold</p>
-                      </div>
-                    ) : (
-                      lowStockItems.map((item) => (
-                        <div key={item.id} className="py-2.5 flex items-center justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-xs font-bold text-slate-900 truncate">{item.name}</p>
-                            <p className="text-[10px] text-slate-500 font-mono">{item.barcode}</p>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <span className={`px-2 py-0.5 rounded text-xs font-black font-mono ${
-                              (item.stockQuantity || 0) <= 0 
-                                ? 'bg-red-100 text-red-800 border border-red-200' 
-                                : 'bg-amber-100 text-amber-800 border border-amber-200'
-                            }`}>
-                              {(item.stockQuantity || 0) <= 0 ? 'Out of Stock' : `${item.stockQuantity} remaining`}
-                            </span>
-                            <p className="text-[10px] text-slate-500 mt-0.5">Price: Rs. {item.price}</p>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('stock_remaining')}
-                  className="w-full py-2.5 rounded-xl bg-slate-50 hover:bg-orange-50 hover:text-orange-700 text-slate-700 font-bold text-xs border border-slate-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  Open Real-Time Stock Inventory <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              {/* Recent Receipts Billing Log */}
-              <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between space-y-4">
-                <div>
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center font-bold">
-                        <Receipt className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-extrabold text-slate-900">Recent Customer Receipts</h4>
-                        <p className="text-[11px] text-slate-500 font-medium">Latest checkout transactions</p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('sales_history')}
-                      className="text-xs font-bold text-orange-600 hover:text-orange-700 flex items-center gap-1 cursor-pointer"
-                    >
-                      View All ({filteredSalesByDate.length}) <ArrowRight className="w-3 h-3" />
-                    </button>
-                  </div>
-
-                  <div className="divide-y divide-slate-100 mt-2">
-                    {sales.slice(0, 5).length === 0 ? (
-                      <p className="text-xs text-slate-400 py-6 text-center italic">No receipts generated yet</p>
-                    ) : (
-                      sales.slice(0, 5).map((sale) => (
-                        <div key={sale.id} className="py-2.5 flex items-center justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-xs font-bold text-slate-900 font-mono truncate">{sale.receiptNumber}</p>
-                            <p className="text-[10px] text-slate-500">
-                              {sale.counterName} • {new Date(sale.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className="text-xs font-black text-orange-600 font-mono">
-                              Rs. {(sale.totalAmount || 0).toFixed(2)}
-                            </span>
-                            {onViewReceipt && (
-                              <button
-                                type="button"
-                                onClick={() => onViewReceipt(sale)}
-                                className="p-1 rounded bg-slate-100 hover:bg-orange-100 text-slate-600 hover:text-orange-700 transition-colors cursor-pointer"
-                                title="View Receipt"
-                              >
-                                <Eye className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('sales_history')}
-                  className="w-full py-2.5 rounded-xl bg-slate-50 hover:bg-orange-50 hover:text-orange-700 text-slate-700 font-bold text-xs border border-slate-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  Open Receipts & Customer Slips Log <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              {/* Store Staff & Quick Terminal Shortcuts */}
-              <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between space-y-4">
-                <div>
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-                        <Users className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-extrabold text-slate-900">Staff & Operations</h4>
-                        <p className="text-[11px] text-slate-500 font-medium">{storeUsers.length} staff members assigned</p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('staff')}
-                      className="text-xs font-bold text-orange-600 hover:text-orange-700 flex items-center gap-1 cursor-pointer"
-                    >
-                      Manage Staff <ArrowRight className="w-3 h-3" />
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 mt-3">
-                    {onNavigateToPOS && (
-                      <button
-                        type="button"
-                        onClick={onNavigateToPOS}
-                        className="p-3 rounded-2xl bg-orange-50 hover:bg-orange-100 border border-orange-200 text-left transition-colors cursor-pointer group"
-                      >
-                        <Calculator className="w-5 h-5 text-orange-600 mb-1 group-hover:scale-110 transition-transform" />
-                        <div className="text-xs font-extrabold text-slate-900">Cash Counter POS</div>
-                        <div className="text-[10px] text-slate-500 font-medium">Launch checkout counter</div>
-                      </button>
-                    )}
-
-                    {onNavigateToInventory && (
-                      <button
-                        type="button"
-                        onClick={onNavigateToInventory}
-                        className="p-3 rounded-2xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-left transition-colors cursor-pointer group"
-                      >
-                        <PackageCheck className="w-5 h-5 text-blue-600 mb-1 group-hover:scale-110 transition-transform" />
-                        <div className="text-xs font-extrabold text-slate-900">Stock Register</div>
-                        <div className="text-[10px] text-slate-500 font-medium">Add or restock items</div>
-                      </button>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => setIsExcelModalOpen(true)}
-                      className="p-3 rounded-2xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-left transition-colors cursor-pointer group"
-                    >
-                      <FileSpreadsheet className="w-5 h-5 text-emerald-600 mb-1 group-hover:scale-110 transition-transform" />
-                      <div className="text-xs font-extrabold text-slate-900">Excel Spreadsheet</div>
-                      <div className="text-[10px] text-slate-500 font-medium">Bulk upload products</div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setIsAiAssistantOpen(true)}
-                      className="p-3 rounded-2xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-left transition-colors cursor-pointer group"
-                    >
-                      <Sparkles className="w-5 h-5 text-amber-600 mb-1 group-hover:scale-110 transition-transform" />
-                      <div className="text-xs font-extrabold text-slate-900">AI Copilot</div>
-                      <div className="text-[10px] text-slate-500 font-medium">Sales & pricing queries</div>
-                    </button>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('settings')}
-                  className="w-full py-2.5 rounded-xl bg-slate-50 hover:bg-orange-50 hover:text-orange-700 text-slate-700 font-bold text-xs border border-slate-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <Settings className="w-3.5 h-3.5 text-orange-600" /> Configure Store Branding & Receipts
-                </button>
-              </div>
-            </div>
-          </motion.div>
         )}
 
         {/* TAB: 7-DAY DAILY SALES VOLUME LINE CHART */}
@@ -3228,6 +2926,119 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                 setLiveStore(prev => ({ ...prev, ...updated }));
               }}
             />
+          </motion.div>
+        )}
+
+        {/* TAB: NET PROFIT & SALES REVENUE */}
+        {activeTab === 'net_profit_revenue' && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }} className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Net Sales Revenue</span>
+                <div className="text-2xl font-black text-slate-900 font-mono mt-1">Rs. {filteredNetRevenue.toLocaleString('en-PK', { minimumFractionDigits: 2 })}</div>
+                <p className="text-[11px] text-slate-500 mt-0.5">Gross Sales - Returns & Order Costs</p>
+              </div>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Cost of Goods Sold (COGS)</span>
+                <div className="text-2xl font-black text-slate-900 font-mono mt-1">Rs. {filteredCostOfGoods.toLocaleString('en-PK', { minimumFractionDigits: 2 })}</div>
+                <p className="text-[11px] text-slate-500 mt-0.5">Wholesale cost of sold units</p>
+              </div>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Net Profit</span>
+                <div className={`text-2xl font-black font-mono mt-1 ${filteredNetProfitIncludingExpenses >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  Rs. {filteredNetProfitIncludingExpenses.toLocaleString('en-PK', { minimumFractionDigits: 2 })}
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">Net Revenue - COGS - Expenses</p>
+              </div>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Profit Margin</span>
+                <div className="text-2xl font-black text-orange-600 font-mono mt-1">{(filteredProfitMargin || 0).toFixed(1)}%</div>
+                <p className="text-[11px] text-slate-500 mt-0.5">Realized net profit percentage</p>
+              </div>
+            </div>
+            <SalesRevenueChart sales={sales} returns={returns} products={products} />
+          </motion.div>
+        )}
+
+        {/* TAB: PRODUCT VALUATION ANALYTICS */}
+        {activeTab === 'product_valuation' && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }} className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Cost of Goods Sold (COGS)</span>
+                <div className="text-2xl font-black text-slate-900 font-mono mt-1">Rs. {filteredCostOfGoods.toLocaleString('en-PK', { minimumFractionDigits: 2 })}</div>
+              </div>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Units Sold</span>
+                <div className="text-2xl font-black text-blue-600 font-mono mt-1">{filteredNetUnitsSold.toLocaleString()} units</div>
+              </div>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Product Categories</span>
+                <div className="text-2xl font-black text-slate-900 font-mono mt-1">{categories.length} Categories</div>
+              </div>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Stock on Hand Wholesale Investment</span>
+                <div className="text-2xl font-black text-amber-600 font-mono mt-1">Rs. {inventoryValuationStats.totalWholesaleInvestment.toLocaleString('en-PK', { minimumFractionDigits: 2 })}</div>
+              </div>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Retail Stock Value</span>
+                <div className="text-2xl font-black text-emerald-600 font-mono mt-1">Rs. {inventoryValuationStats.totalRetailValue.toLocaleString('en-PK', { minimumFractionDigits: 2 })}</div>
+              </div>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Stock Health</span>
+                <div className="text-2xl font-black text-slate-900 font-mono mt-1">{lowStockItems.length === 0 ? 'Healthy 🟢' : `${lowStockItems.length} Low Stock Alert ⚠️`}</div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* TAB: RECENT CUSTOMER RECEIPTS */}
+        {activeTab === 'recent_receipts' && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }} className="space-y-4">
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+              <div className="p-4 border-b border-slate-200 flex items-center justify-between font-bold text-xs">
+                <span>Recent Customer Receipts ({sales.length})</span>
+              </div>
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                  <tr>
+                    <th className="p-3">Receipt #</th>
+                    <th className="p-3">Time</th>
+                    <th className="p-3">Items</th>
+                    <th className="p-3">Payment</th>
+                    <th className="p-3 text-right">Total Amount</th>
+                    <th className="p-3 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {sales.slice(0, 50).map((s) => (
+                    <tr key={s.id} className="hover:bg-slate-50">
+                      <td className="p-3 font-mono font-bold text-slate-900">#{s.receiptNumber || s.id.slice(-6)}</td>
+                      <td className="p-3 text-slate-500">{new Date(s.timestamp).toLocaleString()}</td>
+                      <td className="p-3 text-slate-700">{(s.items || []).length} items</td>
+                      <td className="p-3 uppercase font-bold text-slate-700">{s.paymentMethod}</td>
+                      <td className="p-3 text-right font-mono font-bold text-slate-900">Rs. {(s.totalAmount || 0).toFixed(2)}</td>
+                      <td className="p-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => { setViewingReceipt(s); setIsReceiptOpen(true); }}
+                          className="px-2.5 py-1 rounded-lg bg-orange-50 text-orange-700 hover:bg-orange-100 font-bold cursor-pointer"
+                        >
+                          View Receipt
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </motion.div>
+        )}
+
+        {/* TAB: STAFF & OPERATIONS */}
+        {activeTab === 'staff_operations' && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
+            <StoreStaffTrackerView store={liveStore} currentUser={currentUser} storeUsers={storeUsers} />
           </motion.div>
         )}
 

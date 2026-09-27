@@ -16,7 +16,7 @@ import {
 import { UserAccount, Store, AuthState } from '../types';
 import { Logo } from './Logo';
 import { usePWAInstall } from '../hooks/usePWAInstall';
-import { DownloadAppModal } from './DownloadAppModal';
+import { triggerDirectAppDownload } from '../utils/directAppDownload';
 import { 
   Lock, 
   User, 
@@ -53,22 +53,10 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [focusedField, setFocusedField] = useState<'username' | 'password' | null>(null);
-  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
-  const { isInstallable, isInstalled, install } = usePWAInstall();
+  const { isInstalled } = usePWAInstall();
 
   const handleDownloadClick = async () => {
-    if (isInstallable) {
-      try {
-        const res = await install();
-        if (res !== 'accepted') {
-          setIsDownloadModalOpen(true);
-        }
-      } catch {
-        setIsDownloadModalOpen(true);
-      }
-    } else {
-      setIsDownloadModalOpen(true);
-    }
+    await triggerDirectAppDownload((window as any).deferredPrompt);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -254,357 +242,173 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         />
       ))}
 
-      <div className="max-w-5xl w-full mx-auto relative z-10">
+      <div className="max-w-md w-full mx-auto relative z-10">
         
-        {/* Main Grid: Left Animated Brand/Kiosk Visualizer + Right Login Card */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
-          
-          {/* Left Column: Interactive Brand, High-Tech Scanner Hologram & Feature Badges */}
-          <motion.div 
-            initial={{ opacity: 0, x: -40 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.7, ease: "easeOut" }}
-            className="lg:col-span-6 space-y-6 text-center lg:text-left"
-          >
-            {/* Brand Header & Full-Width Branding Feature Banner */}
-            <div className="bg-white/90 backdrop-blur-md p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4 text-center lg:text-left relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-orange-500/10 to-amber-500/5 rounded-full blur-2xl pointer-events-none" />
-              
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <motion.div
-                    whileHover={{ rotate: [0, -8, 8, 0], scale: 1.08 }}
-                    transition={{ duration: 0.5 }}
-                    className="relative"
-                  >
-                    <div className="absolute -inset-1 bg-gradient-to-r from-orange-500 to-amber-400 rounded-2xl blur-xs opacity-60 animate-pulse" />
-                    <div className="relative bg-white p-2.5 rounded-2xl border border-slate-200 shadow-sm">
-                      <Logo size="lg" lightMode={true} />
-                    </div>
-                  </motion.div>
-                  <div className="text-left">
-                    <h1 className="text-2xl sm:text-3xl font-black tracking-tight leading-none text-slate-900">
-                      Mart <span className="text-orange-500">Pro</span>
-                    </h1>
-                    <p className="text-[11px] font-bold text-orange-600 uppercase tracking-widest flex items-center gap-1 mt-1">
-                      Supermarket Management & POS Suite
-                    </p>
-                  </div>
-                </div>
+        {/* Right Column: Modern Clean White Login Card */}
+        <motion.div 
+          initial={{ opacity: 0, y: 30, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.6, delay: 0.15, ease: "easeOut" }}
+          className="relative"
+        >
+          {/* Soft Ambient Glow */}
+          <div className="absolute -inset-1 bg-gradient-to-r from-orange-400/20 via-amber-400/20 to-yellow-400/20 rounded-3xl blur-xl opacity-80 pointer-events-none" />
 
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleDownloadClick}
-                    className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs font-black flex items-center gap-1.5 shadow-xs transition-all cursor-pointer hover:scale-[1.02]"
-                    title="Download & Install Mart Pro Web App for Desktop or Mobile"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Download App</span>
-                    <span className="text-[10px] bg-white/20 px-1.5 py-0.2 rounded font-mono">
-                      {isInstalled ? 'Installed' : 'PWA'}
-                    </span>
-                  </button>
-
-                  <span className="hidden sm:inline-flex px-3 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold items-center gap-1.5 shadow-2xs">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" /> System Live
-                  </span>
+          <div className="relative bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-xl shadow-slate-200/80">
+            
+            {/* Mart Pro Branding & Logo */}
+            <div className="flex flex-col items-center justify-center space-y-2 mb-6 text-center">
+              <div className="relative">
+                <div className="absolute -inset-1 bg-gradient-to-r from-orange-500 to-amber-400 rounded-2xl blur-xs opacity-60 animate-pulse" />
+                <div className="relative bg-white p-3 rounded-2xl border border-slate-200 shadow-sm">
+                  <Logo size="lg" lightMode={true} />
                 </div>
               </div>
-
-              {/* Sub-banner area utilizing the full place under the logo and branding */}
-              <div className="pt-3 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-4 gap-3 text-left">
-                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Checkout POS</div>
-                  <div className="text-xs font-extrabold text-slate-800 mt-0.5">Fast Barcode Scan</div>
-                </div>
-                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Inventory</div>
-                  <div className="text-xs font-extrabold text-slate-800 mt-0.5">Realtime Stock</div>
-                </div>
-                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Receipts</div>
-                  <div className="text-xs font-extrabold text-slate-800 mt-0.5">QR & Print Slips</div>
-                </div>
-                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Analytics</div>
-                  <div className="text-xs font-extrabold text-slate-800 mt-0.5">Profit & Trends</div>
-                </div>
-              </div>
-            </div>
-
-            {/* HIGH-TECH INTERACTIVE LASER SCANNER HOLOGRAM CARD */}
-            <motion.div 
-              whileHover={{ scale: 1.02 }}
-              className="relative p-4 rounded-2xl bg-white/90 backdrop-blur-md border border-slate-200 shadow-md overflow-hidden group"
-            >
-              {/* Laser Scan Sweep Line */}
-              <motion.div 
-                animate={{ 
-                  top: ['5%', '88%', '5%'],
-                  opacity: [0.4, 0.9, 0.4]
-                }}
-                transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
-                className="absolute left-4 right-4 h-0.5 bg-gradient-to-r from-transparent via-red-500 to-transparent shadow-[0_0_10px_2px_rgba(239,68,68,0.7)] pointer-events-none z-10"
-              />
-
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl bg-orange-50 border border-orange-200 flex items-center justify-center text-orange-600 shadow-xs shrink-0 relative">
-                    <ScanLine className="w-6 h-6 animate-pulse" />
-                    <motion.div 
-                      animate={{ scale: [1, 1.4, 1], opacity: [0.8, 0, 0.8] }}
-                      transition={{ duration: 2, repeat: Infinity }}
-                      className="absolute inset-0 rounded-xl border border-orange-400"
-                    />
-                  </div>
-                  <div className="text-left">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-black text-slate-900">Laser Hardware Scan Ready</span>
-                      <span className="flex h-2 w-2 relative">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-                      Auto-sync • Weight Scales • Thermal Slips
-                    </p>
-                  </div>
-                </div>
-
-                <div className="hidden sm:flex flex-col items-end text-right">
-                  <span className="text-[10px] font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-bold">
-                    SYSTEM ONLINE
-                  </span>
-                  <span className="text-[10px] text-slate-400 mt-1 font-mono">Port 3000 Secured</span>
-                </div>
-              </div>
-            </motion.div>
-
-
-            {/* Feature Highlights with Staggered Animations */}
-            <div className="grid grid-cols-2 gap-3 pt-1">
-              <motion.div 
-                whileHover={{ scale: 1.03, y: -2 }}
-                className="p-3 bg-white/90 backdrop-blur-md rounded-2xl border border-slate-200 shadow-xs flex items-center gap-2.5 transition-all hover:border-orange-300 hover:shadow-md"
-              >
-                <div className="p-2 bg-orange-50 text-orange-600 border border-orange-200 rounded-xl">
-                  <ShieldCheck className="w-4 h-4" />
-                </div>
-                <div className="text-left">
-                  <div className="text-xs font-bold text-slate-900">Multi-Role RBAC</div>
-                  <div className="text-[10px] text-slate-500">Granular Permissions</div>
-                </div>
-              </motion.div>
-
-              <motion.div 
-                whileHover={{ scale: 1.03, y: -2 }}
-                className="p-3 bg-white/90 backdrop-blur-md rounded-2xl border border-slate-200 shadow-xs flex items-center gap-2.5 transition-all hover:border-emerald-300 hover:shadow-md"
-              >
-                <div className="p-2 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-xl">
-                  <ShoppingCart className="w-4 h-4" />
-                </div>
-                <div className="text-left">
-                  <div className="text-xs font-bold text-slate-900">POS Billing</div>
-                  <div className="text-[10px] text-slate-500">Laser Fast Checkout</div>
-                </div>
-              </motion.div>
-
-              <motion.div 
-                whileHover={{ scale: 1.03, y: -2 }}
-                className="p-3 bg-white/90 backdrop-blur-md rounded-2xl border border-slate-200 shadow-xs flex items-center gap-2.5 transition-all hover:border-blue-300 hover:shadow-md"
-              >
-                <div className="p-2 bg-blue-50 text-blue-600 border border-blue-200 rounded-xl">
-                  <Barcode className="w-4 h-4" />
-                </div>
-                <div className="text-left">
-                  <div className="text-xs font-bold text-slate-900">Live Inventory</div>
-                  <div className="text-[10px] text-slate-500">Cost & Profit COGS</div>
-                </div>
-              </motion.div>
-
-              <motion.div 
-                whileHover={{ scale: 1.03, y: -2 }}
-                className="p-3 bg-white/90 backdrop-blur-md rounded-2xl border border-slate-200 shadow-xs flex items-center gap-2.5 transition-all hover:border-amber-300 hover:shadow-md"
-              >
-                <div className="p-2 bg-amber-50 text-amber-600 border border-amber-200 rounded-xl">
-                  <Flame className="w-4 h-4" />
-                </div>
-                <div className="text-left">
-                  <div className="text-xs font-bold text-slate-900">Price Checker</div>
-                  <div className="text-[10px] text-slate-500">Self-Service Voice Kiosk</div>
-                </div>
-              </motion.div>
-            </div>
-          </motion.div>
-
-          {/* Right Column: Modern Clean White Login Card */}
-          <motion.div 
-            initial={{ opacity: 0, y: 30, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ duration: 0.6, delay: 0.15, ease: "easeOut" }}
-            className="lg:col-span-6 relative"
-          >
-            {/* Soft Ambient Glow */}
-            <div className="absolute -inset-1 bg-gradient-to-r from-orange-400/20 via-amber-400/20 to-yellow-400/20 rounded-3xl blur-xl opacity-80 pointer-events-none" />
-
-            <div className="relative bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-xl shadow-slate-200/80">
-              
-              <div className="space-y-1 mb-6">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-orange-700 bg-orange-50 px-3 py-1 rounded-full border border-orange-200 inline-flex items-center gap-1.5">
-                    <Sparkles className="w-3 h-3 text-orange-600 animate-spin" style={{ animationDuration: '6s' }} />
-                    Secure Gateway Access
-                  </span>
-                  <div className="flex items-center gap-1 text-[10px] text-slate-500 font-mono">
-                    <Wifi className="w-3 h-3 text-emerald-600" />
-                    <span>SSL Encrypted</span>
-                  </div>
-                </div>
-
-                <h3 className="text-2xl font-black text-slate-900 tracking-tight pt-2">
-                  Account Sign In
-                </h3>
-                <p className="text-xs text-slate-500 font-medium">
-                  Enter your credentials to access your designated workspace.
+              <div>
+                <h1 className="text-2xl font-black tracking-tight text-slate-900">
+                  Mart <span className="text-orange-500">Pro</span>
+                </h1>
+                <p className="text-[10px] font-bold text-orange-600 uppercase tracking-widest mt-0.5">
+                  Supermarket Management Software
                 </p>
               </div>
+              <span className="text-[10px] font-black uppercase tracking-widest text-orange-700 bg-orange-50 px-3 py-0.5 rounded-full border border-orange-200 inline-flex items-center gap-1.5 mt-1">
+                <Sparkles className="w-3 h-3 text-orange-600 animate-spin" style={{ animationDuration: '6s' }} />
+                Secure Gateway Access
+              </span>
+            </div>
 
-              {/* Error Notification Banner */}
-              <AnimatePresence>
-                {error && (
-                  <motion.div 
-                    initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                    className="mb-5 p-3.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-xs font-medium flex items-start gap-2.5 shadow-xs"
-                  >
-                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5 animate-bounce" />
-                    <div className="flex-1 leading-relaxed">{error}</div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* Login Form */}
-              <form onSubmit={handleSubmit} className="space-y-4">
-                
-                {/* Username Input Field */}
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-2">
-                    Username or Email
-                  </label>
-                  <div className="relative group">
-                    <div className={`absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none transition-colors ${
-                      focusedField === 'username' ? 'text-orange-600' : 'text-slate-400'
-                    }`}>
-                      <User className="w-5 h-5" />
-                    </div>
-                    <input
-                      type="text"
-                      required
-                      value={username}
-                      onFocus={() => setFocusedField('username')}
-                      onBlur={() => setFocusedField(null)}
-                      onChange={(e) => setUsername(e.target.value)}
-                      placeholder="Enter system username..."
-                      className="w-full pl-11 pr-4 py-3 bg-slate-50/70 border-2 border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition-all text-sm font-medium shadow-2xs"
-                    />
-                  </div>
-                </div>
-
-                {/* Password Input Field */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                      Password
-                    </label>
-                  </div>
-                  <div className="relative group">
-                    <div className={`absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none transition-colors ${
-                      focusedField === 'password' ? 'text-orange-600' : 'text-slate-400'
-                    }`}>
-                      <Lock className="w-5 h-5" />
-                    </div>
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      value={password}
-                      onFocus={() => setFocusedField('password')}
-                      onBlur={() => setFocusedField(null)}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••••••"
-                      className="w-full pl-11 pr-11 py-3 bg-slate-50/70 border-2 border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition-all text-sm font-medium shadow-2xs font-mono"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-orange-600 transition-colors cursor-pointer"
-                      title={showPassword ? "Hide password" : "Show password"}
-                    >
-                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Submit Button with Interactive Micro-Animations */}
-                <motion.button
-                  type="submit"
-                  disabled={loading}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="w-full py-3.5 px-4 bg-gradient-to-r from-orange-600 via-amber-600 to-orange-600 hover:from-orange-500 hover:to-amber-500 text-white font-black rounded-xl shadow-lg shadow-orange-600/25 hover:shadow-orange-600/40 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-sm uppercase tracking-wider mt-2 relative overflow-hidden group"
+            {/* Error Notification Banner */}
+            <AnimatePresence>
+              {error && (
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                  className="mb-5 p-3.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-xs font-medium flex items-start gap-2.5 shadow-xs"
                 >
-                  {/* Subtle shine sweep on hover */}
-                  <div className="absolute top-0 -left-full w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent group-hover:left-full transition-all duration-700 pointer-events-none" />
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5 animate-bounce" />
+                  <div className="flex-1 leading-relaxed">{error}</div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-                  {loading ? (
-                    <>
-                      <motion.div 
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                        className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full" 
-                      />
-                      <span>Authenticating Account...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Zap className="w-4 h-4 text-amber-200 fill-amber-200" />
-                      <span>Sign In to System</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
-                </motion.button>
-              </form>
+            {/* Login Form */}
+            <form onSubmit={handleSubmit} className="space-y-4">
+              
+              {/* Username Input Field */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  Username or Email
+                </label>
+                <div className="relative group">
+                  <div className={`absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none transition-colors ${
+                    focusedField === 'username' ? 'text-orange-600' : 'text-slate-400'
+                  }`}>
+                    <User className="w-5 h-5" />
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    value={username}
+                    onFocus={() => setFocusedField('username')}
+                    onBlur={() => setFocusedField(null)}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="Enter system username..."
+                    className="w-full pl-11 pr-4 py-3 bg-slate-50/70 border-2 border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition-all text-sm font-medium shadow-2xs"
+                  />
+                </div>
+              </div>
 
-              {/* Bottom Security & Download Footer */}
-              <div className="mt-6 pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-slate-500">
-                <span className="flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Cloud Firestore Sync
-                </span>
-                
+              {/* Password Input Field */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                    Password
+                  </label>
+                </div>
+                <div className="relative group">
+                  <div className={`absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none transition-colors ${
+                    focusedField === 'password' ? 'text-orange-600' : 'text-slate-400'
+                  }`}>
+                    <Lock className="w-5 h-5" />
+                  </div>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={password}
+                    onFocus={() => setFocusedField('password')}
+                    onBlur={() => setFocusedField(null)}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••••••"
+                    className="w-full pl-11 pr-11 py-3 bg-slate-50/70 border-2 border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition-all text-sm font-medium shadow-2xs font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-orange-600 transition-colors cursor-pointer"
+                    title={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Submit Button with Interactive Micro-Animations */}
+              <motion.button
+                type="submit"
+                disabled={loading}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="w-full py-3.5 px-4 bg-gradient-to-r from-orange-600 via-amber-600 to-orange-600 hover:from-orange-500 hover:to-amber-500 text-white font-black rounded-xl shadow-lg shadow-orange-600/25 hover:shadow-orange-600/40 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-sm uppercase tracking-wider mt-2 relative overflow-hidden group"
+              >
+                {/* Subtle shine sweep on hover */}
+                <div className="absolute top-0 -left-full w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent group-hover:left-full transition-all duration-700 pointer-events-none" />
+
+                {loading ? (
+                  <>
+                    <motion.div 
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                      className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full" 
+                    />
+                    <span>Authenticating Account...</span>
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-4 h-4 text-amber-200 fill-amber-200" />
+                    <span>Sign In to System</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </motion.button>
+            </form>
+
+            {/* Bottom Security & Download Footer */}
+            <div className="mt-6 pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-slate-500">
+              <span className="flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Cloud Sync
+              </span>
+
+              {!isInstalled && (
                 <button
                   type="button"
                   onClick={handleDownloadClick}
-                  className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 font-bold text-xs border border-orange-200 transition-colors cursor-pointer"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-extrabold text-xs transition-colors cursor-pointer shadow-xs"
+                  title="Download Mart Pro for your device"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Download App (Desktop & Mobile)</span>
+                  <span>Download</span>
                 </button>
+              )}
 
-                <span className="font-mono text-slate-400">v2.4 Pro</span>
-              </div>
-
+              <span className="font-mono text-slate-400">v2.4 Pro</span>
             </div>
-          </motion.div>
-        </div>
+
+          </div>
+        </motion.div>
 
       </div>
-
-      {/* Download Web App Modal */}
-      <DownloadAppModal 
-        isOpen={isDownloadModalOpen} 
-        onClose={() => setIsDownloadModalOpen(false)} 
-      />
     </div>
   );
 };

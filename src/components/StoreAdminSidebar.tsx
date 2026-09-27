@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Store } from '../types';
 import { usePWAInstall } from '../hooks/usePWAInstall';
-import { DownloadAppModal } from './DownloadAppModal';
+import { triggerDirectAppDownload } from '../utils/directAppDownload';
 import { 
   LayoutDashboard, 
   CalendarDays, 
@@ -26,6 +26,8 @@ import {
   ShieldCheck,
   AlertTriangle,
   ReceiptText,
+  Scale,
+  Activity,
   Calendar,
   Layers,
   DollarSign,
@@ -39,19 +41,22 @@ import {
 } from 'lucide-react';
 
 export type StoreAdminTab = 
-  | 'overview' 
   | 'sales_by_date' 
   | 'volume_chart' 
   | 'revenue_trends' 
+  | 'net_profit_revenue'
+  | 'product_valuation'
   | 'returns' 
   | 'sold_products' 
   | 'stock_remaining' 
   | 'promotions'
   | 'sales_history' 
+  | 'recent_receipts'
   | 'payment_methods'
   | 'expenses'
   | 'suppliers'
   | 'staff' 
+  | 'staff_operations'
   | 'settings';
 
 export type ExpenseFilterMode = 'all' | 'date' | 'month' | 'year';
@@ -105,22 +110,10 @@ export const StoreAdminSidebar: React.FC<StoreAdminSidebarProps> = ({
   onOpenExcel,
   onOpenAi
 }) => {
-  const { isInstallable, isInstalled, install } = usePWAInstall();
-  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+  const { isInstalled } = usePWAInstall();
 
   const handleDownloadClick = async () => {
-    if (isInstallable) {
-      try {
-        const res = await install();
-        if (res !== 'accepted') {
-          setIsDownloadModalOpen(true);
-        }
-      } catch {
-        setIsDownloadModalOpen(true);
-      }
-    } else {
-      setIsDownloadModalOpen(true);
-    }
+    await triggerDirectAppDownload((window as any).deferredPrompt);
   };
 
   const handleTabClick = (tab: StoreAdminTab) => {
@@ -137,17 +130,6 @@ export const StoreAdminSidebar: React.FC<StoreAdminSidebarProps> = ({
   };
 
   const navSections = [
-    {
-      group: 'Overview',
-      items: [
-        {
-          id: 'overview' as StoreAdminTab,
-          label: 'Executive Overview',
-          icon: LayoutDashboard,
-          badge: null
-        }
-      ]
-    },
     {
       group: 'Analytics & Reports',
       items: [
@@ -168,6 +150,12 @@ export const StoreAdminSidebar: React.FC<StoreAdminSidebarProps> = ({
           label: 'Revenue & Profit Trends',
           icon: TrendingUp,
           badge: null
+        },
+        {
+          id: 'net_profit_revenue' as StoreAdminTab,
+          label: 'Net Profit & Sales Revenue',
+          icon: DollarSign,
+          badge: null
         }
       ]
     },
@@ -180,6 +168,12 @@ export const StoreAdminSidebar: React.FC<StoreAdminSidebarProps> = ({
           icon: Package,
           badge: stats.lowStockCount > 0 ? `${stats.lowStockCount} Low` : `${stats.totalProducts}`,
           badgeColor: stats.lowStockCount > 0 ? 'bg-amber-500 text-white font-black' : 'bg-slate-800 text-slate-300'
+        },
+        {
+          id: 'product_valuation' as StoreAdminTab,
+          label: 'Product Valuation Analytics',
+          icon: Scale,
+          badge: null
         },
         {
           id: 'promotions' as StoreAdminTab,
@@ -198,6 +192,12 @@ export const StoreAdminSidebar: React.FC<StoreAdminSidebarProps> = ({
           id: 'sales_history' as StoreAdminTab,
           label: 'Receipts Log',
           icon: Receipt,
+          badge: `${stats.receiptsCount}`
+        },
+        {
+          id: 'recent_receipts' as StoreAdminTab,
+          label: 'Recent Customer Receipts',
+          icon: ReceiptText,
           badge: `${stats.receiptsCount}`
         },
         {
@@ -236,6 +236,12 @@ export const StoreAdminSidebar: React.FC<StoreAdminSidebarProps> = ({
           id: 'staff' as StoreAdminTab,
           label: 'Staff & Salaries',
           icon: Users,
+          badge: `${stats.staffCount}`
+        },
+        {
+          id: 'staff_operations' as StoreAdminTab,
+          label: 'Staff & Operations (Online/Offline)',
+          icon: Activity,
           badge: `${stats.staffCount}`
         },
         {
@@ -483,6 +489,20 @@ export const StoreAdminSidebar: React.FC<StoreAdminSidebarProps> = ({
               <FileSpreadsheet className="w-4 h-4 shrink-0 text-emerald-400" />
               {!isCollapsed && <span>Excel / Spreadsheet</span>}
             </button>
+
+            {!isInstalled && (
+              <button
+                onClick={handleDownloadClick}
+                title="Download App"
+                className={`
+                  w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs
+                  ${isCollapsed ? 'justify-center px-2' : 'justify-start'}
+                `}
+              >
+                <Download className="w-4 h-4 shrink-0" />
+                {!isCollapsed && <span>Download</span>}
+              </button>
+            )}
           </div>
         </div>
 

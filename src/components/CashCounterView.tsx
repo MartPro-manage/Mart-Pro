@@ -33,7 +33,7 @@ import { speakMessage } from '../lib/speech';
 import { playScanSuccessBeep, playScanErrorBeep } from '../lib/sound';
 import { cleanupExpiredReceipts, isSaleExpired, getReceiptRemainingDays } from '../lib/salesCleanup';
 import { usePWAInstall } from '../hooks/usePWAInstall';
-import { DownloadAppModal } from './DownloadAppModal';
+import { triggerDirectAppDownload } from '../utils/directAppDownload';
 import { 
   Calculator, 
   Barcode as BarcodeIcon, 
@@ -119,22 +119,10 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
   const [searchTerm, setSearchTerm] = useState('');
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [isCashModalOpen, setIsCashModalOpen] = useState(false);
-  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
-  const { isInstallable, isInstalled, install } = usePWAInstall();
+  const { isInstalled } = usePWAInstall();
 
   const handleDownloadClick = async () => {
-    if (isInstallable) {
-      try {
-        const res = await install();
-        if (res !== 'accepted') {
-          setIsDownloadModalOpen(true);
-        }
-      } catch {
-        setIsDownloadModalOpen(true);
-      }
-    } else {
-      setIsDownloadModalOpen(true);
-    }
+    await triggerDirectAppDownload((window as any).deferredPrompt);
   };
 
   // Active digital payment platforms configured by Admin (or defaults)
@@ -309,7 +297,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
 
   // Full Screen Cart State
-  const [isCartFullScreen, setIsCartFullScreen] = useState(false);
+  const [isCartFullScreen, setIsCartFullScreen] = useState(true);
   const [fullScreenScanInput, setFullScreenScanInput] = useState('');
   const [showFullScreenShortcuts, setShowFullScreenShortcuts] = useState(false);
   const [fullScreenShortcutSearch, setFullScreenShortcutSearch] = useState('');
@@ -2531,12 +2519,6 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           onSelectProduct={handleAddProductClick}
         />
 
-        {/* Download Web App Modal (Desktop & Mobile) */}
-        <DownloadAppModal
-          isOpen={isDownloadModalOpen}
-          onClose={() => setIsDownloadModalOpen(false)}
-        />
-
         {/* FULL SCREEN CART OVERLAY */}
         {isCartFullScreen && (
           <div className="fixed inset-0 z-50 bg-slate-100 flex flex-col overflow-y-auto overscroll-contain custom-scrollbar animate-fade-in">
@@ -2630,20 +2612,33 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                   <Keyboard className="w-3.5 h-3.5" />
                   <span className="hidden md:inline">Quick Tray</span>
                 </button>
+
+                {/* Return / Refund Item Voucher Button */}
+                <button
+                  type="button"
+                  onClick={() => setIsReturnModalOpen(true)}
+                  className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs font-bold transition-all cursor-pointer shadow-xs"
+                  title="Process customer product return & refund voucher"
+                >
+                  <Undo2 className="w-3.5 h-3.5 text-rose-400" />
+                  <span className="hidden sm:inline">Returns</span>
+                </button>
               </div>
 
               {/* Right Side Header Utilities */}
               <div className="flex items-center gap-2 shrink-0">
-                {/* Download App Trigger in Fullscreen POS */}
-                <button
-                  type="button"
-                  onClick={handleDownloadClick}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs shadow-xs transition-all cursor-pointer"
-                  title="Download & Install Mart Pro Web App on Mobile or Desktop"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Download App</span>
-                </button>
+                {/* 1-Click Download Button */}
+                {!isInstalled && (
+                  <button
+                    type="button"
+                    onClick={handleDownloadClick}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs shadow-xs transition-all cursor-pointer"
+                    title="Download Mart Pro for your device"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download</span>
+                  </button>
+                )}
 
                 <div className="bg-slate-800/90 border border-slate-700 px-2.5 sm:px-3 py-1 rounded-xl text-right">
                   <div className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Cart</div>

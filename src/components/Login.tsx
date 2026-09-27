@@ -15,8 +15,7 @@ import {
 } from '../lib/firebase';
 import { UserAccount, Store, AuthState } from '../types';
 import { Logo } from './Logo';
-import { usePWAInstall } from '../hooks/usePWAInstall';
-import { triggerDirectAppDownload } from '../utils/directAppDownload';
+import { DownloadAppButton } from './DownloadAppButton';
 import { 
   Lock, 
   User, 
@@ -38,8 +37,7 @@ import {
   Wifi,
   Flame,
   KeyRound,
-  ShieldAlert,
-  Download
+  ShieldAlert
 } from 'lucide-react';
 
 interface LoginProps {
@@ -53,11 +51,6 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [focusedField, setFocusedField] = useState<'username' | 'password' | null>(null);
-  const { isInstalled } = usePWAInstall();
-
-  const handleDownloadClick = async () => {
-    await triggerDirectAppDownload((window as any).deferredPrompt);
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -385,22 +378,12 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             </form>
 
             {/* Bottom Security & Download Footer */}
-            <div className="mt-6 pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-slate-500">
+            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between gap-3 text-[11px] text-slate-500">
               <span className="flex items-center gap-1">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Cloud Sync
               </span>
 
-              {!isInstalled && (
-                <button
-                  type="button"
-                  onClick={handleDownloadClick}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-extrabold text-xs transition-colors cursor-pointer shadow-xs"
-                  title="Download Mart Pro for your device"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download</span>
-                </button>
-              )}
+              <DownloadAppButton variant="primary" showInstalledBadge={true} />
 
               <span className="font-mono text-slate-400">v2.4 Pro</span>
             </div>

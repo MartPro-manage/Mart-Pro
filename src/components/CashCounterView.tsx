@@ -32,8 +32,7 @@ import { getProductDiscountInfo, getEffectiveProductPrice } from '../utils/disco
 import { speakMessage } from '../lib/speech';
 import { playScanSuccessBeep, playScanErrorBeep } from '../lib/sound';
 import { cleanupExpiredReceipts, isSaleExpired, getReceiptRemainingDays } from '../lib/salesCleanup';
-import { usePWAInstall } from '../hooks/usePWAInstall';
-import { triggerDirectAppDownload } from '../utils/directAppDownload';
+import { DownloadAppButton } from './DownloadAppButton';
 import { 
   Calculator, 
   Barcode as BarcodeIcon, 
@@ -119,11 +118,6 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
   const [searchTerm, setSearchTerm] = useState('');
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [isCashModalOpen, setIsCashModalOpen] = useState(false);
-  const { isInstalled } = usePWAInstall();
-
-  const handleDownloadClick = async () => {
-    await triggerDirectAppDownload((window as any).deferredPrompt);
-  };
 
   // Active digital payment platforms configured by Admin (or defaults)
   const configuredDigitalMethods: DigitalPaymentMethodConfig[] = useMemo(() => {
@@ -2627,18 +2621,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
 
               {/* Right Side Header Utilities */}
               <div className="flex items-center gap-2 shrink-0">
-                {/* 1-Click Download Button */}
-                {!isInstalled && (
-                  <button
-                    type="button"
-                    onClick={handleDownloadClick}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs shadow-xs transition-all cursor-pointer"
-                    title="Download Mart Pro for your device"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Download</span>
-                  </button>
-                )}
+                <DownloadAppButton variant="header" />
 
                 <div className="bg-slate-800/90 border border-slate-700 px-2.5 sm:px-3 py-1 rounded-xl text-right">
                   <div className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Cart</div>

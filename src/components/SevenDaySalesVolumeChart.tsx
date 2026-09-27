@@ -120,11 +120,11 @@ export const SevenDaySalesVolumeChart: React.FC<SevenDaySalesVolumeChartProps> =
         <div className="flex flex-wrap items-center gap-2">
           <div className="px-3 py-1.5 rounded-xl bg-orange-50 border border-orange-200 text-xs">
             <span className="text-orange-700 font-medium">7-Day Volume: </span>
-            <strong className="text-orange-950 font-black">{stats.totalUnits.toLocaleString()} units</strong>
+            <strong className="text-orange-950 font-black">{(stats?.totalUnits || 0).toLocaleString()} units</strong>
           </div>
           <div className="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs">
             <span className="text-emerald-700 font-medium">7-Day Revenue: </span>
-            <strong className="text-emerald-950 font-black">Rs. {stats.totalRevenue.toLocaleString('en-PK', { maximumFractionDigits: 0 })}</strong>
+            <strong className="text-emerald-950 font-black">Rs. {(stats?.totalRevenue || 0).toLocaleString('en-PK', { maximumFractionDigits: 0 })}</strong>
           </div>
           <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">
             <span className="text-slate-600 font-medium">Daily Avg: </span>

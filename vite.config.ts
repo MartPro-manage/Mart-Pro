@@ -11,15 +11,16 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'icon.svg', 'icon-192.png', 'icon-512.png', 'logo.svg', 'logo.png'],
+        includeAssets: ['apple-touch-icon.png', 'icon.svg', 'icon-192.png', 'icon-512.png', 'logo.svg', 'logo.png', 'favicon.ico', 'favicon.png'],
         manifest: {
           id: '/',
           name: 'Mart Pro - Supermarket & POS Management',
           short_name: 'Mart Pro',
           description: 'Mart Pro Supermarket POS & Inventory Management System with fast barcode scanning, stock register, and customer price checker kiosk.',
-          theme_color: '#f97316',
+          theme_color: '#ea580c',
           background_color: '#0b0f19',
           display: 'standalone',
+          display_override: ['standalone', 'window-controls-overlay', 'minimal-ui'],
           orientation: 'any',
           start_url: '/',
           scope: '/',

@@ -41,7 +41,7 @@ window.addEventListener('unhandledrejection', (event) => {
   }
 });
 
-// Global hook for beforeinstallprompt event
+// Global hook for beforeinstallprompt event - allow browser to display native address bar install button
 declare global {
   interface Window {
     deferredPrompt?: any;
@@ -49,7 +49,7 @@ declare global {
 }
 
 window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
+  // Do not call preventDefault() so Chrome and Edge show the native Install/Download button in the address bar
   window.deferredPrompt = e;
   window.dispatchEvent(new CustomEvent('pwa-install-ready'));
 });

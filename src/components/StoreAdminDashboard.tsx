@@ -1050,7 +1050,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
   const tabTitles: Record<StoreAdminTab, { title: string; subtitle: string; icon: React.ComponentType<{ className?: string }> }> = {
     sales_by_date: {
       title: 'Sales by Date',
-      subtitle: 'Day-by-day revenue, profit margin, units sold, and deep day inspection',
+      subtitle: 'Day-by-day revenue, profit margin, orders count, and deep day inspection',
       icon: CalendarDays
     },
     volume_chart: {
@@ -1176,7 +1176,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             <div className="flex items-center gap-2 min-w-0">
               <button 
                 type="button"
-                onClick={() => setActiveTab('overview')}
+                onClick={() => setActiveTab('sales_by_date')}
                 className="text-xs font-bold text-slate-500 hover:text-orange-600 transition-colors hidden sm:inline truncate cursor-pointer"
               >
                 Store Admin
@@ -1230,7 +1230,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                 </span>
               </div>
               <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-                {store.name} <span className="text-orange-600">{activeTab === 'overview' ? 'Analytics & Executive Dashboard' : tabTitles[activeTab]?.title || 'Store Management'}</span>
+                {store.name} <span className="text-orange-600">{tabTitles[activeTab]?.title || 'Store Management'}</span>
               </h1>
               <p className="text-sm text-slate-600 max-w-2xl font-medium text-left">
                 {tabTitles[activeTab]?.subtitle || 'View sales filtered by date, day-by-day revenue breakdown, product sales velocity, real-time inventory levels, and cashier checkout logs.'}
@@ -1428,12 +1428,12 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
 
         {/* DYNAMIC REALTIME METRICS CARDS (Adjusts to selected Date Filter) */}
         <div 
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4"
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
         >
           
           {/* Net Realized Profit (Excl. & Incl. Expenses) */}
           <div 
-            className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden xl:col-span-2"
+            className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden"
           >
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
@@ -1464,7 +1464,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             <div className="text-[11px] text-slate-500 mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap items-center gap-1 font-medium">
               <span className="text-slate-700 font-bold">Revenue: Rs. {(filteredNetRevenue || 0).toFixed(0)}</span>
               <span className="text-slate-400">•</span>
-              <span className="text-slate-600 font-semibold">Cost: Rs. {(filteredCostOfGoods || 0).toFixed(0)}</span>
+              <span className="text-slate-600 font-semibold">Orders: {filteredSalesByDate.length}</span>
             </div>
           </div>
 
@@ -1485,44 +1485,6 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             </div>
             <p className="text-[11px] text-slate-500 mt-1 font-medium">
               Gross: Rs. {(filteredGrossRevenue || 0).toFixed(0)} {(filteredRefundsTotal || 0) > 0 ? `• -Rs. ${(filteredRefundsTotal || 0).toFixed(0)} refunds` : ''}
-            </p>
-          </div>
-
-          {/* Cost of Goods Sold (Wholesale Cost) */}
-          <div 
-            className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Cost of Goods Sold (COGS)
-              </span>
-              <div className="p-2 rounded-xl bg-slate-100 text-slate-700 border border-slate-200">
-                <Coins className="w-5 h-5" />
-              </div>
-            </div>
-            <div className="mt-3 text-2xl sm:text-3xl font-extrabold text-slate-800 font-mono">
-              Rs. {filteredCostOfGoods.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </div>
-            <p className="text-[11px] text-slate-500 mt-1 font-medium flex items-center gap-1">
-              Purchase rate for {filteredNetUnitsSold.toLocaleString()} sold units
-            </p>
-          </div>
-
-          {/* Sold Units & Realtime Stock */}
-          <div 
-            className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Units Sold</span>
-              <div className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-200">
-                <ShoppingBag className="w-5 h-5" />
-              </div>
-            </div>
-            <div className="mt-3 text-2xl sm:text-3xl font-extrabold text-blue-600">
-              {filteredNetUnitsSold.toLocaleString()} <span className="text-xs text-slate-500 font-normal">units</span>
-            </div>
-            <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1 font-medium">
-              <Package className="w-3.5 h-3.5 text-slate-400" /> {products.reduce((acc, p) => acc + (p.stockQuantity || 0), 0).toLocaleString()} units in inventory
             </p>
           </div>
 
@@ -1549,144 +1511,6 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
           </div>
 
         </div>
-
-        {/* Centralized Inventory & Valuation Analytics Section (Migrated from Product Register) */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.25, delay: 0.15 }}
-          className="space-y-3"
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-orange-100 text-orange-700 flex items-center justify-center font-bold">
-                <Boxes className="w-4 h-4" />
-              </div>
-              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                Store Inventory & Valuation Analytics
-              </h3>
-            </div>
-            <button
-              type="button"
-              onClick={() => setActiveTab('stock_remaining')}
-              className="text-xs text-orange-600 hover:text-orange-700 font-bold flex items-center gap-1 cursor-pointer"
-            >
-              View Detailed Stock List <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-            {/* Card 1: Total SKUs */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs hover:border-orange-300 transition-all">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total SKUs</span>
-                <div className="w-7 h-7 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center border border-orange-100">
-                  <PackagePlus className="w-3.5 h-3.5" />
-                </div>
-              </div>
-              <div className="text-xl sm:text-2xl font-black text-slate-900 font-mono mt-1.5">
-                {inventoryValuationStats.totalProductsCount}
-              </div>
-              <div className="text-[11px] text-slate-500 mt-0.5 font-medium">
-                Cataloged products
-              </div>
-            </div>
-
-            {/* Card 2: Stock On Hand */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs hover:border-blue-300 transition-all">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Stock On Hand</span>
-                <div className="w-7 h-7 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
-                  <Boxes className="w-3.5 h-3.5" />
-                </div>
-              </div>
-              <div className="text-xl sm:text-2xl font-black text-blue-700 font-mono mt-1.5">
-                {inventoryValuationStats.totalUnitsCount.toLocaleString()}
-              </div>
-              <div className="text-[11px] text-slate-500 mt-0.5 font-medium">
-                Physical units on shelves
-              </div>
-            </div>
-
-            {/* Card 3: Wholesale Cost */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs hover:border-slate-300 transition-all">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Wholesale Investment</span>
-                <div className="w-7 h-7 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center border border-slate-200">
-                  <Coins className="w-3.5 h-3.5" />
-                </div>
-              </div>
-              <div className="text-lg sm:text-xl font-black text-slate-900 font-mono mt-1.5 truncate" title={`Rs. ${inventoryValuationStats.totalCostValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}>
-                Rs. {inventoryValuationStats.totalCostValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-              </div>
-              <div className="text-[11px] text-slate-500 mt-0.5 font-medium">
-                Inventory purchase cost
-              </div>
-            </div>
-
-            {/* Card 4: Retail Stock Value */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs hover:border-emerald-300 transition-all">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Retail Stock Value</span>
-                <div className="w-7 h-7 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
-                  <Tag className="w-3.5 h-3.5" />
-                </div>
-              </div>
-              <div className="text-lg sm:text-xl font-black text-emerald-700 font-mono mt-1.5 truncate" title={`Rs. ${inventoryValuationStats.totalRetailValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}>
-                Rs. {inventoryValuationStats.totalRetailValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-              </div>
-              <div className="text-[11px] text-emerald-700 mt-0.5 font-bold flex items-center gap-1">
-                <span>{(inventoryValuationStats?.overallMargin || 0).toFixed(1)}% Margin</span>
-                <span className="text-slate-300">•</span>
-                <span className="text-slate-500 font-normal">Gross</span>
-              </div>
-            </div>
-
-            {/* Card 5: Stock Health / Alert */}
-            <div className={`p-4 rounded-2xl border shadow-2xs transition-all col-span-2 sm:col-span-1 ${
-              inventoryValuationStats.outOfStockCount > 0 || inventoryValuationStats.lowStockCount > 0
-                ? 'bg-amber-50/70 border-amber-200 hover:border-amber-300'
-                : 'bg-emerald-50/70 border-emerald-200 hover:border-emerald-300'
-            }`}>
-              <div className="flex items-center justify-between">
-                <span className={`text-[10px] font-bold uppercase tracking-wider ${
-                  inventoryValuationStats.outOfStockCount > 0 || inventoryValuationStats.lowStockCount > 0
-                    ? 'text-amber-900'
-                    : 'text-emerald-900'
-                }`}>
-                  Stock Health
-                </span>
-                <div className={`w-7 h-7 rounded-xl flex items-center justify-center border ${
-                  inventoryValuationStats.outOfStockCount > 0 || inventoryValuationStats.lowStockCount > 0
-                    ? 'bg-amber-100 text-amber-700 border-amber-200'
-                    : 'bg-emerald-100 text-emerald-700 border-emerald-200'
-                }`}>
-                  {inventoryValuationStats.outOfStockCount > 0 || inventoryValuationStats.lowStockCount > 0 ? (
-                    <AlertTriangle className="w-3.5 h-3.5" />
-                  ) : (
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                  )}
-                </div>
-              </div>
-              <div className="text-lg sm:text-xl font-black font-mono mt-1.5 flex items-center gap-2">
-                {inventoryValuationStats.outOfStockCount > 0 ? (
-                  <span className="text-red-700">{inventoryValuationStats.outOfStockCount} Out of Stock</span>
-                ) : inventoryValuationStats.lowStockCount > 0 ? (
-                  <span className="text-amber-800">{inventoryValuationStats.lowStockCount} Low Stock</span>
-                ) : (
-                  <span className="text-emerald-800">All Stocked</span>
-                )}
-              </div>
-              <div className="text-[11px] mt-0.5 font-medium text-slate-600">
-                {inventoryValuationStats.outOfStockCount > 0
-                  ? `${inventoryValuationStats.lowStockCount} items below min threshold`
-                  : inventoryValuationStats.lowStockCount > 0
-                  ? `Min threshold: 5 units`
-                  : 'All products at healthy levels'}
-              </div>
-            </div>
-          </div>
-        </motion.div>
           </>
         )}
 
@@ -1771,9 +1595,6 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             transition={{ duration: 0.25 }}
             className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6"
           >
-            {/* 7-Day Sales Volume Line Chart Preview */}
-            <SevenDaySalesVolumeChart sales={sales} className="mb-2 border-slate-100 bg-slate-50/50" />
-
             {/* Embedded Recharts Sales Trend with Collapse Toggle */}
             <div className="space-y-3 pb-2 border-b border-slate-100">
               <div className="flex items-center justify-between">
@@ -1805,7 +1626,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                   <CalendarDays className="w-5 h-5 text-orange-600" /> Day-by-Day Sales & Profit Breakdown
                 </h2>
                 <p className="text-xs text-slate-600 font-medium">
-                  Summary of gross revenue, customer return refunds, net profit, orders count, and units sold.
+                  Summary of gross revenue, customer return refunds, net profit, and orders count.
                 </p>
               </div>
 
@@ -1830,9 +1651,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                       <tr>
                         <th className="p-3.5">Date</th>
                         <th className="p-3.5 text-center">Invoices & Returns</th>
-                        <th className="p-3.5 text-center">Net Units Sold</th>
                         <th className="p-3.5 text-right">Net Revenue</th>
-                        <th className="p-3.5 text-right">Wholesale Cost</th>
                         <th className="p-3.5 text-right">Realized Net Profit</th>
                         <th className="p-3.5 text-center">Actions</th>
                       </tr>
@@ -1880,22 +1699,11 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                                 </div>
                               </td>
 
-                              <td className="p-3.5 text-center font-bold text-slate-700">
-                                <div>{daySummary.netUnitsSold} units</div>
-                                {daySummary.unitsReturned > 0 && (
-                                  <div className="text-[10px] text-slate-400">({daySummary.grossUnitsSold} sold - {daySummary.unitsReturned} returned)</div>
-                                )}
-                              </td>
-
                               <td className="p-3.5 text-right font-medium text-slate-900 text-xs">
                                 <div className="font-bold">Rs. {(daySummary.netRevenue || 0).toFixed(2)}</div>
                                 {(daySummary.totalRefunds || 0) > 0 && (
                                   <div className="text-[10px] text-slate-400">Gross: Rs. {(daySummary.grossRevenue || 0).toFixed(0)}</div>
                                 )}
-                              </td>
-
-                              <td className="p-3.5 text-right font-bold text-xs text-slate-600">
-                                Rs. {(daySummary.netCost || 0).toFixed(2)}
                               </td>
 
                               <td className="p-3.5 text-right">
@@ -1941,7 +1749,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                              {/* EXPANDED INVOICES LIST FOR THIS DATE */}
                             {isExpanded && (
                               <tr className="bg-slate-50/90 border-b border-orange-200">
-                                <td colSpan={7} className="p-4 sm:p-6 space-y-4">
+                                <td colSpan={5} className="p-4 sm:p-6 space-y-4">
                                   {/* 24-Hour Hourly Breakdown Chart for this specific date */}
                                   <HourlySales24hChart 
                                     sales={sales} 
@@ -1957,9 +1765,6 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                                         Invoices Issued on {daySummary.formattedDate} ({daySummary.sales.length} transactions)
                                       </h4>
                                       <div className="flex items-center gap-3">
-                                        <span className="text-xs font-semibold text-slate-500">
-                                          COGS: Rs. {(daySummary.netCost || 0).toFixed(2)}
-                                        </span>
                                         <span className="text-xs font-black text-emerald-600">
                                           Net Day Profit: Rs. {(daySummary.netProfit || 0).toFixed(2)} ({(daySummary.profitMargin || 0).toFixed(1)}%)
                                         </span>
@@ -2876,7 +2681,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             <StaffSessionsView
               store={liveStore}
               currentUser={currentUser}
-              onBack={() => setActiveTab('overview')}
+              onBack={() => setActiveTab('sales_by_date')}
             />
           </motion.div>
         )}
@@ -2891,7 +2696,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             <SupplierManagementView
               store={liveStore}
               currentUser={currentUser}
-              onBack={() => setActiveTab('overview')}
+              onBack={() => setActiveTab('sales_by_date')}
             />
           </motion.div>
         )}
@@ -2978,7 +2783,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
               </div>
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
                 <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Stock on Hand Wholesale Investment</span>
-                <div className="text-2xl font-black text-amber-600 font-mono mt-1">Rs. {inventoryValuationStats.totalWholesaleInvestment.toLocaleString('en-PK', { minimumFractionDigits: 2 })}</div>
+                <div className="text-2xl font-black text-amber-600 font-mono mt-1">Rs. {(inventoryValuationStats.totalCostValue || 0).toLocaleString('en-PK', { minimumFractionDigits: 2 })}</div>
               </div>
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
                 <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Retail Stock Value</span>
@@ -2987,6 +2792,95 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
                 <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Stock Health</span>
                 <div className="text-2xl font-black text-slate-900 font-mono mt-1">{lowStockItems.length === 0 ? 'Healthy 🟢' : `${lowStockItems.length} Low Stock Alert ⚠️`}</div>
+              </div>
+            </div>
+
+            {/* Product Valuation Item Breakdown Table */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+              <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                    <Scale className="w-4 h-4 text-orange-600" />
+                    Product Inventory Valuation Breakdown
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Individual SKU wholesale costs, retail values, and projected profit margins on shelves.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search product or barcode..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-orange-500 w-48 sm:w-64 font-medium"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-600 uppercase tracking-wider border-b border-slate-200 font-bold">
+                    <tr>
+                      <th className="p-3">Product / SKU</th>
+                      <th className="p-3">Category</th>
+                      <th className="p-3 text-center">Stock Units</th>
+                      <th className="p-3 text-right">Cost (Wholesale)</th>
+                      <th className="p-3 text-right">Price (Retail)</th>
+                      <th className="p-3 text-right">Total Wholesale</th>
+                      <th className="p-3 text-right">Total Retail</th>
+                      <th className="p-3 text-right">Expected Margin</th>
+                      <th className="p-3 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {(products || [])
+                      .filter(p => !searchTerm.trim() || p.name.toLowerCase().includes(searchTerm.toLowerCase().trim()) || p.barcode.includes(searchTerm.trim()))
+                      .map((p) => {
+                        const qty = p.stockQuantity || 0;
+                        const cost = p.costPrice || 0;
+                        const sell = p.price || p.pricePerKg || 0;
+                        const totalCost = cost * qty;
+                        const totalRetail = sell * qty;
+                        const profit = totalRetail - totalCost;
+                        const margin = totalRetail > 0 ? (profit / totalRetail) * 100 : 0;
+                        const isLow = qty <= (p.minStockLevel ?? 5) && qty > 0;
+                        const isOut = qty <= 0;
+
+                        return (
+                          <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="p-3">
+                              <div className="font-bold text-slate-900">{p.name}</div>
+                              <div className="text-[10px] text-slate-400 font-mono">{p.barcode}</div>
+                            </td>
+                            <td className="p-3 text-slate-600 font-medium">{p.category || 'General'}</td>
+                            <td className="p-3 text-center font-bold text-slate-800">{qty.toLocaleString()}</td>
+                            <td className="p-3 text-right font-mono text-slate-600">Rs. {cost.toFixed(2)}</td>
+                            <td className="p-3 text-right font-mono font-bold text-slate-900">Rs. {sell.toFixed(2)}</td>
+                            <td className="p-3 text-right font-mono font-semibold text-amber-700">Rs. {totalCost.toLocaleString('en-PK', { maximumFractionDigits: 0 })}</td>
+                            <td className="p-3 text-right font-mono font-bold text-emerald-700">Rs. {totalRetail.toLocaleString('en-PK', { maximumFractionDigits: 0 })}</td>
+                            <td className="p-3 text-right">
+                              <span className={`font-mono font-bold text-xs ${margin >= 20 ? 'text-emerald-600' : margin >= 10 ? 'text-amber-600' : 'text-slate-500'}`}>
+                                {margin.toFixed(1)}%
+                              </span>
+                            </td>
+                            <td className="p-3 text-center">
+                              {isOut ? (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700">Out of Stock</span>
+                              ) : isLow ? (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">Low Stock</span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">Healthy</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
               </div>
             </div>
           </motion.div>

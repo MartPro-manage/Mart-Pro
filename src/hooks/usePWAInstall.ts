@@ -15,11 +15,15 @@ export function usePWAInstall() {
   
   const [isInstalled, setIsInstalled] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
-    return (
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as any).standalone === true ||
-      document.referrer.includes('android-app://')
-    );
+    try {
+      return Boolean(
+        (typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches) ||
+        (window.navigator as any)?.standalone === true ||
+        (typeof document !== 'undefined' && document.referrer && document.referrer.includes('android-app://'))
+      );
+    } catch {
+      return false;
+    }
   });
 
   const [platform, setPlatform] = useState<{
@@ -43,21 +47,30 @@ export function usePWAInstall() {
 
     // Detect standalone mode
     const checkStandalone = () => {
-      const isStandalone =
-        window.matchMedia('(display-mode: standalone)').matches ||
-        (window.navigator as any).standalone === true ||
-        document.referrer.includes('android-app://');
-      setIsInstalled(isStandalone);
+      try {
+        const isStandalone = Boolean(
+          (typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches) ||
+          (window.navigator as any)?.standalone === true ||
+          (typeof document !== 'undefined' && document.referrer && document.referrer.includes('android-app://'))
+        );
+        setIsInstalled(isStandalone);
+      } catch {
+        // fallback
+      }
     };
 
     checkStandalone();
 
-    const mediaQuery = window.matchMedia('(display-mode: standalone)');
+    let mediaQuery: MediaQueryList | null = null;
     const handleMediaChange = (e: MediaQueryListEvent) => {
       setIsInstalled(e.matches);
     };
+
     try {
-      mediaQuery.addEventListener('change', handleMediaChange);
+      if (typeof window.matchMedia === 'function') {
+        mediaQuery = window.matchMedia('(display-mode: standalone)');
+        mediaQuery.addEventListener('change', handleMediaChange);
+      }
     } catch {
       // fallback
     }
@@ -123,7 +136,7 @@ export function usePWAInstall() {
       window.removeEventListener('appinstalled', handleAppInstalled);
       window.removeEventListener('pwa-install-ready', handlePWAReady);
       try {
-        mediaQuery.removeEventListener('change', handleMediaChange);
+        mediaQuery?.removeEventListener('change', handleMediaChange);
       } catch {
         // fallback
       }

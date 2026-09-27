@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import QRCode from 'qrcode';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 import { 
@@ -12,15 +12,13 @@ import {
   Copy, 
   Check, 
   QrCode, 
-  ExternalLink, 
   Share2, 
   PlusSquare, 
-  Sparkles, 
-  Wifi, 
   Zap, 
-  ShieldCheck,
+  Wifi, 
   Layers,
-  ArrowRight
+  ShieldCheck,
+  ExternalLink
 } from 'lucide-react';
 
 interface DownloadAppModalProps {
@@ -39,9 +37,9 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({ isOpen, onCl
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
   const [copied, setCopied] = useState(false);
   const [isInstalling, setIsInstalling] = useState(false);
-  const [installSuccess, setInstallSuccess] = useState(false);
+  const [installSuccessMessage, setInstallSuccessMessage] = useState<string | null>(null);
 
-  const currentUrl = typeof window !== 'undefined' ? window.location.origin : '';
+  const currentUrl = typeof window !== 'undefined' ? (window.location.origin || window.location.href) : '';
 
   useEffect(() => {
     if (isOpen && currentUrl) {
@@ -71,54 +69,21 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({ isOpen, onCl
     try {
       const outcome = await install();
       if (outcome === 'accepted') {
-        setInstallSuccess(true);
+        setInstallSuccessMessage('Mart Pro has been added to your device applications!');
         setTimeout(() => {
           onClose();
-        }, 2000);
+        }, 2200);
+      } else {
+        setInstallSuccessMessage('Follow the quick 1-click step below to complete setup.');
+        setTimeout(() => setInstallSuccessMessage(null), 3500);
       }
     } finally {
       setIsInstalling(false);
     }
   };
 
-  const handleDownloadAndroidApk = () => {
-    setIsInstalling(true);
-    const apkContent = `# Mart Pro Android APK Package (PWA TWA Wrapper)\n# Package: com.martpro.pos\n# Version: 2.4 Pro\n# Icon: icon-512.png (Mart Pro Branded Logo)\n# This package installs Mart Pro as a standalone Android app on your phone home screen with full offline POS support.`;
-    const blob = new Blob([apkContent], { type: 'application/vnd.android.package-archive' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'MartPro-Android-v2.4.apk';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    setTimeout(() => {
-      setIsInstalling(false);
-      setInstallSuccess(true);
-      setTimeout(() => setInstallSuccess(false), 3000);
-    }, 1000);
-  };
-
-  const handleDownloadWindowsExe = () => {
-    setIsInstalling(true);
-    const exeContent = `@echo off\nTITLE Mart Pro Setup - Supermarket POS & Inventory Management\necho Installing Mart Pro on Windows Desktop...\necho Creating Desktop Shortcut and Taskbar Launcher with Mart Pro Logo...\nstart ${currentUrl}\necho Installation complete! You can now launch Mart Pro directly from your Windows desktop.`;
-    const blob = new Blob([exeContent], { type: 'application/x-msdownload' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'MartPro-Windows-Setup-v2.4.exe';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    setTimeout(() => {
-      setIsInstalling(false);
-      setInstallSuccess(true);
-      setTimeout(() => setInstallSuccess(false), 3000);
-    }, 1000);
+  const handleOpenDirectWindow = () => {
+    window.open(currentUrl, '_blank');
   };
 
   const handleCopyLink = () => {
@@ -156,7 +121,7 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({ isOpen, onCl
                 )}
               </div>
               <h2 className="text-xl font-black tracking-tight mt-0.5">
-                Download & Install Mart Pro
+                Install Mart Pro App
               </h2>
             </div>
           </div>
@@ -169,68 +134,50 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({ isOpen, onCl
           </button>
         </div>
 
+        {/* Status Toast Banner */}
+        {installSuccessMessage && (
+          <div className="bg-emerald-600/90 text-white px-5 py-2.5 text-xs font-bold flex items-center gap-2 border-b border-emerald-500 shadow-inner">
+            <CheckCircle2 className="w-4 h-4 text-white shrink-0" />
+            <span>{installSuccessMessage}</span>
+          </div>
+        )}
+
         {/* Body Content */}
         <div className="p-5 sm:p-6 space-y-6 overflow-y-auto max-h-[calc(85vh-120px)] custom-scrollbar">
           
-          {/* Direct Device Installer Downloads (Android APK & Windows EXE) */}
-          <div className="p-5 rounded-2xl bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 border border-orange-500/30 space-y-4">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-orange-500/20 border border-orange-500/30 overflow-hidden flex items-center justify-center shrink-0">
-                  <img src="/logo.png" alt="Mart Pro Logo" className="w-full h-full object-contain p-1" />
-                </div>
-                <div>
-                  <h3 className="font-black text-white text-sm">Direct Software Installer Packages</h3>
-                  <p className="text-[11px] text-slate-300">
-                    Supports <strong className="text-orange-400">Any Windows Version</strong> (Win 7, 8, 10, 11 & older) & <strong className="text-orange-400">Android 7.0+</strong>
-                  </p>
-                </div>
-              </div>
-              <span className="px-2.5 py-1 bg-emerald-500/20 text-emerald-400 text-[10px] font-black rounded-full border border-emerald-500/30 flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3" /> Mart Pro Logo Included
-              </span>
+          {/* Quick 1-Click Install or Open Clean Window */}
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-orange-950/70 to-amber-950/70 border border-orange-500/40 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-md">
+            <div className="space-y-0.5 text-center sm:text-left">
+              <h3 className="text-sm font-black text-white flex items-center gap-2 justify-center sm:justify-start">
+                <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
+                Direct Application Install
+              </h3>
+              <p className="text-xs text-orange-200/80">
+                Installs as a native desktop or phone app with official Mart Pro logo.
+              </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* Android APK Button */}
-              <button
-                type="button"
-                onClick={handleDownloadAndroidApk}
-                disabled={isInstalling}
-                className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950/80 to-teal-950/80 hover:from-emerald-900 hover:to-teal-900 border border-emerald-500/40 text-left transition-all cursor-pointer group shadow-md flex items-center gap-3"
-              >
-                <div className="w-10 h-10 rounded-xl bg-emerald-500 text-slate-950 flex items-center justify-center font-extrabold shrink-0 shadow-sm group-hover:scale-105 transition-transform">
-                  <Smartphone className="w-5 h-5" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black text-emerald-300">Android APK (Android 7+)</span>
-                    <span className="text-[9px] font-mono text-emerald-400/80">.apk</span>
-                  </div>
-                  <div className="text-[11px] text-white font-bold truncate mt-0.5">MartPro-Android-v2.4.apk</div>
-                  <div className="text-[10px] text-slate-400">Shows Mart Pro logo on phone screen</div>
-                </div>
-              </button>
-
-              {/* Windows EXE Button */}
-              <button
-                type="button"
-                onClick={handleDownloadWindowsExe}
-                disabled={isInstalling}
-                className="p-3.5 rounded-2xl bg-gradient-to-r from-blue-950/80 to-indigo-950/80 hover:from-blue-900 hover:to-indigo-900 border border-blue-500/40 text-left transition-all cursor-pointer group shadow-md flex items-center gap-3"
-              >
-                <div className="w-10 h-10 rounded-xl bg-blue-500 text-white flex items-center justify-center font-extrabold shrink-0 shadow-sm group-hover:scale-105 transition-transform">
-                  <Monitor className="w-5 h-5" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black text-blue-300">Windows Setup (Any Windows)</span>
-                    <span className="text-[9px] font-mono text-blue-400/80">.exe</span>
-                  </div>
-                  <div className="text-[11px] text-white font-bold truncate mt-0.5">MartPro-Windows-Setup-v2.4.exe</div>
-                  <div className="text-[10px] text-slate-400">Desktop shortcut & taskbar with logo</div>
-                </div>
-              </button>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              {isInstallable ? (
+                <button
+                  type="button"
+                  onClick={handleNativeInstall}
+                  disabled={isInstalling}
+                  className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-black text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>1-Click Install Now</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleOpenDirectWindow}
+                  className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-black text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  <span>Open Full Window to Install</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -295,13 +242,13 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({ isOpen, onCl
                   </div>
                   <ol className="list-decimal list-inside space-y-2 text-slate-300 pl-1 leading-relaxed">
                     <li>
-                      <strong>Google Chrome / Microsoft Edge:</strong> Click the <span className="text-orange-400 font-bold">Install</span> icon in the address bar (or menu <span className="font-mono bg-slate-800 px-1.5 py-0.5 rounded text-amber-300">⋮</span> &rarr; <em>Save & Share</em> &rarr; <em>Install Mart Pro</em>).
+                      <strong>Address Bar 1-Click Install:</strong> Click the <span className="text-orange-400 font-bold">Install</span> icon (⊕ or 💻) on the right side of the URL bar.
                     </li>
                     <li>
-                      <strong>macOS Safari (Sonoma+):</strong> Click <em>File</em> in the top menu bar &rarr; choose <em>"Add to Dock"</em>.
+                      <strong>Browser Menu:</strong> Click the 3 dots (<span className="font-mono bg-slate-800 px-1.5 py-0.5 rounded text-amber-300">⋮</span>) &rarr; <em>Save and share</em> &rarr; <em>Install Mart Pro</em>.
                     </li>
                     <li>
-                      Once installed, launch Mart Pro directly from your Desktop, Start Menu, or Mac Dock without browser tabs.
+                      Once installed, double click the <strong>Mart Pro Logo icon</strong> on your Desktop. It will open directly without browser bars!
                     </li>
                   </ol>
                   {isInstallable && (
@@ -331,7 +278,7 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({ isOpen, onCl
                       Tap <strong>"Install app"</strong> or <strong>"Add to Home screen"</strong>.
                     </li>
                     <li>
-                      Mart Pro will appear on your app drawer and home screen just like an APK app.
+                      The Mart Pro logo icon will appear on your phone home screen with full offline POS support!
                     </li>
                   </ol>
                   {isInstallable && (
@@ -364,7 +311,7 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({ isOpen, onCl
                         2
                       </div>
                       <p className="flex items-center gap-1.5 flex-wrap">
-                        Tap the <strong>Share</strong> button <Share2 className="w-3.5 h-3.5 inline text-blue-400" /> (square with upward arrow at bottom bar).
+                        Tap the <strong>Share</strong> button <Share2 className="w-3.5 h-3.5 inline text-blue-400" /> at the bottom bar.
                       </p>
                     </div>
                     <div className="flex items-start gap-2.5">
@@ -380,7 +327,7 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({ isOpen, onCl
                         4
                       </div>
                       <p>
-                        Tap <strong>Add</strong> in the top right corner. The Mart Pro icon will appear on your iOS home screen!
+                        Tap <strong>Add</strong> in the top right. The Mart Pro icon will appear on your iOS home screen!
                       </p>
                     </div>
                   </div>
@@ -444,7 +391,7 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({ isOpen, onCl
               </div>
               <div>
                 <div className="text-xs font-bold text-white">Instant Launch</div>
-                <div className="text-[11px] text-slate-400">Fast startup without browser reload</div>
+                <div className="text-[11px] text-slate-400">Opens directly with Mart Pro logo</div>
               </div>
             </div>
 
@@ -463,8 +410,8 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({ isOpen, onCl
                 <Layers className="w-4 h-4" />
               </div>
               <div>
-                <div className="text-xs font-bold text-white">Multi-Device Sync</div>
-                <div className="text-[11px] text-slate-400">Real-time cloud sync across devices</div>
+                <div className="text-xs font-bold text-white">No Browser Bars</div>
+                <div className="text-[11px] text-slate-400">Pure standalone application window</div>
               </div>
             </div>
           </div>
@@ -488,3 +435,5 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({ isOpen, onCl
     </div>
   );
 };
+
+

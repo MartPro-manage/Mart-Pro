@@ -44,7 +44,8 @@ type ChartStyle = 'area' | 'bar';
 
 // Helper to format currency
 function formatCurrency(amount: number): string {
-  return `Rs. ${amount.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const safe = typeof amount === 'number' && !isNaN(amount) ? amount : 0;
+  return `Rs. ${safe.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 // Compact currency formatter for Y-axis (e.g. 5k, 25k, 1M)

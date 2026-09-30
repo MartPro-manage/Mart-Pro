@@ -430,11 +430,29 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
   const receiptSubHeader = store?.receiptHeader || 'TAX INVOICE / CASH MEMO';
   const receiptFooterText = store?.receiptFooter || 'Thank you for shopping with us! Please visit again.';
 
+  const getDiscountMetrics = () => {
+    if (!sale) return { itemDiscounts: 0, billDiscount: 0, totalDiscount: 0, subtotal: 0 };
+    const itemDiscounts = (sale.items || []).reduce((sum, it) => {
+      if (it.originalPrice && it.originalPrice > it.price) {
+        return sum + ((it.originalPrice - it.price) * (it.quantity || 1));
+      }
+      if (it.discountAmount && it.discountAmount > 0) {
+        return sum + it.discountAmount;
+      }
+      return sum;
+    }, 0);
+    const billDiscount = Number(sale.discountAmount || 0);
+    const totalDiscount = billDiscount > 0 ? billDiscount : itemDiscounts;
+    const subtotal = sale.subtotalAmount || ((sale.totalAmount || 0) + totalDiscount);
+    return { itemDiscounts, billDiscount, totalDiscount, subtotal };
+  };
+
   const getFormattedReceiptText = (): string => {
     if (!sale) return '';
     const dateStr = new Date(sale.timestamp).toLocaleString();
     const divider = '========================================';
     const subDivider = '----------------------------------------';
+    const { totalDiscount, subtotal } = getDiscountMetrics();
 
     let txt = `MART PRO DIGITAL CUSTOMER ACCOUNT\n`;
     txt += `Account ID: ${customerProfile.id}\n`;
@@ -455,19 +473,27 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
     (sale.items || []).forEach((item, idx) => {
       const isWeight = item.sellBy === 'weight' || item.unitType === 'kg' || item.quantity % 1 !== 0;
       const qtyStr = isWeight ? `${item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(3)} kg` : `${item.quantity} pcs`;
+      const hasDiscount = item.originalPrice && item.originalPrice > item.price;
       txt += `${idx + 1}. ${item.name}\n`;
       txt += `   ${qtyStr} x ${curr} ${item.price.toFixed(2)} = ${curr} ${item.total.toFixed(2)}\n`;
+      if (hasDiscount) {
+        txt += `   [Reg: ${curr} ${(item.originalPrice || 0).toFixed(2)} | Disc: -${curr} {(((item.originalPrice || 0) - item.price) * item.quantity).toFixed(2)}]\n`;
+      }
     });
 
     txt += `${subDivider}\n`;
-    if (sale.discountAmount && sale.discountAmount > 0) {
-      txt += `SUBTOTAL: ${curr} ${(sale.subtotalAmount || (sale.totalAmount + sale.discountAmount)).toFixed(2)}\n`;
-      txt += `DISCOUNT: -${curr} ${sale.discountAmount.toFixed(2)}\n`;
+    txt += `SUBTOTAL:       ${curr} ${(subtotal || 0).toFixed(2)}\n`;
+    if (totalDiscount > 0) {
+      txt += `DISCOUNT:       -${curr} ${totalDiscount.toFixed(2)}\n`;
+      txt += `TOTAL DISCOUNT: -${curr} ${totalDiscount.toFixed(2)}\n`;
+    } else {
+      txt += `DISCOUNT:       ${curr} 0.00\n`;
+      txt += `TOTAL DISCOUNT: ${curr} 0.00\n`;
     }
-    txt += `GRAND TOTAL: ${curr} ${sale.totalAmount.toFixed(2)}\n`;
+    txt += `GRAND TOTAL:    ${curr} ${sale.totalAmount.toFixed(2)}\n`;
     if (sale.paymentMethod === 'cash' && sale.cashReceived !== undefined) {
-      txt += `CASH RECEIVED: ${curr} ${sale.cashReceived.toFixed(2)}\n`;
-      txt += `CHANGE RETURNED: ${curr} ${(sale.changeReturned || 0).toFixed(2)}\n`;
+      txt += `CASH RECEIVED:  ${curr} ${sale.cashReceived.toFixed(2)}\n`;
+      txt += `CHANGE RETURNED:${curr} ${(sale.changeReturned || 0).toFixed(2)}\n`;
     }
     txt += `${divider}\n`;
     txt += `${receiptFooterText}\n`;
@@ -477,12 +503,18 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
   const getReceiptHtmlContent = (): string => {
     if (!sale) return '';
     const dateStr = new Date(sale.timestamp).toLocaleString();
+    const { totalDiscount, subtotal } = getDiscountMetrics();
     const itemsHtml = (sale.items || []).map(item => {
       const isWeight = item.sellBy === 'weight' || item.unitType === 'kg' || item.quantity % 1 !== 0;
       const qtyStr = isWeight ? `${item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(3)} kg` : `${item.quantity} pcs`;
+      const hasDiscount = item.originalPrice && item.originalPrice > item.price;
       return `
         <tr>
-          <td style="padding: 4px 0;"><strong>${item.name}</strong>${item.weightInfo ? `<br><small style="color:#64748b;">${item.weightInfo}</small>` : ''}</td>
+          <td style="padding: 4px 0;">
+            <strong>${item.name}</strong>
+            ${hasDiscount ? `<br><small style="color:#047857;">Reg: ${curr} ${item.originalPrice?.toFixed(2)} (Admin Disc Applied)</small>` : ''}
+            ${item.weightInfo ? `<br><small style="color:#64748b;">${item.weightInfo}</small>` : ''}
+          </td>
           <td style="text-align: center; padding: 4px 0;">${qtyStr}</td>
           <td style="text-align: right; padding: 4px 0;">${curr} ${item.price.toFixed(2)}</td>
           <td style="text-align: right; padding: 4px 0; font-weight: bold;">${curr} ${item.total.toFixed(2)}</td>
@@ -545,16 +577,18 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
 
     <div class="solid-divider"></div>
 
-    ${sale.discountAmount && sale.discountAmount > 0 ? `
-      <div class="row">
-        <span>Subtotal:</span>
-        <span>${curr} ${(sale.subtotalAmount || (sale.totalAmount + sale.discountAmount)).toFixed(2)}</span>
-      </div>
-      <div class="row" style="color: #047857; font-weight: bold;">
-        <span>Discount:</span>
-        <span>-${curr} ${sale.discountAmount.toFixed(2)}</span>
-      </div>
-    ` : ''}
+    <div class="row">
+      <span>Subtotal:</span>
+      <span>${curr} ${(subtotal || 0).toFixed(2)}</span>
+    </div>
+    <div class="row" style="color: ${totalDiscount > 0 ? '#047857' : '#64748b'}; font-weight: bold;">
+      <span>Discount:</span>
+      <span>${totalDiscount > 0 ? `-${curr} ${totalDiscount.toFixed(2)}` : `${curr} 0.00`}</span>
+    </div>
+    <div class="row" style="color: ${totalDiscount > 0 ? '#047857' : '#64748b'}; font-weight: bold;">
+      <span>Total Discount:</span>
+      <span>${totalDiscount > 0 ? `-${curr} ${totalDiscount.toFixed(2)}` : `${curr} 0.00`}</span>
+    </div>
 
     <div class="total-row">
       <span>GRAND TOTAL:</span>
@@ -1023,11 +1057,17 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
                   {(sale.items || []).map((item, idx) => {
                     const isWeight = item.sellBy === 'weight' || item.unitType === 'kg' || item.quantity % 1 !== 0;
                     const qtyDisplay = isWeight ? `${item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(3)}kg` : item.quantity.toString();
+                    const hasDiscount = item.originalPrice && item.originalPrice > item.price;
 
                     return (
                       <div key={idx} className="grid grid-cols-12 text-slate-900 text-xs py-1.5 items-start border-b border-slate-100 last:border-0">
                         <div className="col-span-6 pr-2">
                           <div className="font-bold text-slate-900 leading-tight">{item.name}</div>
+                          {hasDiscount && (
+                            <div className="text-[10px] text-emerald-700 font-bold">
+                              Reg: {curr} {item.originalPrice?.toFixed(2)} (Admin Discount Applied)
+                            </div>
+                          )}
                           {item.weightInfo && (
                             <div className="text-[10px] text-slate-500 font-medium">{item.weightInfo}</div>
                           )}
@@ -1041,24 +1081,27 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
                 </div>
 
                 {/* Calculations & Totals */}
-                <div className="pt-3 border-t-2 border-slate-900 space-y-1.5">
-                  {sale.discountAmount && sale.discountAmount > 0 ? (
-                    <>
+                {(() => {
+                  const { totalDiscount, subtotal } = getDiscountMetrics();
+                  return (
+                    <div className="pt-3 border-t-2 border-slate-900 space-y-1.5">
                       <div className="flex justify-between text-xs text-slate-600">
                         <span>Subtotal Amount:</span>
-                        <span className="font-mono font-semibold">{curr} {(sale.subtotalAmount || (sale.totalAmount + sale.discountAmount)).toFixed(2)}</span>
+                        <span className="font-mono font-semibold">{curr} {(subtotal || 0).toFixed(2)}</span>
                       </div>
-                      <div className="flex justify-between text-xs font-bold text-emerald-700">
+                      <div className={`flex justify-between text-xs font-bold ${totalDiscount > 0 ? 'text-emerald-700' : 'text-slate-500'}`}>
                         <span>Discount {sale.discountType === 'percentage' && sale.discountValue ? `(${sale.discountValue}%)` : ''}:</span>
-                        <span className="font-mono">-{curr} {sale.discountAmount.toFixed(2)}</span>
+                        <span className="font-mono">{totalDiscount > 0 ? `-${curr} ${totalDiscount.toFixed(2)}` : `${curr} 0.00`}</span>
                       </div>
-                    </>
-                  ) : null}
+                      <div className={`flex justify-between text-xs font-bold ${totalDiscount > 0 ? 'text-emerald-700' : 'text-slate-500'}`}>
+                        <span>Total Discount:</span>
+                        <span className="font-mono">{totalDiscount > 0 ? `-${curr} ${totalDiscount.toFixed(2)}` : `${curr} 0.00`}</span>
+                      </div>
 
-                  <div className="flex justify-between text-base sm:text-lg font-black text-slate-900 pt-2 border-t border-slate-200">
-                    <span>GRAND TOTAL:</span>
-                    <span className="text-orange-600">{curr} {sale.totalAmount.toFixed(2)}</span>
-                  </div>
+                      <div className="flex justify-between text-base sm:text-lg font-black text-slate-900 pt-2 border-t border-slate-200">
+                        <span>GRAND TOTAL:</span>
+                        <span className="text-orange-600">{curr} {sale.totalAmount.toFixed(2)}</span>
+                      </div>
 
                   {sale.paymentMethod === 'cash' && sale.cashReceived !== undefined && (
                     <>
@@ -1073,6 +1116,8 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
                     </>
                   )}
                 </div>
+              );
+            })()}
 
                 {/* Barcode Render */}
                 <div className="text-center pt-4 border-t border-dashed border-slate-300">

@@ -212,7 +212,9 @@ export interface SaleItem {
   serialNumber?: string;
   name: string;
   costPrice?: number; // Purchase/Cost price at time of sale
-  price: number; // Unit price or per kg rate
+  price: number; // Unit price or per kg rate (discounted selling price)
+  originalPrice?: number; // Regular catalog price before admin discount
+  discountAmount?: number; // Discount saved on this item
   quantity: number; // Quantity or weight (decimal supported)
   total: number;
   sellBy?: 'unit' | 'weight';

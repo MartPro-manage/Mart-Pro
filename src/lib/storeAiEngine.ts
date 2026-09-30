@@ -96,7 +96,7 @@ function extractCategoryKeyword(query: string): string | null {
 }
 
 /**
- * Primary AI Query Engine for Store & Price Checker
+ * Primary AI Query Engine for Store, Price Checker & Software Help Guide
  */
 export function processStoreAiQuery(
   rawQuery: string,
@@ -105,6 +105,133 @@ export function processStoreAiQuery(
 ): AiQueryResult {
   const q = clean(rawQuery);
   const targetCategory = extractCategoryKeyword(rawQuery);
+
+  // 0. SOFTWARE FUNCTIONALITY & HOW-TO GUIDES
+  // Keyboard shortcuts guide
+  if (q.includes('shortcut') || q.includes('short cut') || q.includes('key combination') || q.includes('hotkey') || q.includes('keys')) {
+    const reply = `⌨️ **Mart Pro POS Keyboard Shortcuts Guide:**\n\n` +
+      `• \`H + D\` (or rapid HD) — **Hold Current Bill** (Parks active cart in memory)\n` +
+      `• \`A + S\` (or rapid AS) — **Retrieve Held Bills** (Resumes parked customer cart)\n` +
+      `• \`S + K\` (or rapid SK) — **4-Digit Product Shortcuts Directory**\n` +
+      `• \`R + N\` (or rapid RN) — **Return & Refund Voucher** (Restocks inventory)\n` +
+      `• \`Shift + P\` — **Quick Payment & Bill Settlement**\n` +
+      `• \`P\` or \`Ctrl + P\` — **Instant Thermal Receipt Print**\n` +
+      `• \`Escape (ESC)\` — **Close Modal / Back to Dashboard**\n\n` +
+      `💡 *Tip: Every product also has a unique 4-digit code (e.g. #1001) that cashiers can type into the barcode box for ultra-fast checkout!*`;
+
+    return {
+      reply,
+      speechText: `Mart Pro has fast keyboard shortcuts like H D to hold bills, A S to retrieve held bills, S K for product shortcuts, and R N for returns.`,
+      matchedProducts: [],
+      highlightedProduct: null,
+      intent: 'general'
+    };
+  }
+
+  // Hold / Park bill guide
+  if (q.includes('hold bill') || q.includes('park bill') || q.includes('held bill') || q.includes('resume bill') || q.includes('park cart')) {
+    const reply = `🛒 **How to Park & Resume Bills at Cash Counter:**\n\n` +
+      `1. **Park Current Bill:** While items are in the cart, press \`H + D\` on keyboard or click the **"Hold Bill"** button.\n` +
+      `2. **Ring Up Next Customer:** The cart clears immediately so you can serve the next person without waiting.\n` +
+      `3. **Retrieve Parked Sale:** Press \`A + S\` or click **"Held Bills"** button at the top bar. Click on the customer's parked cart to restore all items with original quantities and prices!`;
+
+    return {
+      reply,
+      speechText: `To hold a bill, press H D or click Hold Bill. To retrieve it later, press A S or click Held Bills.`,
+      matchedProducts: [],
+      highlightedProduct: null,
+      intent: 'general'
+    };
+  }
+
+  // Returns & Refunds guide
+  if (q.includes('return') || q.includes('refund') || q.includes('wapsi') || q.includes('exchange')) {
+    const reply = `🔄 **How to Process Product Returns & Refunds:**\n\n` +
+      `1. At the Cash Counter, press \`R + N\` or click the **"Product Return"** button.\n` +
+      `2. Look up the customer's receipt number or select the returned item from the list.\n` +
+      `3. Enter the returned quantity and reason for return.\n` +
+      `4. Click **"Process Refund & Print Voucher"**.\n` +
+      `5. **Automatic Synchronization:** Stock is immediately added back into inventory, and refund is recorded in the store audit ledger!`;
+
+    return {
+      reply,
+      speechText: `To process a return, press R N or click Product Return at the cash counter, specify the items, and print a verified refund voucher.`,
+      matchedProducts: [],
+      highlightedProduct: null,
+      intent: 'general'
+    };
+  }
+
+  // Discounts guide
+  if (q.includes('discount') || q.includes('promotion') || q.includes('offer') || q.includes('sale price')) {
+    const reply = `🏷️ **How to Set Discounts & Promotions:**\n\n` +
+      `1. Go to **Store Admin Dashboard** -> Click **"Discounts & Promotions"**.\n` +
+      `2. Choose target: **Storewide (All Products)** or **Selected Products**.\n` +
+      `3. Choose discount format: **Percentage (% OFF)** or **Fixed Cash Amount (Rs. OFF)**.\n` +
+      `4. Set validity dates (e.g. 3 days, 1 week, end of month).\n` +
+      `5. Click **"Apply Discount"**.\n\n` +
+      `🧾 **Receipt Output:** The receipt will clearly show regular price, discounted price, Gross Subtotal, Discount amount (or Rs. 0.00 if none), Total Discount, and Grand Total!`;
+
+    return {
+      reply,
+      speechText: `You can set percentage or flat cash discounts from the Discounts Manager in Store Admin. Receipts will automatically display original price, discount amount, and total savings.`,
+      matchedProducts: [],
+      highlightedProduct: null,
+      intent: 'general'
+    };
+  }
+
+  // Sell by weight guide
+  if (q.includes('weight') || q.includes('per kg') || q.includes('liquid') || q.includes('per liter') || q.includes('scale') || q.includes('wazan')) {
+    const reply = `⚖️ **How to Sell Products by Weight (Kg / Liters):**\n\n` +
+      `1. **Registration:** When adding a product, set **Sell By** to *"Weight (per kg/liter)"* and unit to *kg* or *liter*.\n` +
+      `2. **At Cash Counter:** When cashiers scan or click the item, the **Weight Prompt Dialog** automatically pops up.\n` +
+      `3. **Input Weight:** Type the exact weight (e.g. \`1.45\` kg) or connect a digital weighing scale.\n` +
+      `4. The system calculates exact price: \`Weight × Price per Kg\` and prints it accurately on the receipt!`;
+
+    return {
+      reply,
+      speechText: `For weight items, register them with Sell by Weight. Scanning them at checkout pops up the weight prompt to enter kilograms.`,
+      matchedProducts: [],
+      highlightedProduct: null,
+      intent: 'general'
+    };
+  }
+
+  // Thermal printing guide
+  if (q.includes('receipt') || q.includes('thermal print') || q.includes('printer') || q.includes('print slip')) {
+    const reply = `🖨️ **Receipt Printing & Thermal Slip Configuration:**\n\n` +
+      `• **Standard Thermal Print:** Press \`P\` or \`Ctrl + P\` or click **"Print Receipt"** on the checkout modal.\n` +
+      `• **Paper Sizes:** Supports both **80mm** (standard wide POS) and **58mm** (compact mobile) thermal printers.\n` +
+      `• **Receipt Formats:** In Store Settings, choose between *Standard*, *Classic Detailed*, or *Compact Eco*.\n` +
+      `• **Digital Pass & E-Receipt:** Every printed receipt includes a live QR code so customers can view and save their e-receipt on mobile devices (valid online for 7 days; store accounting records are permanent).`;
+
+    return {
+      reply,
+      speechText: `Press P to print thermal receipts. The software supports 80 millimeter and 58 millimeter thermal printers and QR code e receipts.`,
+      matchedProducts: [],
+      highlightedProduct: null,
+      intent: 'general'
+    };
+  }
+
+  // Excel / CSV bulk import guide
+  if (q.includes('excel') || q.includes('csv') || q.includes('import') || q.includes('bulk upload') || q.includes('spreadsheet')) {
+    const reply = `📊 **How to Bulk Import Products via Excel / CSV:**\n\n` +
+      `1. Go to **Store Admin** -> **"Product Register"** -> click **"Excel / CSV Import"**.\n` +
+      `2. Upload your spreadsheet (supports \`.xlsx\`, \`.xls\`, \`.csv\`).\n` +
+      `3. The AI engine auto-detects column names (Name, Barcode, Retail Price, Cost Price, Stock, Category, Unit).\n` +
+      `4. Review the preview table, edit any values, and click **"Import All Products"**.\n` +
+      `5. You can also upload spreadsheets directly into this AI Copilot chat!`;
+
+    return {
+      reply,
+      speechText: `To import products, go to Product Register and click Excel Import, or attach your spreadsheet directly into this AI chat.`,
+      matchedProducts: [],
+      highlightedProduct: null,
+      intent: 'general'
+    };
+  }
 
   // 1. TOP SELLING QUERY (e.g. "Top selling oil", "most selling ghee", "best seller biscuit")
   if (

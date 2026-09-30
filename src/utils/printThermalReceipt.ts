@@ -10,6 +10,20 @@ export function getThermalReceiptInnerHtml(sale: Sale, store?: Store | null, qrC
   const qrTitle = store?.receiptQrTitle || 'Scan to Verify Receipt';
   const dateStr = new Date(sale.timestamp).toLocaleString();
 
+  const itemDiscounts = (sale.items || []).reduce((sum, item) => {
+    if (item.originalPrice && item.originalPrice > item.price) {
+      return sum + ((item.originalPrice - item.price) * (item.quantity || 1));
+    }
+    if (item.discountAmount && item.discountAmount > 0) {
+      return sum + item.discountAmount;
+    }
+    return sum;
+  }, 0);
+
+  const billDiscount = Number(sale.discountAmount || 0);
+  const totalDiscount = billDiscount > 0 ? billDiscount : itemDiscounts;
+  const subtotal = sale.subtotalAmount || ((sale.totalAmount || 0) + totalDiscount);
+
   return `
     <div style="font-family: 'Courier New', Courier, monospace, -apple-system, sans-serif; width: 78mm; max-width: 100%; margin: 0 auto; padding: 4px; color: #000; background: #fff; font-size: 11px; line-height: 1.35; box-sizing: border-box;">
       <div style="text-align: center; margin-bottom: 6px;">
@@ -50,10 +64,12 @@ export function getThermalReceiptInnerHtml(sale: Sale, store?: Store | null, qrC
             const qtyText = isWeight 
               ? `${(item.quantity || 0) % 1 === 0 ? item.quantity : Number(item.quantity).toFixed(3)}kg` 
               : item.quantity.toString();
+            const hasDiscount = item.originalPrice && item.originalPrice > item.price;
             return `
               <tr>
                 <td style="padding: 3px 0; vertical-align: top;">
                   <strong>${item.name}</strong>
+                  ${hasDiscount ? `<br/><span style="font-size: 9px; color: #047857;">Reg: ${curr} ${item.originalPrice?.toFixed(2)} (Disc Applied)</span>` : ''}
                   ${item.weightInfo ? `<br/><span style="font-size: 9px; color: #444;">${item.weightInfo}</span>` : ''}
                 </td>
                 <td style="text-align: center; padding: 3px 0; font-weight: bold; vertical-align: top;">${qtyText}</td>
@@ -67,16 +83,18 @@ export function getThermalReceiptInnerHtml(sale: Sale, store?: Store | null, qrC
 
       <div style="border-top: 2px solid #000; margin: 6px 0;"></div>
 
-      ${sale.discountAmount && sale.discountAmount > 0 ? `
-        <div style="display: flex; justify-content: space-between; font-size: 11px; margin: 2px 0;">
-          <span>Subtotal:</span>
-          <span>${curr} ${(sale.subtotalAmount || ((sale.totalAmount || 0) + (sale.discountAmount || 0))).toFixed(2)}</span>
-        </div>
-        <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; margin: 2px 0;">
-          <span>Discount:</span>
-          <span>-${curr} ${(sale.discountAmount || 0).toFixed(2)}</span>
-        </div>
-      ` : ''}
+      <div style="display: flex; justify-content: space-between; font-size: 11px; margin: 2px 0;">
+        <span>Subtotal:</span>
+        <span>${curr} ${(subtotal || 0).toFixed(2)}</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; margin: 2px 0;">
+        <span>Discount:</span>
+        <span>${totalDiscount > 0 ? `-${curr} ${totalDiscount.toFixed(2)}` : `${curr} 0.00`}</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; margin: 2px 0;">
+        <span>Total Discount:</span>
+        <span>${totalDiscount > 0 ? `-${curr} ${totalDiscount.toFixed(2)}` : `${curr} 0.00`}</span>
+      </div>
 
       <div style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 900; margin: 6px 0; padding: 4px 0; border-top: 1px solid #000; border-bottom: 1px solid #000;">
         <span>NET TOTAL:</span>

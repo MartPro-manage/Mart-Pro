@@ -74,11 +74,13 @@ export const StoreAiAssistantModal: React.FC<StoreAiAssistantModalProps> = ({
   onProductUpdated,
   initialSpreadsheetProducts
 }) => {
+  const [activeChipCategory, setActiveChipCategory] = useState<'all' | 'guides' | 'actions' | 'analytics'>('all');
+
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 'welcome',
       sender: 'ai',
-      text: `Hello! I am your Mart Pro AI Assistant. I have full knowledge of your supermarket management system and real-time inventory for "${store.name}".\n\n✨ **AI Product Editing & Control:**\n• "Change price of Milk to 250"\n• "Update stock of Coca Cola to 50"\n• "Add 20 stock to Rice"\n• "Set cost price of Cooking Oil to 450"\n• "Rename Bread to Whole Wheat Bread"\n• Or click "✏️ Edit a Product" to choose any item!\n\n📊 **Store Analytics:**\n• "Which is the cheapest item in store?"\n• "What is the most selling item?"\n• "Show low stock or out of stock items"`,
+      text: `👋 **Hello Store Admin! I am your Mart Pro AI Supermarket Copilot & Software Expert.**\n\nI have two superpowers:\n1. 📊 **Complete Real-Time Visibility** into **"${store.name}"** — live inventory, stock values at cost vs retail, profit margins, active discounts, top/least-selling products, cashier performance, and return ledgers.\n2. 📖 **Complete Software Mastery & Guidance** — I know every single feature, workflow, keyboard shortcut, hardware setup, and setting in Mart Pro. I am here to guide you step-by-step on anything!\n\n💡 **You can ask me ANYTHING, for example:**\n• 📖 *"How do I hold a bill and resume it later?"*\n• 🏷️ *"How do I set discounts and promotions for customers?"*\n• ⌨️ *"What are all the cash counter keyboard shortcuts?"*\n• 📊 *"What is today's revenue, profit, and invoice count?"*\n• 📦 *"Which products are low on stock or out of stock?"*\n• ⚡ *"Change price of Milk to 250"*, *"Add 50 stock to Rice"*, or *"Add product Mango price 300 stock 50"*`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }
   ]);
@@ -659,6 +661,166 @@ export const StoreAiAssistantModal: React.FC<StoreAiAssistantModalProps> = ({
     };
   };
 
+  const buildComprehensiveStoreContext = () => {
+    const safeProducts = products || [];
+    const safeSales = sales || [];
+    const safeReturns = returns || [];
+
+    // Summary statistics
+    const totalProducts = safeProducts.length;
+    const outOfStock = safeProducts.filter(p => (p.stockQuantity ?? 0) <= 0);
+    const lowStock = safeProducts.filter(p => (p.stockQuantity ?? 0) > 0 && (p.stockQuantity ?? 0) <= (p.minStockLevel || 5));
+    
+    const totalStockUnits = safeProducts.reduce((sum, p) => sum + (Number(p.stockQuantity) || 0), 0);
+    const totalInventoryCostValue = safeProducts.reduce((sum, p) => sum + ((Number(p.costPrice) || 0) * (Number(p.stockQuantity) || 0)), 0);
+    const totalInventoryRetailValue = safeProducts.reduce((sum, p) => sum + ((Number(p.price) || 0) * (Number(p.stockQuantity) || 0)), 0);
+
+    // Sales metrics by date
+    const totalSalesRevenue = safeSales.reduce((sum, s) => sum + (Number(s.totalAmount) || 0), 0);
+    const totalSalesCount = safeSales.length;
+
+    const todayDate = new Date();
+    const todayStr = todayDate.toISOString().slice(0, 10);
+    const yesterdayDate = new Date(todayDate.getTime() - 86400000);
+    const yesterdayStr = yesterdayDate.toISOString().slice(0, 10);
+
+    const todaySales = safeSales.filter(s => s.timestamp && s.timestamp.startsWith(todayStr));
+    const todayRevenue = todaySales.reduce((sum, s) => sum + (Number(s.totalAmount) || 0), 0);
+    const todayInvoices = todaySales.length;
+
+    const yesterdaySales = safeSales.filter(s => s.timestamp && s.timestamp.startsWith(yesterdayStr));
+    const yesterdayRevenue = yesterdaySales.reduce((sum, s) => sum + (Number(s.totalAmount) || 0), 0);
+    const yesterdayInvoices = yesterdaySales.length;
+
+    // Discounts breakdown by date
+    const calculateDiscountsForSales = (saleList: Sale[]) => {
+      return saleList.reduce((sum, s) => {
+        let saleDisc = Number(s.discountAmount) || 0;
+        const itemDisc = (s.items || []).reduce((itemSum, it) => {
+          if (it.originalPrice && it.originalPrice > it.price) {
+            return itemSum + ((it.originalPrice - it.price) * (it.quantity || 1));
+          }
+          return itemSum;
+        }, 0);
+        return sum + Math.max(saleDisc, itemDisc);
+      }, 0);
+    };
+
+    const todayDiscounts = calculateDiscountsForSales(todaySales);
+    const yesterdayDiscounts = calculateDiscountsForSales(yesterdaySales);
+    const totalDiscountsTillToday = calculateDiscountsForSales(safeSales);
+
+    // Product sales breakdown (All-time, Today, Yesterday)
+    const getTopSellersForList = (saleList: Sale[]) => {
+      const map = new Map<string, { name: string; unitsSold: number; revenue: number }>();
+      saleList.forEach(s => {
+        (s.items || []).forEach(item => {
+          const key = item.name.toLowerCase().trim();
+          const existing = map.get(key) || { name: item.name, unitsSold: 0, revenue: 0 };
+          existing.unitsSold += (item.quantity || 1);
+          existing.revenue += (item.total || (item.price * (item.quantity || 1)));
+          map.set(key, existing);
+        });
+      });
+      return Array.from(map.values()).sort((a, b) => b.unitsSold - a.unitsSold);
+    };
+
+    const topSellersAllTime = getTopSellersForList(safeSales).slice(0, 10);
+    const topSellersToday = getTopSellersForList(todaySales).slice(0, 5);
+    const topSellersYesterday = getTopSellersForList(yesterdaySales).slice(0, 5);
+    const slowMovers = safeProducts.filter(p => !topSellersAllTime.some(t => t.name.toLowerCase() === p.name.toLowerCase())).slice(0, 10).map(p => p.name);
+
+    // Profitability per product
+    const productProfitability = safeProducts.map(p => {
+      const cost = Number(p.costPrice) || 0;
+      const price = Number(p.price) || 0;
+      const profitPerUnit = Math.round((price - cost) * 100) / 100;
+      const profitMarginPercent = price > 0 ? Math.round(((price - cost) / price) * 10000) / 100 : 0;
+      return {
+        name: p.name,
+        category: p.category || 'General',
+        costPrice: cost,
+        retailPrice: price,
+        profitPerUnit,
+        profitMarginPercent
+      };
+    });
+
+    const highProfitProducts = [...productProfitability].sort((a, b) => b.profitMarginPercent - a.profitMarginPercent).slice(0, 5);
+    const lowProfitProducts = [...productProfitability].sort((a, b) => a.profitMarginPercent - b.profitMarginPercent).slice(0, 5);
+
+    // Active discounts
+    const discountedProducts = safeProducts.filter(p => p.discountActive && (p.discountValue ?? 0) > 0);
+
+    // Returns
+    const totalRefundAmount = safeReturns.reduce((sum, r) => sum + (Number(r.refundAmount) || 0), 0);
+
+    return {
+      storeName: store.name,
+      currency: store.currencySymbol || 'Rs.',
+      adminUsername: store.adminUsername,
+      phone: store.phone,
+      address: store.address,
+      taxRegistrationNumber: store.taxRegistrationNumber,
+      returnPolicyDays: store.returnPolicyDays || 7,
+      inventorySummary: {
+        totalProducts,
+        totalStockUnits,
+        totalInventoryCostValue: Math.round(totalInventoryCostValue * 100) / 100,
+        totalInventoryRetailValue: Math.round(totalInventoryRetailValue * 100) / 100,
+        potentialGrossMargin: Math.round((totalInventoryRetailValue - totalInventoryCostValue) * 100) / 100,
+        outOfStockCount: outOfStock.length,
+        outOfStockItems: outOfStock.slice(0, 15).map(p => ({ name: p.name, barcode: p.barcode, category: p.category })),
+        lowStockCount: lowStock.length,
+        lowStockItems: lowStock.slice(0, 15).map(p => ({ name: p.name, currentStock: p.stockQuantity, minThreshold: p.minStockLevel || 5, price: p.price }))
+      },
+      salesSummary: {
+        totalSalesCount,
+        totalSalesRevenue: Math.round(totalSalesRevenue * 100) / 100,
+        todayDate: todayStr,
+        todayRevenue: Math.round(todayRevenue * 100) / 100,
+        todayInvoices,
+        topSellingToday: topSellersToday,
+        yesterdayDate: yesterdayStr,
+        yesterdayRevenue: Math.round(yesterdayRevenue * 100) / 100,
+        yesterdayInvoices,
+        topSellingYesterday: topSellersYesterday,
+        topSellingAllTime: topSellersAllTime,
+        slowMovingProducts: slowMovers
+      },
+      profitabilitySummary: {
+        highProfitProducts,
+        lowProfitProducts
+      },
+      discountsSummary: {
+        todayDiscountsGiven: Math.round(todayDiscounts * 100) / 100,
+        yesterdayDiscountsGiven: Math.round(yesterdayDiscounts * 100) / 100,
+        totalDiscountsTillToday: Math.round(totalDiscountsTillToday * 100) / 100,
+        activePromotionalProductsCount: discountedProducts.length,
+        discountedProductsList: discountedProducts.map(p => ({
+          name: p.name,
+          originalPrice: p.price,
+          discountType: p.discountType,
+          discountValue: p.discountValue
+        }))
+      },
+      returnsSummary: {
+        totalReturnsCount: safeReturns.length,
+        totalRefundAmount: Math.round(totalRefundAmount * 100) / 100
+      },
+      sampleProductsCatalog: safeProducts.slice(0, 50).map(p => ({
+        name: p.name,
+        price: p.price,
+        costPrice: p.costPrice || 0,
+        stockQuantity: p.stockQuantity,
+        category: p.category || 'General',
+        barcode: p.barcode,
+        shortcutCode: p.shortcutCode,
+        sellBy: p.sellBy || 'unit'
+      }))
+    };
+  };
+
   // Intelligent query engine
   const handleAskQuestion = (questionText: string) => {
     if (!questionText.trim()) return;
@@ -801,6 +963,43 @@ export const StoreAiAssistantModal: React.FC<StoreAiAssistantModalProps> = ({
         }
       }
 
+      // Query server-side Gemini AI Copilot endpoint with full store knowledge
+      try {
+        const storeContext = buildComprehensiveStoreContext();
+        const history = messages.slice(-6).map(m => ({
+          role: m.sender === 'user' ? 'user' : 'model',
+          text: m.text
+        }));
+
+        const response = await fetch('/api/ai/store-copilot', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: questionText,
+            storeContext,
+            conversationHistory: history
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.reply) {
+            const aiMsg: Message = {
+              id: `msg-${Date.now() + 1}`,
+              sender: 'ai',
+              text: data.reply,
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            };
+            setMessages(prev => [...prev, aiMsg]);
+            setIsProcessing(false);
+            return;
+          }
+        }
+      } catch (copilotErr) {
+        console.warn('AI Copilot server route failed, using local engine fallback:', copilotErr);
+      }
+
+      // Offline / Local engine fallback
       const q = questionText.toLowerCase();
       let reply = '';
       let candidates: Product[] | undefined = undefined;
@@ -876,21 +1075,9 @@ export const StoreAiAssistantModal: React.FC<StoreAiAssistantModalProps> = ({
       else if (q.includes('today') || q.includes('todays sales') || q.includes('daily sale') || q.includes('current revenue')) {
         reply = `📊 **Today's Store Performance (${new Date().toLocaleDateString()}):**\n• **Net Sales Revenue:** Rs. ${storeAnalytics.todayTotal.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n• **Units Sold:** ${storeAnalytics.todayUnits.toLocaleString()} units\n• **Completed Invoices:** ${storeAnalytics.todayReceipts} receipts\n\nCheck the **Store Admin Dashboard** for full day-by-day charts and breakdown tables!`;
       }
-      // 7. How to add products by weight (per kg / per liter)
-      else if (q.includes('weight') || q.includes('kg') || q.includes('liter') || q.includes('litre') || q.includes('loose item')) {
-        reply = `⚖️ **How to Register & Sell Products by Weight or Liquid:**\n\n1. **In Product Register:**\n   • Choose **"Sell By Weight / Volume"** or set Unit Type to **Kilogram (kg)** or **Liter (L)**.\n   • Enter the **Price per Kg** or **Price per Liter** in the retail price field.\n   • Save the product.\n\n2. **At Cash Counter POS:**\n   • When you scan the barcode or click the product, the POS will open the **Weight / Quantity Modal**.\n   • The cashier enters the exact weight (e.g. 1.25 kg) or connects a digital scale.\n   • The POS automatically multiplies the weight by your price per kg!\n\n3. **Batch Multi-Product Register:**\n   • Click **"Batch Register Products"** to list multiple weight products with their per kg/liter rates simultaneously.`;
-      }
-      // 8. How to use POS / Software overview
-      else if (q.includes('how to use') || q.includes('software') || q.includes('help') || q.includes('features') || q.includes('guide')) {
-        reply = `🏪 **Mart Pro Software Complete Guide:**\n\n1. **Cash Counter POS:**\n   • Fast barcode scanning, live cart, customer change calculation, cash/card checkout, receipt printing, and return slips.\n\n2. **Product Register:**\n   • Register individual items or open **Batch Register** to add multiple items at once.\n   • Supports piece, kg, and liter pricing, auto-barcode generation, and spreadsheet upload.\n\n3. **Store Admin Dashboard:**\n   • 7-Day Sales Volume Line Chart and Revenue Trends.\n   • Full Sales by Date breakdown table.\n   • Real-time gross revenue, profit calculations, and units sold.\n   • Customer return slip tracking & real-time inventory restock.\n   • Cashier & staff permissions.\n\n4. **Customer Price Checker:**\n   • Self-service barcode scanner for customers to scan items and view live prices and discounts.`;
-      }
-      // 9. Return slips
-      else if (q.includes('return') || q.includes('refund') || q.includes('slip')) {
-        reply = `🔄 **Return Slip & Refund Workflow:**\n\n1. Go to **Cash Counter POS**.\n2. Click the **"Return / Refund Product"** button in the header.\n3. Scan or enter the customer's receipt number (or select the item directly).\n4. Enter the units being returned and the refund reason.\n5. Click **"Process Return & Print Voucher"**.\n6. The system automatically:\n   • Restocks the items into store inventory.\n   • Deducts the refunded amount from the store's sales and profits.\n   • Generates a printed Return Voucher Slip with barcode for audit.`;
-      }
       // Default general AI response
       else {
-        reply = `I understand you are asking about: "${questionText}".\n\nAs your Mart Pro Supermarket AI, I can help you with:\n• Finding the **cheapest item** or **most selling item** in the store.\n• Checking **low stock** or **inventory counts**.\n• Registering **multiple products** with price per kg/liter.\n• Parsing **Excel or CSV spreadsheets** into store inventory.\n• Guides on **cash counter POS billing** and **return slips**.\n\nWould you like me to analyze your sales or help you add products from an Excel file?`;
+        reply = `I understand you are asking about: "${questionText}".\n\nAs your Mart Pro Supermarket AI, I have full visibility into your inventory, sales, expenses, discounts, and cashier records. You can ask me:\n• Today's total sales, gross profit, and revenue\n• Inventory value at cost vs retail price\n• Which items to reorder from suppliers\n• How much discount was given this month\n• Cashier and counter performance\n• Or tell me to update prices or stock!`;
       }
 
       const aiMsg: Message = {
@@ -903,7 +1090,7 @@ export const StoreAiAssistantModal: React.FC<StoreAiAssistantModalProps> = ({
 
       setMessages(prev => [...prev, aiMsg]);
       setIsProcessing(false);
-    }, 450);
+    }, 400);
   };
 
   // Handle Excel upload inside the AI Chat
@@ -1053,51 +1240,158 @@ export const StoreAiAssistantModal: React.FC<StoreAiAssistantModalProps> = ({
           </button>
         </div>
 
+        {/* Category Navigation Tabs */}
+        <div className="px-3 pt-2.5 bg-slate-50 border-b border-slate-200 flex items-center gap-1.5 overflow-x-auto custom-scrollbar text-xs">
+          <button
+            type="button"
+            onClick={() => setActiveChipCategory('all')}
+            className={`px-3 py-1 rounded-t-lg font-bold transition-colors cursor-pointer border-b-2 ${
+              activeChipCategory === 'all'
+                ? 'bg-white text-orange-600 border-orange-600 shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900 border-transparent'
+            }`}
+          >
+            🌟 All Topics
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveChipCategory('guides')}
+            className={`px-3 py-1 rounded-t-lg font-bold transition-colors cursor-pointer border-b-2 flex items-center gap-1 ${
+              activeChipCategory === 'guides'
+                ? 'bg-white text-orange-600 border-orange-600 shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900 border-transparent'
+            }`}
+          >
+            <HelpCircle className="w-3.5 h-3.5 text-blue-500" />
+            📖 Software Guides
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveChipCategory('actions')}
+            className={`px-3 py-1 rounded-t-lg font-bold transition-colors cursor-pointer border-b-2 flex items-center gap-1 ${
+              activeChipCategory === 'actions'
+                ? 'bg-white text-orange-600 border-orange-600 shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900 border-transparent'
+            }`}
+          >
+            <Edit3 className="w-3.5 h-3.5 text-orange-500" />
+            ⚡ Quick Actions
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveChipCategory('analytics')}
+            className={`px-3 py-1 rounded-t-lg font-bold transition-colors cursor-pointer border-b-2 flex items-center gap-1 ${
+              activeChipCategory === 'analytics'
+                ? 'bg-white text-orange-600 border-orange-600 shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900 border-transparent'
+            }`}
+          >
+            <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
+            📊 Sales & Stock
+          </button>
+        </div>
+
         {/* Quick Suggestion Chips */}
-        <div className="p-3 bg-slate-50 border-b border-slate-200 overflow-x-auto flex items-center gap-1.5 custom-scrollbar text-xs shrink-0">
-          <button
-            onClick={() => handleAskQuestion("Edit product")}
-            className="px-2.5 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg whitespace-nowrap transition-colors font-bold flex items-center gap-1 cursor-pointer shadow-xs"
-          >
-            <Edit3 className="w-3.5 h-3.5 text-amber-200" />
-            ✏️ Edit a Product
-          </button>
-          <button
-            onClick={() => handleAskQuestion("Change price of an item")}
-            className="px-2.5 py-1.5 bg-white hover:bg-orange-50 text-slate-700 hover:text-orange-700 rounded-lg border border-slate-200 hover:border-orange-200 whitespace-nowrap transition-colors font-medium flex items-center gap-1 cursor-pointer"
-          >
-            💰 Change Price
-          </button>
-          <button
-            onClick={() => handleAskQuestion("Update stock of an item")}
-            className="px-2.5 py-1.5 bg-white hover:bg-orange-50 text-slate-700 hover:text-orange-700 rounded-lg border border-slate-200 hover:border-orange-200 whitespace-nowrap transition-colors font-medium flex items-center gap-1 cursor-pointer"
-          >
-            📦 Update Stock
-          </button>
-          <button
-            onClick={() => handleAskQuestion("Which is the cheapest item in store?")}
-            className="px-2.5 py-1.5 bg-white hover:bg-orange-50 text-slate-700 hover:text-orange-700 rounded-lg border border-slate-200 hover:border-orange-200 whitespace-nowrap transition-colors font-medium flex items-center gap-1 cursor-pointer"
-          >
-            Cheapest item
-          </button>
-          <button
-            onClick={() => handleAskQuestion("What is the most selling item?")}
-            className="px-2.5 py-1.5 bg-white hover:bg-orange-50 text-slate-700 hover:text-orange-700 rounded-lg border border-slate-200 hover:border-orange-200 whitespace-nowrap transition-colors font-medium flex items-center gap-1 cursor-pointer"
-          >
-            🔥 Most selling item
-          </button>
-          <button
-            onClick={() => handleAskQuestion("Show low stock and out of stock items")}
-            className="px-2.5 py-1.5 bg-white hover:bg-orange-50 text-slate-700 hover:text-orange-700 rounded-lg border border-slate-200 hover:border-orange-200 whitespace-nowrap transition-colors font-medium flex items-center gap-1 cursor-pointer"
-          >
-            ⚠️ Low stock alert
-          </button>
-          <button
-            onClick={() => handleAskQuestion("How do I register products by weight with price per kg or per liter?")}
-            className="px-2.5 py-1.5 bg-white hover:bg-orange-50 text-slate-700 hover:text-orange-700 rounded-lg border border-slate-200 hover:border-orange-200 whitespace-nowrap transition-colors font-medium flex items-center gap-1 cursor-pointer"
-          >
-            ⚖️ Price per kg / liter guide
-          </button>
+        <div className="p-2.5 bg-slate-50/80 border-b border-slate-200 overflow-x-auto flex items-center gap-1.5 custom-scrollbar text-xs shrink-0">
+          {(activeChipCategory === 'all' || activeChipCategory === 'actions') && (
+            <>
+              <button
+                onClick={() => handleAskQuestion("Edit product")}
+                className="px-2.5 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg whitespace-nowrap transition-colors font-bold flex items-center gap-1 cursor-pointer shadow-xs"
+              >
+                <Edit3 className="w-3.5 h-3.5 text-amber-200" />
+                ✏️ Edit a Product
+              </button>
+              <button
+                onClick={() => handleAskQuestion("Change price of an item")}
+                className="px-2.5 py-1.5 bg-white hover:bg-orange-50 text-slate-700 hover:text-orange-700 rounded-lg border border-slate-200 hover:border-orange-200 whitespace-nowrap transition-colors font-medium flex items-center gap-1 cursor-pointer"
+              >
+                💰 Change Price
+              </button>
+              <button
+                onClick={() => handleAskQuestion("Update stock of an item")}
+                className="px-2.5 py-1.5 bg-white hover:bg-orange-50 text-slate-700 hover:text-orange-700 rounded-lg border border-slate-200 hover:border-orange-200 whitespace-nowrap transition-colors font-medium flex items-center gap-1 cursor-pointer"
+              >
+                📦 Update Stock
+              </button>
+            </>
+          )}
+
+          {(activeChipCategory === 'all' || activeChipCategory === 'guides') && (
+            <>
+              <button
+                onClick={() => handleAskQuestion("What are all the POS keyboard shortcuts?")}
+                className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-lg border border-blue-200 whitespace-nowrap transition-colors font-semibold flex items-center gap-1 cursor-pointer"
+              >
+                ⌨️ Shortcuts Guide
+              </button>
+              <button
+                onClick={() => handleAskQuestion("How do I hold a bill and resume it later?")}
+                className="px-2.5 py-1.5 bg-white hover:bg-orange-50 text-slate-700 hover:text-orange-700 rounded-lg border border-slate-200 hover:border-orange-200 whitespace-nowrap transition-colors font-medium flex items-center gap-1 cursor-pointer"
+              >
+                🛒 Hold & Resume Bills
+              </button>
+              <button
+                onClick={() => handleAskQuestion("How do I set discounts and promotions for customers?")}
+                className="px-2.5 py-1.5 bg-white hover:bg-orange-50 text-slate-700 hover:text-orange-700 rounded-lg border border-slate-200 hover:border-orange-200 whitespace-nowrap transition-colors font-medium flex items-center gap-1 cursor-pointer"
+              >
+                🏷️ Set Discounts
+              </button>
+              <button
+                onClick={() => handleAskQuestion("How do I process product returns and refund vouchers?")}
+                className="px-2.5 py-1.5 bg-white hover:bg-orange-50 text-slate-700 hover:text-orange-700 rounded-lg border border-slate-200 hover:border-orange-200 whitespace-nowrap transition-colors font-medium flex items-center gap-1 cursor-pointer"
+              >
+                🔄 Process Returns
+              </button>
+              <button
+                onClick={() => handleAskQuestion("How do I register products by weight with price per kg or per liter?")}
+                className="px-2.5 py-1.5 bg-white hover:bg-orange-50 text-slate-700 hover:text-orange-700 rounded-lg border border-slate-200 hover:border-orange-200 whitespace-nowrap transition-colors font-medium flex items-center gap-1 cursor-pointer"
+              >
+                ⚖️ Weight & Per-Kg
+              </button>
+              <button
+                onClick={() => handleAskQuestion("How do I print thermal receipts and configure receipt format?")}
+                className="px-2.5 py-1.5 bg-white hover:bg-orange-50 text-slate-700 hover:text-orange-700 rounded-lg border border-slate-200 hover:border-orange-200 whitespace-nowrap transition-colors font-medium flex items-center gap-1 cursor-pointer"
+              >
+                🖨️ Thermal Printing
+              </button>
+              <button
+                onClick={() => handleAskQuestion("How do I bulk import products from Excel or CSV?")}
+                className="px-2.5 py-1.5 bg-white hover:bg-orange-50 text-slate-700 hover:text-orange-700 rounded-lg border border-slate-200 hover:border-orange-200 whitespace-nowrap transition-colors font-medium flex items-center gap-1 cursor-pointer"
+              >
+                📊 Excel Import
+              </button>
+            </>
+          )}
+
+          {(activeChipCategory === 'all' || activeChipCategory === 'analytics') && (
+            <>
+              <button
+                onClick={() => handleAskQuestion("What is today's sales revenue, profit, and order count?")}
+                className="px-2.5 py-1.5 bg-white hover:bg-orange-50 text-slate-700 hover:text-orange-700 rounded-lg border border-slate-200 hover:border-orange-200 whitespace-nowrap transition-colors font-medium flex items-center gap-1 cursor-pointer"
+              >
+                📊 Today's Revenue
+              </button>
+              <button
+                onClick={() => handleAskQuestion("Which is the cheapest item in store?")}
+                className="px-2.5 py-1.5 bg-white hover:bg-orange-50 text-slate-700 hover:text-orange-700 rounded-lg border border-slate-200 hover:border-orange-200 whitespace-nowrap transition-colors font-medium flex items-center gap-1 cursor-pointer"
+              >
+                Cheapest item
+              </button>
+              <button
+                onClick={() => handleAskQuestion("What is the most selling item?")}
+                className="px-2.5 py-1.5 bg-white hover:bg-orange-50 text-slate-700 hover:text-orange-700 rounded-lg border border-slate-200 hover:border-orange-200 whitespace-nowrap transition-colors font-medium flex items-center gap-1 cursor-pointer"
+              >
+                🔥 Most selling item
+              </button>
+              <button
+                onClick={() => handleAskQuestion("Show low stock and out of stock items")}
+                className="px-2.5 py-1.5 bg-white hover:bg-orange-50 text-slate-700 hover:text-orange-700 rounded-lg border border-slate-200 hover:border-orange-200 whitespace-nowrap transition-colors font-medium flex items-center gap-1 cursor-pointer"
+              >
+                ⚠️ Low stock alert
+              </button>
+            </>
+          )}
         </div>
 
         {/* Message Thread */}

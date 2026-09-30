@@ -1251,19 +1251,42 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
       const receiptNum = `RCP-${Date.now().toString().slice(-6)}`;
       const nowIso = new Date().toISOString();
 
-      const saleItems: SaleItem[] = cart.map((item) => ({
-        productId: item.product.id || '',
-        barcode: item.product.barcode || '',
-        serialNumber: item.product.serialNumber || '',
-        name: item.product.name || '',
-        costPrice: item.product.costPrice !== undefined ? item.product.costPrice : 0,
-        price: item.product.price || item.product.pricePerKg || 0,
-        quantity: item.quantity || 1,
-        total: Math.round(item.totalPrice * 100) / 100,
-        sellBy: item.product.sellBy || (item.product.unitType === 'kg' ? 'weight' : 'unit'),
-        unitType: item.product.unitType || (item.product.sellBy === 'weight' ? 'kg' : 'piece'),
-        weightInfo: item.product.weight || (item.product.sellBy === 'weight' ? `${item.quantity} kg` : undefined)
-      }));
+      // Calculate item discounts and gross subtotal
+      let totalItemDiscount = 0;
+      let grossSubtotal = 0;
+
+      const saleItems: SaleItem[] = cart.map((item) => {
+        const rawCatalogPrice = item.product.price || item.product.pricePerKg || 0;
+        const effectivePrice = getEffectiveProductPrice(item.product) || rawCatalogPrice;
+        const itemQty = item.quantity || 1;
+        const itemLineTotal = Math.round(item.totalPrice * 100) / 100;
+        const regularLineTotal = Math.round(rawCatalogPrice * itemQty * 100) / 100;
+        const itemDiscAmount = Math.max(0, regularLineTotal - itemLineTotal);
+
+        grossSubtotal += regularLineTotal;
+        totalItemDiscount += itemDiscAmount;
+
+        const isDiscounted = itemDiscAmount > 0 || (rawCatalogPrice > effectivePrice);
+
+        return {
+          productId: item.product.id || '',
+          barcode: item.product.barcode || '',
+          serialNumber: item.product.serialNumber || '',
+          name: item.product.name || '',
+          costPrice: item.product.costPrice !== undefined ? item.product.costPrice : 0,
+          price: effectivePrice,
+          originalPrice: isDiscounted ? rawCatalogPrice : undefined,
+          discountAmount: itemDiscAmount > 0 ? itemDiscAmount : 0,
+          quantity: itemQty,
+          total: itemLineTotal,
+          sellBy: item.product.sellBy || (item.product.unitType === 'kg' ? 'weight' : 'unit'),
+          unitType: item.product.unitType || (item.product.sellBy === 'weight' ? 'kg' : 'piece'),
+          weightInfo: item.product.weight || (item.product.sellBy === 'weight' ? `${itemQty} kg` : undefined)
+        };
+      });
+
+      const finalCalculatedSubtotal = Math.round(grossSubtotal * 100) / 100;
+      const finalDiscountAmount = Math.round(totalItemDiscount * 100) / 100;
 
       const newSaleDocRef = doc(collection(db, 'sales'));
 
@@ -1326,7 +1349,8 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           counterName: currentUser.name || (currentUser.counterNumber ? `Counter #${currentUser.counterNumber}` : 'Counter #1'),
           cashierUsername: currentUser.username || '',
           items: saleItems,
-          subtotalAmount: cartSubtotal,
+          subtotalAmount: finalCalculatedSubtotal,
+          discountAmount: finalDiscountAmount,
           totalAmount: cartTotal || 0,
           paymentMethod: paymentMethod || 'cash',
           receiptNumber: receiptNum,
@@ -1356,7 +1380,8 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
         counterName: currentUser.name || `Counter #${currentUser.counterNumber || '1'}`,
         cashierUsername: currentUser.username,
         items: saleItems,
-        subtotalAmount: cartSubtotal,
+        subtotalAmount: finalCalculatedSubtotal,
+        discountAmount: finalDiscountAmount,
         totalAmount: cartTotal,
         paymentMethod: paymentMethod,
         onlinePaymentProvider: paymentMethod === 'online' ? (selectedDigitalProvider || 'Online / Digital') : undefined,
@@ -1467,23 +1492,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
             {onBack && (
               <UniversalBackButton onBack={handleBackWithAutoHold} label="Back to Dashboard" />
             )}
-            <motion.div 
-              whileHover={{ rotate: 5, scale: 1.05 }}
-              className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 text-emerald-700 border border-emerald-200 flex items-center justify-center font-bold shadow-xs"
-            >
-              <Calculator className="w-6 h-6 text-emerald-600" />
-            </motion.div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs">
-                  CASH COUNTER {currentUser.counterNumber ? `#${currentUser.counterNumber}` : ''}
-                </span>
-                <span className="text-xs text-slate-500 font-medium">{store.name}</span>
-              </div>
-              <h1 className="text-xl font-black text-slate-900 mt-1">
-                Point of Sale <span className="text-orange-600">Billing Counter</span>
-              </h1>
-            </div>
+
           </div>
 
           {/* Top Bar Actions & Camera Scanner Visibility Check */}
@@ -1738,94 +1747,9 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           {/* LEFT 6 COLS: BARCODE INPUT & QUICK PRODUCT SELECTOR */}
           <div className={`lg:col-span-6 space-y-4 ${mobileTab === 'catalog' ? 'block' : 'hidden lg:block'}`}>
 
-            {/* Barcode Scanner Input */}
-            <motion.div 
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 relative overflow-hidden"
-            >
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-                  <BarcodeIcon className="w-4 h-4 text-orange-600" /> Barcode Reader / Serial Number Scanner
-                </label>
-                <span className="text-[11px] text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 font-bold flex items-center gap-1.5 shadow-2xs">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-live-pulse" /> Scanner Armed & Ready
-                </span>
-              </div>
 
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const val = (barcodeInput || barcodeInputRef.current?.value || '').trim();
-                  if (val) {
-                    handleAddByBarcode(val);
-                  }
-                  setBarcodeInput('');
-                  if (barcodeInputRef.current) {
-                    barcodeInputRef.current.value = '';
-                    barcodeInputRef.current.focus();
-                  }
-                  focusActiveScanner();
-                }}
-                className="w-full"
-              >
-                <div className="relative w-full group">
-                  <input
-                    id="barcode-hardware-input"
-                    ref={barcodeInputRef}
-                    type="text"
-                    autoFocus={!isCartFullScreen}
-                    tabIndex={isCartFullScreen ? -1 : 1}
-                    autoComplete="off"
-                    autoCorrect="off"
-                    spellCheck={false}
-                    inputMode="text"
-                    placeholder="Type or scan Barcode (max 5 digits) or Serial / Shortcut code (e.g. 1001)..."
-                    value={barcodeInput}
-                    onChange={(e) => {
-                      const cleaned = e.target.value.replace(/[\r\n\t]/g, '');
-                      setBarcodeInput(cleaned);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Escape') {
-                        e.preventDefault();
-                        if (onBack) {
-                          handleBackWithAutoHold();
-                        }
-                      } else if (e.key === 'Enter') {
-                        e.preventDefault();
-                        const val = (barcodeInput || barcodeInputRef.current?.value || '').trim();
-                        if (val) {
-                          handleAddByBarcode(val);
-                        } else {
-                          setBarcodeInput('');
-                          if (barcodeInputRef.current) barcodeInputRef.current.value = '';
-                          focusActiveScanner();
-                        }
-                      }
-                    }}
-                    className="w-full pl-4 pr-24 py-3.5 bg-slate-50 border-2 border-slate-300 focus:border-orange-500 rounded-xl text-slate-900 text-base sm:text-lg font-mono font-bold focus:outline-none focus:bg-white focus:ring-3 focus:ring-orange-500/10 transition-all shadow-inner"
-                  />
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 pointer-events-none">
-                    <span className="text-xs font-mono px-2.5 py-1 rounded bg-slate-200 text-slate-800 font-bold">↵ ENTER</span>
-                  </div>
-                </div>
-              </form>
-              <p className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                <span>
-                  <strong>Rapid Continuous Billing:</strong> Press Enter to add item; cursor stays ready in barcode box for next scan.
-                </span>
-              </p>
-            </motion.div>
 
-            {/* Quick Product Grid Selector */}
-            <motion.div 
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.05 }}
-              className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4"
-            >
+
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
                 <div className="flex items-center gap-2">
                   <ShoppingBag className="w-4 h-4 text-orange-600" />
@@ -1992,7 +1916,6 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                   })}
                 </div>
               )}
-            </motion.div>
 
           </div>
 
@@ -2749,19 +2672,18 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                         setTimeout(focusActiveScanner, 20);
                       }
                     }}
-                    className="w-full pl-12 pr-32 py-3.5 bg-slate-50 border-2 border-orange-400 focus:border-orange-600 focus:bg-white rounded-2xl text-slate-900 font-mono text-base sm:text-lg font-black shadow-inner focus:outline-none transition-all"
+                    className="w-full pl-12 pr-44 py-3.5 bg-slate-50 border-2 border-orange-400 focus:border-orange-600 focus:bg-white rounded-2xl text-slate-900 font-mono text-base sm:text-lg font-black shadow-inner focus:outline-none transition-all"
                   />
-                  <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none">
-                    {scannerLastScannedStatus ? (
-                      <span className="hidden sm:inline-flex items-center gap-1 text-xs font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded-full animate-pulse">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> {scannerLastScannedStatus}
-                      </span>
-                    ) : (
-                      <span className="hidden sm:inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" /> Ready
-                      </span>
-                    )}
-                    <span className="text-xs sm:text-sm font-mono px-2.5 py-1 rounded bg-slate-200 text-slate-800 font-bold">↵ ENTER to Add</span>
+                  <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsScannerOpen(true)}
+                      className="px-2.5 py-1.5 bg-orange-600 hover:bg-orange-500 text-white font-black text-xs rounded-xl shadow-xs transition-all flex items-center gap-1 cursor-pointer"
+                      title="Open built-in camera barcode scanner"
+                    >
+                      <Camera className="w-3.5 h-3.5" /> 📷 Camera
+                    </button>
+                    <span className="text-xs sm:text-sm font-mono px-2 py-1 rounded bg-slate-200 text-slate-800 font-bold hidden sm:inline">↵ ENTER</span>
                   </div>
                 </div>
               </form>

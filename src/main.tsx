@@ -41,6 +41,19 @@ window.addEventListener('unhandledrejection', (event) => {
   }
 });
 
+// Prevent non-fatal DOM / chart layout errors (like clientWidth on null elements during resize/unmount) from crashing the app
+window.addEventListener('error', (event) => {
+  if (
+    event.message &&
+    (event.message.includes('clientWidth') ||
+     event.message.includes('clientHeight') ||
+     event.message.includes('getBoundingClientRect'))
+  ) {
+    console.warn('Caught non-fatal layout / chart dimension error:', event.message);
+    event.preventDefault(); // Prevent crash
+  }
+});
+
 // Global hook for beforeinstallprompt event - allow browser to display native address bar install button
 declare global {
   interface Window {

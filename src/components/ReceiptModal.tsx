@@ -85,9 +85,33 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     speakMessage(speech);
   };
 
+  const getItemDiscountsTotal = () => {
+    if (!sale) return 0;
+    return (sale.items || []).reduce((sum, it) => {
+      if (it.originalPrice && it.originalPrice > it.price) {
+        return sum + ((it.originalPrice - it.price) * (it.quantity || 1));
+      }
+      if (it.discountAmount && it.discountAmount > 0) {
+        return sum + it.discountAmount;
+      }
+      return sum;
+    }, 0);
+  };
+
+  const getDiscountMetrics = () => {
+    if (!sale) return { billDiscount: 0, itemDiscounts: 0, totalDiscount: 0, subtotal: 0 };
+    const itemDiscounts = getItemDiscountsTotal();
+    const billDiscount = Number(sale.discountAmount || 0);
+    const totalDiscount = billDiscount > 0 ? billDiscount : itemDiscounts;
+    const subtotal = sale.subtotalAmount || ((sale.totalAmount || 0) + totalDiscount);
+    return { billDiscount, itemDiscounts, totalDiscount, subtotal };
+  };
+
   const getFormattedReceiptText = () => {
     if (!sale) return '';
     const storeName = store?.name || sale?.storeName || 'SUPERMARKET';
+    const { totalDiscount, subtotal } = getDiscountMetrics();
+
     let text = `===================================\n`;
     text += `       ${storeName}       \n`;
     text += `   OFFICIAL SALES RECEIPT / INVOICE \n`;
@@ -101,17 +125,24 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     (sale.items || []).forEach((item, index) => {
       const isWeight = item.sellBy === 'weight' || item.unitType === 'kg' || (item.quantity || 0) % 1 !== 0;
       const qtyText = isWeight ? `${item.quantity}kg` : `${item.quantity}`;
+      const hasDiscount = item.originalPrice && item.originalPrice > item.price;
       text += `${index + 1}. ${item.name}\n`;
       text += `   ${qtyText} x ${curr} ${(item.price || 0).toFixed(2)} = ${curr} ${(item.total || 0).toFixed(2)}\n`;
+      if (hasDiscount) {
+        text += `   [Original: ${curr} ${(item.originalPrice || 0).toFixed(2)} | Disc: -${curr} {(((item.originalPrice || 0) - (item.price || 0)) * (item.quantity || 1)).toFixed(2)}]\n`;
+      }
     });
     text += `-----------------------------------\n`;
-    if (sale.discountAmount && sale.discountAmount > 0) {
-      const sub = sale.subtotalAmount || ((sale.totalAmount || 0) + (sale.discountAmount || 0));
-      text += `SUBTOTAL:     ${curr} ${(sub || 0).toFixed(2)}\n`;
-      text += `DISCOUNT${sale.discountType === 'percentage' && sale.discountValue ? ` (${sale.discountValue}%)` : ''}: -${curr} ${(sale.discountAmount || 0).toFixed(2)}\n`;
-      text += `-----------------------------------\n`;
+    text += `SUBTOTAL:       ${curr} ${(subtotal || 0).toFixed(2)}\n`;
+    if (totalDiscount > 0) {
+      text += `DISCOUNT${sale.discountType === 'percentage' && sale.discountValue ? ` (${sale.discountValue}%)` : ''}:   -${curr} ${totalDiscount.toFixed(2)}\n`;
+      text += `TOTAL DISCOUNT: -${curr} ${totalDiscount.toFixed(2)}\n`;
+    } else {
+      text += `DISCOUNT:       ${curr} 0.00\n`;
+      text += `TOTAL DISCOUNT: ${curr} 0.00\n`;
     }
-    text += `TOTAL AMOUNT: ${curr} ${(sale.totalAmount || 0).toFixed(2)}\n`;
+    text += `-----------------------------------\n`;
+    text += `TOTAL AMOUNT:   ${curr} ${(sale.totalAmount || 0).toFixed(2)}\n`;
     if (sale.paymentMethod === 'cash' && sale.cashReceived !== undefined) {
       text += `CASH RECEIVED:   ${curr} ${(sale.cashReceived || 0).toFixed(2)}\n`;
       text += `CHANGE RETURNED: ${curr} ${(sale.changeReturned || 0).toFixed(2)}\n`;
@@ -126,6 +157,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     if (!sale) return '';
     const storeName = store?.name || 'SUPERMARKET';
     const dateStr = new Date(sale.timestamp).toLocaleString();
+    const { totalDiscount, subtotal } = getDiscountMetrics();
 
     return `
       <!DOCTYPE html>
@@ -214,7 +246,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                     <tr>
                       <td>
                         <strong>${item.name}</strong>
-                        ${hasDiscount ? `<br/><small style="color:#047857; font-weight:700;">Reg: ${curr} ${item.originalPrice?.toFixed(2)} (Disc Applied)</small>` : ''}
+                        ${hasDiscount ? `<br/><small style="color:#047857; font-weight:700;">Reg: ${curr} ${item.originalPrice?.toFixed(2)} (Admin Disc Applied)</small>` : ''}
                         ${item.weightInfo ? `<br/><small style="color:#64748b">${item.weightInfo}</small>` : ''}
                       </td>
                       <td class="text-center font-bold">${qtyText}</td>
@@ -228,16 +260,18 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
             <div class="double-divider"></div>
 
-            ${sale.discountAmount && sale.discountAmount > 0 ? `
-              <div class="flex-row" style="color: #64748b;">
-                <span>Subtotal:</span>
-                <span>${curr} ${(sale.subtotalAmount || ((sale.totalAmount || 0) + (sale.discountAmount || 0))).toFixed(2)}</span>
-              </div>
-              <div class="flex-row font-bold" style="color: #047857;">
-                <span>Discount ${sale.discountType === 'percentage' && sale.discountValue ? `(${sale.discountValue}%)` : ''}:</span>
-                <span>-${curr} ${(sale.discountAmount || 0).toFixed(2)}</span>
-              </div>
-            ` : ''}
+            <div class="flex-row" style="color: #64748b;">
+              <span>Subtotal:</span>
+              <span>${curr} ${(subtotal || 0).toFixed(2)}</span>
+            </div>
+            <div class="flex-row font-bold" style="color: ${totalDiscount > 0 ? '#047857' : '#64748b'};">
+              <span>Discount ${sale.discountType === 'percentage' && sale.discountValue ? `(${sale.discountValue}%)` : ''}:</span>
+              <span>${totalDiscount > 0 ? `-${curr} ${totalDiscount.toFixed(2)}` : `${curr} 0.00`}</span>
+            </div>
+            <div class="flex-row font-bold" style="color: ${totalDiscount > 0 ? '#047857' : '#64748b'};">
+              <span>Total Discount:</span>
+              <span>${totalDiscount > 0 ? `-${curr} ${totalDiscount.toFixed(2)}` : `${curr} 0.00`}</span>
+            </div>
 
             <div class="flex-row total-box">
               <span>GRAND TOTAL:</span>
@@ -679,44 +713,51 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               </div>
 
               {/* Totals */}
-              <div className={`pt-3 space-y-1 ${
-                store?.receiptFormat === 'classic_detailed'
-                  ? 'border-t-2 border-slate-800'
-                  : 'border-t-2 border-slate-900'
-              }`}>
-                {sale.discountAmount && sale.discountAmount > 0 ? (
-                  <>
+              {(() => {
+                const { totalDiscount, subtotal } = getDiscountMetrics();
+                return (
+                  <div className={`pt-3 space-y-1 ${
+                    store?.receiptFormat === 'classic_detailed'
+                      ? 'border-t-2 border-slate-800'
+                      : 'border-t-2 border-slate-900'
+                  }`}>
                     <div className="flex justify-between text-xs text-slate-600">
                       <span>Subtotal:</span>
-                      <span className="font-mono font-semibold">{curr} {(sale.subtotalAmount || ((sale.totalAmount || 0) + (sale.discountAmount || 0))).toFixed(2)}</span>
+                      <span className="font-mono font-semibold">{curr} {(subtotal || 0).toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between text-xs font-bold text-emerald-700">
+
+                    <div className={`flex justify-between text-xs font-bold ${totalDiscount > 0 ? 'text-emerald-700' : 'text-slate-500'}`}>
                       <span>Discount {sale.discountType === 'percentage' && sale.discountValue ? `(${sale.discountValue}%)` : ''}:</span>
-                      <span className="font-mono">-{curr} {(sale.discountAmount || 0).toFixed(2)}</span>
+                      <span className="font-mono">{totalDiscount > 0 ? `-${curr} ${totalDiscount.toFixed(2)}` : `${curr} 0.00`}</span>
                     </div>
-                  </>
-                ) : null}
 
-                <div className={`flex justify-between text-sm font-black text-slate-900 pt-1 ${
-                  store?.receiptFormat === 'classic_detailed' ? 'border-t border-slate-400 text-base' : 'border-t border-slate-200'
-                }`}>
-                  <span>GRAND TOTAL:</span>
-                  <span className="text-orange-700">{curr} {(sale.totalAmount || 0).toFixed(2)}</span>
-                </div>
+                    <div className={`flex justify-between text-xs font-bold ${totalDiscount > 0 ? 'text-emerald-700' : 'text-slate-500'}`}>
+                      <span>Total Discount:</span>
+                      <span className="font-mono">{totalDiscount > 0 ? `-${curr} ${totalDiscount.toFixed(2)}` : `${curr} 0.00`}</span>
+                    </div>
 
-                {sale.paymentMethod === 'cash' && sale.cashReceived !== undefined && (
-                  <>
-                    <div className="flex justify-between text-xs font-semibold text-slate-600 pt-1">
-                      <span>Cash Received:</span>
-                      <span className="font-mono">{curr} {(sale.cashReceived || 0).toFixed(2)}</span>
+                    <div className={`flex justify-between text-sm font-black text-slate-900 pt-1.5 ${
+                      store?.receiptFormat === 'classic_detailed' ? 'border-t border-slate-400 text-base' : 'border-t border-slate-200'
+                    }`}>
+                      <span>GRAND TOTAL:</span>
+                      <span className="text-orange-700">{curr} {(sale.totalAmount || 0).toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between text-xs font-black text-emerald-700">
-                      <span>Change Returned:</span>
-                      <span className="font-mono">{curr} {(sale.changeReturned || 0).toFixed(2)}</span>
-                    </div>
-                  </>
-                )}
-              </div>
+
+                    {sale.paymentMethod === 'cash' && sale.cashReceived !== undefined && (
+                      <>
+                        <div className="flex justify-between text-xs font-semibold text-slate-600 pt-1">
+                          <span>Cash Received:</span>
+                          <span className="font-mono">{curr} {(sale.cashReceived || 0).toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs font-black text-emerald-700">
+                          <span>Change Returned:</span>
+                          <span className="font-mono">{curr} {(sale.changeReturned || 0).toFixed(2)}</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Footer message */}
               <div className={`text-center pt-4 text-[10px] text-slate-500 space-y-1 ${

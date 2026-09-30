@@ -2,15 +2,21 @@ import { Product } from '../types';
 import { db, doc, updateDoc, cleanFirestoreData } from '../lib/firebase';
 
 /**
- * Generates the next available unique 4-digit shortcut code for a product.
+ * Generates the next available unique 4-digit shortcut / serial number for a product.
  * Range: 1001 to 9999.
  */
-export function generateNextShortcutCode(existingProducts: Array<{ shortcutCode?: string }>): string {
+export function generateNextShortcutCode(existingProducts: Array<{ shortcutCode?: string; serialNumber?: string }>): string {
   const usedCodes = new Set<number>();
   
   for (const p of existingProducts) {
     if (p.shortcutCode) {
       const num = parseInt(p.shortcutCode, 10);
+      if (!isNaN(num) && num >= 1000 && num <= 9999) {
+        usedCodes.add(num);
+      }
+    }
+    if (p.serialNumber) {
+      const num = parseInt(p.serialNumber, 10);
       if (!isNaN(num) && num >= 1000 && num <= 9999) {
         usedCodes.add(num);
       }
@@ -27,6 +33,20 @@ export function generateNextShortcutCode(existingProducts: Array<{ shortcutCode?
   // Fallback if all 1001-9999 are taken (rare in standard stores)
   const random4Digit = Math.floor(1000 + Math.random() * 9000).toString();
   return random4Digit;
+}
+
+/**
+ * System assigned 4-digit serial number (1001 - 9999).
+ */
+export function generateNext4DigitSerialNumber(existingProducts: Array<{ shortcutCode?: string; serialNumber?: string }>): string {
+  return generateNextShortcutCode(existingProducts);
+}
+
+/**
+ * Generates a clean 5-digit numeric barcode (10000 - 99999).
+ */
+export function generate5DigitBarcode(): string {
+  return Math.floor(10000 + Math.random() * 90000).toString();
 }
 
 /**

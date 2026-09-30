@@ -24,7 +24,7 @@ import { db, collection, setDoc, doc } from '../lib/firebase';
 import { generateNextShortcutCode } from '../utils/productShortcuts';
 
 const generateRandomBarcode = (): string => {
-  return Math.floor(100000000000 + Math.random() * 900000000000).toString();
+  return Math.floor(10000 + Math.random() * 90000).toString();
 };
 
 interface MultiProductBatchModalProps {
@@ -220,7 +220,7 @@ export const MultiProductBatchModal: React.FC<MultiProductBatchModalProps> = ({
           storeId: store.id,
           barcode: barcodeTrimmed,
           shortcutCode,
-          serialNumber: row.serialNumber?.trim() || barcodeTrimmed || shortcutCode,
+          serialNumber: existing?.serialNumber || shortcutCode,
           name: row.name.trim(),
           category: row.category.trim() || 'General',
           sellBy: row.sellBy,

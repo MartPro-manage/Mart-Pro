@@ -83,7 +83,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
       setIsPinVerified(true);
       setPinError(null);
     } else {
-      setPinError('Incorrect 8-digit Super Admin Safety Passkey. (Correct passkey is 10092010)');
+      setPinError('Incorrect 8-digit Super Admin Safety Passkey. Access denied.');
     }
   };
 
@@ -905,7 +905,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
               </div>
               <h2 className="text-xl font-black text-slate-900 tracking-tight">Super Admin Security Verification</h2>
               <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                Please enter your 8-digit Super Admin Safety Passkey (<code className="font-mono bg-slate-100 px-1.5 py-0.5 rounded font-bold text-amber-700">10092010</code>) to unlock Master Control.
+                Please enter your 8-digit Super Admin Safety Passkey to unlock Master Control.
               </p>
             </div>
 

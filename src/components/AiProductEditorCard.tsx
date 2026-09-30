@@ -168,6 +168,7 @@ export const AiProductEditorCard: React.FC<AiProductEditorCardProps> = ({
         category: category.trim() || 'General',
         barcode: barcode.trim(),
         shortcutCode: cleanShortcut || undefined,
+        serialNumber: cleanShortcut || orig.serialNumber || '1001',
         sellBy: sellBy,
         unitType: unitType as any,
         discountActive: discountActive,
@@ -386,21 +387,24 @@ export const AiProductEditorCard: React.FC<AiProductEditorCardProps> = ({
 
         {/* Row 4: Barcode, 4-Digit Shortcut & Category */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-              Barcode {barcodeChanged && <span className="text-orange-600">• Edited</span>}
-            </label>
-            <input
-              type="text"
-              value={barcode}
-              onChange={(e) => {
-                setBarcode(e.target.value);
-                setSaved(false);
-              }}
-              disabled={isSaving}
-              className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-mono font-bold text-slate-800 bg-white"
-            />
-          </div>
+        <div>
+          <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+            Barcode (Max 5 Digits) {barcodeChanged && <span className="text-orange-600">• Edited</span>}
+          </label>
+          <input
+            type="text"
+            maxLength={5}
+            value={barcode}
+            placeholder="Max 5 digits"
+            onChange={(e) => {
+              const val = e.target.value.replace(/\D/g, '').slice(0, 5);
+              setBarcode(val);
+              setSaved(false);
+            }}
+            disabled={isSaving}
+            className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-mono font-bold text-slate-800 bg-white"
+          />
+        </div>
 
           <div>
             <div className="flex items-center justify-between mb-1">

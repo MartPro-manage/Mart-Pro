@@ -23,6 +23,8 @@ import { ReturnProductModal } from './ReturnProductModal';
 import { ReturnSlipModal } from './ReturnSlipModal';
 import { HardwarePermissionsBar } from './HardwarePermissionsBar';
 import { CashPaymentModal } from './CashPaymentModal';
+import { PaymentSummaryModal } from './PaymentSummaryModal';
+import { CustomerChangeModal } from './CustomerChangeModal';
 import { WeightPromptModal } from './WeightPromptModal';
 import { HeldBillsModal } from './HeldBillsModal';
 import { ProductShortcutsModal } from './ProductShortcutsModal';
@@ -77,16 +79,20 @@ import {
   CheckCheck,
   Star,
   Edit2,
-  ShieldCheck
+  ShieldCheck,
+  LogOut,
+  Coins,
+  Tag
 } from 'lucide-react';
 
 interface CashCounterViewProps {
   store: Store;
   currentUser: UserAccount;
   onBack?: () => void;
+  onLogout?: () => void;
 }
 
-export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, currentUser, onBack }) => {
+export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, currentUser, onBack, onLogout }) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [recentSales, setRecentSales] = useState<Sale[]>([]);
   const [recentReturns, setRecentReturns] = useState<ProductReturn[]>([]);
@@ -118,8 +124,20 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
   const [searchTerm, setSearchTerm] = useState('');
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [isCashModalOpen, setIsCashModalOpen] = useState(false);
+  const [isPaymentSummaryOpen, setIsPaymentSummaryOpen] = useState(false);
+  const [mobileTab, setMobileTab] = useState<'catalog' | 'cart'>('catalog');
 
-  // Active digital payment platforms configured by Admin (or defaults)
+  // Shift + P listener to open Payment & Bill Summary modal
+  useEffect(() => {
+    const handleShiftP = (e: KeyboardEvent) => {
+      if (e.shiftKey && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault();
+        setIsPaymentSummaryOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleShiftP);
+    return () => window.removeEventListener('keydown', handleShiftP);
+  }, []);
   const configuredDigitalMethods: DigitalPaymentMethodConfig[] = useMemo(() => {
     if (store?.digitalPaymentMethods && store.digitalPaymentMethods.length > 0) {
       const active = store.digitalPaymentMethods.filter(m => m.isActive !== false);
@@ -289,6 +307,12 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
   const [selectedReceiptType, setSelectedReceiptType] = useState<'print' | 'ereceipt'>('print');
   const [completedSale, setCompletedSale] = useState<Sale | null>(null);
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
+  const [isChangeModalOpen, setIsChangeModalOpen] = useState(false);
+  const [completedChangeData, setCompletedChangeData] = useState<{
+    sale: Sale;
+    cashReceived: number;
+    changeReturned: number;
+  } | null>(null);
 
   // Full Screen Cart State
   const [isCartFullScreen, setIsCartFullScreen] = useState(true);
@@ -297,6 +321,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
   const [fullScreenShortcutSearch, setFullScreenShortcutSearch] = useState('');
   const [fullScreenCategory, setFullScreenCategory] = useState<string>('all');
   const [scannerLastScannedStatus, setScannerLastScannedStatus] = useState<string | null>(null);
+  const [lastEnteredProductId, setLastEnteredProductId] = useState<string | null>(null);
   const isProcessingScanRef = useRef<boolean>(false);
   const fullScreenScanInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -307,18 +332,12 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
         fullScreenScanInputRef.current?.focus();
       }, 100);
       return () => clearTimeout(timer);
+    } else {
+      const timer = setTimeout(() => {
+        barcodeInputRef.current?.focus();
+      }, 100);
+      return () => clearTimeout(timer);
     }
-  }, [isCartFullScreen]);
-
-  // Handle ESC key to exit full screen mode
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isCartFullScreen) {
-        setIsCartFullScreen(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isCartFullScreen]);
 
   const barcodeInputRef = useRef<HTMLInputElement | null>(null);
@@ -529,14 +548,25 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
 
     setBarcodeInput('');
     setFullScreenScanInput('');
-    if (barcodeInputRef.current) barcodeInputRef.current.value = '';
-    if (fullScreenScanInputRef.current) fullScreenScanInputRef.current.value = '';
-    ensureBarcodeFocus();
-  }, [products, isVoiceAllowed, voiceEnabled, ensureBarcodeFocus]);
+    if (barcodeInputRef.current) {
+      barcodeInputRef.current.value = '';
+    }
+    if (fullScreenScanInputRef.current) {
+      fullScreenScanInputRef.current.value = '';
+    }
+
+    // Keep barcode scanner focused & immediately ready for the next barcode/serial number
+    focusActiveScanner();
+
+    // Subtle highlight for last entered item for 2 seconds
+    const targetAddedId = found.id;
+    setLastEnteredProductId(targetAddedId);
+    setTimeout(() => {
+      setLastEnteredProductId(prev => (prev === targetAddedId ? null : prev));
+    }, 2000);
+  }, [products, isVoiceAllowed, voiceEnabled, focusActiveScanner]);
 
   // Dedicated seamless scanner processor for Full Screen Mode:
-  // After scanning 1st product, immediately cleans & readies area for second product
-  // so cashier never needs to move cursor or click on that area.
   const handleProcessFullScreenScan = useCallback((forcedCode?: string) => {
     if (isProcessingScanRef.current) return;
     
@@ -566,47 +596,23 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     handleAddByBarcode(cleanVal, true);
 
     // Provide instant visual confirmation that scanner is armed & ready for next item
-    setScannerLastScannedStatus(`Scanned "${cleanVal}" • Ready for next product`);
+    setScannerLastScannedStatus(`Scanned "${cleanVal}" • Ready`);
     setTimeout(() => {
       setScannerLastScannedStatus(null);
     }, 2000);
 
-    // Multi-phase focus retention and suffix clearing (catches asynchronous scanner \r\n suffixes)
-    const refocusAndWipe = () => {
-      if (fullScreenScanInputRef.current) {
-        fullScreenScanInputRef.current.value = '';
-        fullScreenScanInputRef.current.focus();
-      }
-      setFullScreenScanInput('');
-    };
-
-    refocusAndWipe();
-    requestAnimationFrame(refocusAndWipe);
-    setTimeout(refocusAndWipe, 30);
-    setTimeout(refocusAndWipe, 80);
-    setTimeout(refocusAndWipe, 160);
     setTimeout(() => {
-      refocusAndWipe();
       isProcessingScanRef.current = false;
-    }, 250);
+    }, 150);
   }, [fullScreenScanInput, handleAddByBarcode]);
 
-  // Auto focus active barcode input for fast hardware USB barcode scanner support
+  // Auto focus active barcode input when no modal or quantity field is active
   useEffect(() => {
-    const isAnyModalOpen = isScannerOpen || isReceiptOpen || isReturnModalOpen || isReturnSlipOpen || isCashModalOpen || isWeightModalOpen || isHeldBillsModalOpen || isShortcutsModalOpen || Boolean(viewingDigitalQr) || Boolean(viewingBankQr);
-    if (!isAnyModalOpen) {
+    const isAnyModalOpen = isScannerOpen || isReceiptOpen || isChangeModalOpen || isReturnModalOpen || isReturnSlipOpen || isCashModalOpen || isPaymentSummaryOpen || isWeightModalOpen || isHeldBillsModalOpen || isShortcutsModalOpen || Boolean(viewingDigitalQr) || Boolean(viewingBankQr);
+    if (!isAnyModalOpen && cart.length === 0) {
       focusActiveScanner();
     }
-  }, [isScannerOpen, isReceiptOpen, isReturnModalOpen, isReturnSlipOpen, isCashModalOpen, isWeightModalOpen, isHeldBillsModalOpen, isShortcutsModalOpen, viewingDigitalQr, viewingBankQr, isCartFullScreen, cart.length, focusActiveScanner]);
-
-  // Keep scanning area in full-screen mode continuously ready after adding items
-  useEffect(() => {
-    if (isCartFullScreen) {
-      focusActiveScanner();
-      const timer = setTimeout(focusActiveScanner, 60);
-      return () => clearTimeout(timer);
-    }
-  }, [cart, isCartFullScreen, focusActiveScanner]);
+  }, [isScannerOpen, isReceiptOpen, isChangeModalOpen, isReturnModalOpen, isReturnSlipOpen, isCashModalOpen, isPaymentSummaryOpen, isWeightModalOpen, isHeldBillsModalOpen, isShortcutsModalOpen, viewingDigitalQr, viewingBankQr, isCartFullScreen, cart.length, focusActiveScanner]);
 
   // Continuous click-retention in full screen so cashier never has to move cursor or click
   useEffect(() => {
@@ -616,7 +622,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
       const target = e.target as HTMLElement | null;
       if (!target) return;
 
-      const isAnyModalOpen = isScannerOpen || isReceiptOpen || isReturnModalOpen || isReturnSlipOpen || isCashModalOpen || isWeightModalOpen || isHeldBillsModalOpen || isShortcutsModalOpen || Boolean(viewingDigitalQr) || Boolean(viewingBankQr);
+      const isAnyModalOpen = isScannerOpen || isReceiptOpen || isReturnModalOpen || isReturnSlipOpen || isCashModalOpen || isPaymentSummaryOpen || isWeightModalOpen || isHeldBillsModalOpen || isShortcutsModalOpen || Boolean(viewingDigitalQr) || Boolean(viewingBankQr);
       if (isAnyModalOpen) return;
 
       const isInteractive = target.closest('button, input, select, textarea, a, [role="button"]');
@@ -627,21 +633,45 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
 
     window.addEventListener('click', handleWindowClick);
     return () => window.removeEventListener('click', handleWindowClick);
-  }, [isCartFullScreen, isScannerOpen, isReceiptOpen, isReturnModalOpen, isReturnSlipOpen, isCashModalOpen, isWeightModalOpen, isHeldBillsModalOpen, isShortcutsModalOpen, viewingDigitalQr, viewingBankQr, focusActiveScanner]);
+  }, [isCartFullScreen, isScannerOpen, isReceiptOpen, isReturnModalOpen, isReturnSlipOpen, isCashModalOpen, isPaymentSummaryOpen, isWeightModalOpen, isHeldBillsModalOpen, isShortcutsModalOpen, viewingDigitalQr, viewingBankQr, focusActiveScanner]);
 
-  // External Hardware Barcode Scanner Listener (Hands-free continuous scanning without clicking any button)
+  // Universal Keyboard Listener: Hands-free scanner & Universal ESC to Admin Dashboard
   useEffect(() => {
-    const isAnyModalOpen = isScannerOpen || isReceiptOpen || isReturnModalOpen || isReturnSlipOpen || isCashModalOpen || isWeightModalOpen || isHeldBillsModalOpen || isShortcutsModalOpen || Boolean(viewingDigitalQr) || Boolean(viewingBankQr);
-    if (isAnyModalOpen) {
-      return;
-    }
-
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // 1. UNIVERSAL ESCAPE HANDLER: Close active modals or exit back to Admin Dashboard
+      if (e.key === 'Escape') {
+        if (isReceiptOpen) { setIsReceiptOpen(false); return; }
+        if (isChangeModalOpen) { setIsChangeModalOpen(false); return; }
+        if (isPaymentSummaryOpen) { setIsPaymentSummaryOpen(false); return; }
+        if (isCashModalOpen) { setIsCashModalOpen(false); return; }
+        if (isManualQtyModalOpen) { setIsManualQtyModalOpen(false); return; }
+        if (isWeightModalOpen) { setIsWeightModalOpen(false); return; }
+        if (isHeldBillsModalOpen) { setIsHeldBillsModalOpen(false); return; }
+        if (isShortcutsModalOpen) { setIsShortcutsModalOpen(false); return; }
+        if (isReturnModalOpen) { setIsReturnModalOpen(false); return; }
+        if (isReturnSlipOpen) { setIsReturnSlipOpen(false); return; }
+        if (viewingDigitalQr) { setViewingDigitalQr(null); return; }
+        if (viewingBankQr) { setViewingBankQr(null); return; }
+        if (isScannerOpen) { setIsScannerOpen(false); return; }
+
+        if (onBack) {
+          e.preventDefault();
+          handleBackWithAutoHold();
+          return;
+        }
+      }
+
+      // If any modal is open, do not buffer external scanner keystrokes
+      const isAnyModalOpen = isScannerOpen || isReceiptOpen || isChangeModalOpen || isReturnModalOpen || isReturnSlipOpen || isCashModalOpen || isPaymentSummaryOpen || isWeightModalOpen || isHeldBillsModalOpen || isShortcutsModalOpen || isManualQtyModalOpen || Boolean(viewingDigitalQr) || Boolean(viewingBankQr);
+      if (isAnyModalOpen) {
+        return;
+      }
+
       const activeEl = document.activeElement;
       const tagName = activeEl?.tagName?.toUpperCase();
       const isInputActive = tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT';
       const isScannerInput = activeEl === barcodeInputRef.current || activeEl === fullScreenScanInputRef.current;
-      
+
       // If user is actively typing in ANY OTHER input field (e.g. search, modal), skip auto-scanner buffer
       if (isInputActive && !isScannerInput) {
         return;
@@ -678,6 +708,9 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
             fullScreenScanInputRef.current.focus();
           }
           focusActiveScanner();
+        } else {
+          // Enter on empty input keeps scanner armed & ready
+          focusActiveScanner();
         }
         return;
       }
@@ -705,7 +738,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
 
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [isCashModalOpen, isReceiptOpen, isReturnModalOpen, isReturnSlipOpen, isScannerOpen, barcodeInput, fullScreenScanInput, isCartFullScreen, handleAddByBarcode, handleProcessFullScreenScan, focusActiveScanner]);
+  }, [isCashModalOpen, isChangeModalOpen, isPaymentSummaryOpen, isManualQtyModalOpen, isWeightModalOpen, isHeldBillsModalOpen, isShortcutsModalOpen, isReceiptOpen, isReturnModalOpen, isReturnSlipOpen, isScannerOpen, viewingDigitalQr, viewingBankQr, onBack, barcodeInput, fullScreenScanInput, isCartFullScreen, handleAddByBarcode, handleProcessFullScreenScan, focusActiveScanner]);
 
   // Subscribe to products, sales, and returns in real-time for this store
   useEffect(() => {
@@ -796,8 +829,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
 
   // Quantity Change Handler (COMPULSORY QUANTITY SELECTION)
   const handleUpdateQuantity = (productId: string, newQty: number) => {
-    if (newQty <= 0) {
-      handleRemoveItem(productId);
+    if (newQty < 0 || isNaN(newQty)) {
       return;
     }
 
@@ -1351,9 +1383,24 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
       }
 
       setIsCashModalOpen(false);
+      setIsPaymentSummaryOpen(false);
       setCompletedSale(completedSaleData);
-      setIsReceiptOpen(true);
       setCart([]);
+      
+      // Always show Receipt Modal upon checkout completion so receipt is visible and ready to print!
+      setIsReceiptOpen(true);
+      
+      // If cash payment, also set change data and trigger Change to Customer Assistant if change is due
+      if (paymentMethod === 'cash') {
+        setCompletedChangeData({
+          sale: completedSaleData,
+          cashReceived: cashReceived ?? cartTotal,
+          changeReturned: changeReturned ?? 0
+        });
+        if ((changeReturned ?? 0) > 0) {
+          setIsChangeModalOpen(true);
+        }
+      }
       
       // Voice & Text Thank You greeting with Total Bill Amount & Change Return for purchase according to store name
       const storeName = store.name || 'our store';
@@ -1652,23 +1699,58 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           )}
         </AnimatePresence>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Mobile Segmented View Switcher (Visible on mobile/tablet screens < lg) */}
+        <div className="lg:hidden flex items-center p-1 bg-slate-100 border border-slate-200 rounded-2xl gap-1 mb-4 shadow-2xs">
+          <button
+            type="button"
+            onClick={() => setMobileTab('catalog')}
+            className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              mobileTab === 'catalog'
+                ? 'bg-orange-600 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 bg-transparent'
+            }`}
+          >
+            <ShoppingBag className="w-4 h-4" />
+            <span>Scan & Catalog</span>
+          </button>
 
-          {/* LEFT 7 COLS: BARCODE INPUT & QUICK PRODUCT SELECTOR */}
-          <div className="lg:col-span-7 space-y-6">
+          <button
+            type="button"
+            onClick={() => setMobileTab('cart')}
+            className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all cursor-pointer relative ${
+              mobileTab === 'cart'
+                ? 'bg-slate-900 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 bg-transparent'
+            }`}
+          >
+            <div className="flex items-center gap-1.5">
+              <span className="relative">
+                🛒 Cart ({cart.length})
+              </span>
+              <span className="font-mono text-[11px] font-black px-1.5 py-0.2 rounded bg-amber-400 text-slate-950">
+                Rs. {cartTotal.toFixed(2)}
+              </span>
+            </div>
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 pb-24 lg:pb-0">
+
+          {/* LEFT 6 COLS: BARCODE INPUT & QUICK PRODUCT SELECTOR */}
+          <div className={`lg:col-span-6 space-y-4 ${mobileTab === 'catalog' ? 'block' : 'hidden lg:block'}`}>
 
             {/* Barcode Scanner Input */}
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 relative overflow-hidden"
+              className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 relative overflow-hidden"
             >
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-                  <BarcodeIcon className="w-4 h-4 text-orange-600" /> Barcode Reader / Rapid Scanner
+                  <BarcodeIcon className="w-4 h-4 text-orange-600" /> Barcode Reader / Serial Number Scanner
                 </label>
-                <span className="text-[11px] text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 font-bold flex items-center gap-1.5 shadow-2xs">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-live-pulse" /> Live Scanner Ready
+                <span className="text-[11px] text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 font-bold flex items-center gap-1.5 shadow-2xs">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-live-pulse" /> Scanner Armed & Ready
                 </span>
               </div>
 
@@ -1684,11 +1766,11 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                     barcodeInputRef.current.value = '';
                     barcodeInputRef.current.focus();
                   }
-                  ensureBarcodeFocus();
+                  focusActiveScanner();
                 }}
-                className="flex gap-2"
+                className="w-full"
               >
-                <div className="relative flex-1 group">
+                <div className="relative w-full group">
                   <input
                     id="barcode-hardware-input"
                     ref={barcodeInputRef}
@@ -1699,42 +1781,41 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                     autoCorrect="off"
                     spellCheck={false}
                     inputMode="text"
-                    placeholder="Scan barcode with laser or type code..."
+                    placeholder="Type or scan Barcode (max 5 digits) or Serial / Shortcut code (e.g. 1001)..."
                     value={barcodeInput}
-                    onChange={(e) => setBarcodeInput(e.target.value)}
-                    className="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-base font-mono focus:outline-none focus:border-orange-500 focus:bg-white focus:ring-3 focus:ring-orange-500/10 transition-all shadow-inner"
+                    onChange={(e) => {
+                      const cleaned = e.target.value.replace(/[\r\n\t]/g, '');
+                      setBarcodeInput(cleaned);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') {
+                        e.preventDefault();
+                        if (onBack) {
+                          handleBackWithAutoHold();
+                        }
+                      } else if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const val = (barcodeInput || barcodeInputRef.current?.value || '').trim();
+                        if (val) {
+                          handleAddByBarcode(val);
+                        } else {
+                          setBarcodeInput('');
+                          if (barcodeInputRef.current) barcodeInputRef.current.value = '';
+                          focusActiveScanner();
+                        }
+                      }
+                    }}
+                    className="w-full pl-4 pr-24 py-3.5 bg-slate-50 border-2 border-slate-300 focus:border-orange-500 rounded-xl text-slate-900 text-base sm:text-lg font-mono font-bold focus:outline-none focus:bg-white focus:ring-3 focus:ring-orange-500/10 transition-all shadow-inner"
                   />
                   <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 pointer-events-none">
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 font-bold">↵ ENTER</span>
+                    <span className="text-xs font-mono px-2.5 py-1 rounded bg-slate-200 text-slate-800 font-bold">↵ ENTER</span>
                   </div>
                 </div>
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  id="btn-add-barcode-item"
-                  type="submit"
-                  className="px-5 py-3 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl shadow-sm transition-all cursor-pointer text-sm shrink-0 flex items-center gap-1.5"
-                >
-                  <Plus className="w-4 h-4" /> Add Item
-                </motion.button>
-                {isCameraScannerAllowed && (
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    type="button"
-                    onClick={() => setIsScannerOpen(true)}
-                    className="px-3.5 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl shadow-sm transition-all cursor-pointer text-sm shrink-0 flex items-center gap-1.5 border border-slate-800"
-                    title="Open Camera Barcode Scanner"
-                  >
-                    <Camera className="w-4 h-4 text-orange-400" />
-                    <span className="hidden sm:inline">Camera</span>
-                  </motion.button>
-                )}
               </form>
               <p className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                 <span>
-                  <strong>Continuous Scanning Enabled:</strong> Hardware scanners automatically append item to active cart with audio beep.
+                  <strong>Rapid Continuous Billing:</strong> Press Enter to add item; cursor stays ready in barcode box for next scan.
                 </span>
               </p>
             </motion.div>
@@ -1880,24 +1961,24 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                         )}
 
                         <div>
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1.5">
                             {isWeightItem && (
-                              <span className="p-0.5 px-1 bg-amber-100 text-amber-800 rounded font-bold text-[9px] flex items-center gap-0.5 shrink-0" title="Sold by Weight">
-                                <Scale className="w-2.5 h-2.5" /> KG
+                              <span className="p-0.5 px-1.5 bg-amber-100 text-amber-900 rounded font-bold text-[10px] flex items-center gap-0.5 shrink-0" title="Sold by Weight">
+                                <Scale className="w-3 h-3" /> KG
                               </span>
                             )}
-                            <span className="font-bold text-slate-900 text-xs line-clamp-2">{p.name}</span>
+                            <span className="font-black text-slate-900 text-sm line-clamp-2">{p.name}</span>
                           </div>
-                          <div className="text-[10px] text-slate-500 font-mono mt-0.5 truncate">
-                            {p.barcode || p.serialNumber || 'No Barcode'}
+                          <div className="text-xs text-slate-500 font-mono mt-0.5 truncate">
+                            {p.barcode || p.serialNumber || (p.shortcutCode ? `#${p.shortcutCode}` : 'No Barcode')}
                           </div>
                         </div>
 
                         <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">
-                          <span className="font-extrabold text-orange-600 text-xs font-mono">
+                          <span className="font-black text-orange-600 text-sm font-mono">
                             Rs. {p.price.toFixed(2)}{isWeightItem ? '/kg' : ''}
                           </span>
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${
                             isOut ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'
                           }`}>
                             {isOut 
@@ -1916,24 +1997,35 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
 
           </div>
 
-          {/* RIGHT 5 COLS: CART LIST, COMPULSORY QUANTITY & CHECKOUT */}
+          {/* RIGHT 6 COLS: CART LIST, DIRECT QUANTITY EDIT & CHECKOUT */}
           <motion.div 
             initial={{ opacity: 0, x: 12 }}
             animate={{ opacity: 1, x: 0 }}
-            className="lg:col-span-5 bg-white rounded-3xl border border-slate-200/90 p-6 shadow-sm space-y-6 flex flex-col justify-between max-h-[calc(100vh-140px)] lg:sticky lg:top-6 overflow-y-auto overscroll-contain custom-scrollbar"
+            className={`lg:col-span-6 bg-white rounded-3xl border border-slate-200/90 p-4 sm:p-5 shadow-sm space-y-3.5 flex flex-col justify-between h-auto lg:h-[calc(100vh-85px)] lg:sticky lg:top-3 overflow-hidden ${mobileTab === 'cart' ? 'block' : 'hidden lg:flex'}`}
           >
             
-            <div className="space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-200 pb-3 flex-wrap gap-2">
-                <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
-                  <Calculator className="w-5 h-5 text-orange-600" /> Active Cart ({cart.length})
+            <div className="flex-1 flex flex-col min-h-0 space-y-2.5">
+              {/* Mobile Return to Catalog Button */}
+              <div className="lg:hidden pb-2 border-b border-slate-100 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setMobileTab('catalog')}
+                  className="px-3 py-1.5 rounded-xl bg-orange-50 text-orange-700 font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                >
+                  <ArrowLeft className="w-4 h-4" /> <span>← Add More Products (Catalog)</span>
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between border-b border-slate-200 pb-2 flex-wrap gap-2 shrink-0">
+                <h2 className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-2">
+                  <Calculator className="w-4 h-4 text-orange-600" /> Active Bill Items ({cart.length})
                 </h2>
                 <div className="flex items-center gap-2">
                   <button
                     id="btn-cart-fullscreen"
                     type="button"
                     onClick={() => setIsCartFullScreen(true)}
-                    className="flex items-center gap-1.5 text-xs font-black px-3 py-1.5 rounded-xl bg-orange-50 hover:bg-orange-600 text-orange-700 hover:text-white border border-orange-200 transition-all cursor-pointer shadow-2xs group"
+                    className="flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-xl bg-orange-50 hover:bg-orange-600 text-orange-700 hover:text-white border border-orange-200 transition-all cursor-pointer shadow-2xs group"
                     title="Open Cart in Full Screen Mode to scan and manage items"
                   >
                     <Maximize2 className="w-3.5 h-3.5 text-orange-600 group-hover:text-white transition-colors" />
@@ -1945,7 +2037,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                       onClick={() => {
                         setCart([]);
                       }}
-                      className="text-xs text-red-600 hover:text-red-700 font-bold cursor-pointer px-2 py-1"
+                      className="text-xs text-red-600 hover:text-red-700 font-bold cursor-pointer px-2 py-0.5"
                     >
                       Clear
                     </button>
@@ -1953,32 +2045,46 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                 </div>
               </div>
 
-              {/* CART ITEMS LIST WITH COMPULSORY QUANTITY SELECTOR */}
+              {/* CART ITEMS LIST WITH COMPACT FONTS & DYNAMIC EXPANSION */}
               {cart.length === 0 ? (
-                <div className="p-10 text-center text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-300 space-y-2">
-                  <ShoppingBag className="w-8 h-8 text-slate-400 mx-auto" />
+                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-300 space-y-2">
+                  <ShoppingBag className="w-7 h-7 text-slate-400 mx-auto" />
                   <p className="text-xs font-semibold text-slate-700">Cart is currently empty</p>
-                  <p className="text-[11px] text-slate-500 font-medium">Scan barcode or pick item to start billing</p>
+                  <p className="text-[11px] text-slate-500 font-medium">Scan barcode or 4-digit code (e.g. 1001) & press Enter to add</p>
                 </div>
               ) : (
-                <div className="space-y-3 max-h-[340px] sm:max-h-[380px] overflow-y-auto overscroll-contain pr-1.5 custom-scrollbar touch-pan-y">
+                <div className="flex-1 overflow-y-auto overscroll-contain pr-1 custom-scrollbar min-h-0 space-y-1.5">
                   <AnimatePresence initial={false}>
-                    {cart.map((item) => {
+                    {cart.map((item, idx) => {
                       const isWeight = item.product.sellBy === 'weight' || item.product.unitType === 'kg' || Boolean(item.product.pricePerKg);
                       const qtyStep = isWeight ? 0.25 : 1;
+                      const discInfo = getProductDiscountInfo(item.product);
 
                       return (
                         <motion.div 
                           key={item.product.id}
-                          initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                          initial={{ opacity: 0, y: 6, scale: 0.99 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, x: -20, scale: 0.9 }}
-                          transition={{ duration: 0.2 }}
-                          className="bg-slate-50/90 hover:bg-slate-100/80 p-3.5 rounded-2xl border border-slate-200/90 flex items-center justify-between gap-3 transition-colors shadow-2xs"
+                          exit={{ opacity: 0, x: -16, scale: 0.95 }}
+                          transition={{ duration: 0.12 }}
+                          className={`p-2.5 sm:p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 transition-all shadow-2xs ${
+                            lastEnteredProductId === item.product.id
+                              ? 'bg-emerald-50/80 border-emerald-400 ring-2 ring-emerald-400/30'
+                              : 'bg-slate-50/90 hover:bg-slate-100/80 border-slate-200'
+                          }`}
                         >
-                          
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
+                          <div className="flex-1 min-w-0 space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs sm:text-sm font-mono font-black text-slate-500">{idx + 1}.</span>
+                              <span className="font-black text-slate-900 text-sm sm:text-base truncate max-w-[220px] sm:max-w-[300px]">{item.product.name}</span>
+
+                              {item.product.shortcutCode && (
+                                <span className="px-2 py-0.5 rounded-md bg-orange-100 text-orange-950 border border-orange-200 font-mono font-black text-xs flex items-center gap-1">
+                                  <Hash className="w-3 h-3 text-orange-600" />
+                                  <span>#{item.product.shortcutCode}</span>
+                                </span>
+                              )}
+
                               {isWeight && (
                                 <button
                                   type="button"
@@ -1986,110 +2092,126 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                                     setWeightPromptProduct(item.product);
                                     setIsWeightModalOpen(true);
                                   }}
-                                  className="px-1.5 py-0.5 rounded bg-amber-100 hover:bg-amber-200 text-amber-900 font-extrabold text-[10px] flex items-center gap-1 cursor-pointer transition-colors"
+                                  className="px-2 py-0.5 rounded-md bg-amber-100 hover:bg-amber-200 text-amber-950 font-bold text-xs flex items-center gap-1 cursor-pointer transition-colors border border-amber-300"
                                   title="Click to adjust weight in scale calculator"
                                 >
                                   <Scale className="w-3 h-3 text-amber-700" />
                                   <span>{item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(3)} kg</span>
                                 </button>
                               )}
-                              {(() => {
-                                const discInfo = getProductDiscountInfo(item.product);
-                                if (discInfo.hasDiscount) {
-                                  return (
-                                    <span className="px-1.5 py-0.2 rounded bg-rose-100 text-rose-700 font-extrabold text-[9px] uppercase tracking-wide border border-rose-200">
-                                      {discInfo.discountLabel}
-                                    </span>
-                                  );
-                                }
-                                return null;
-                              })()}
-                              <span className="font-bold text-slate-900 text-xs truncate">{item.product.name}</span>
+                              {discInfo.hasDiscount && (
+                                <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-bold text-[10px] sm:text-xs uppercase tracking-wide border border-rose-200">
+                                  {discInfo.discountLabel}
+                                </span>
+                              )}
                             </div>
-                            <div className="text-[10px] text-slate-500 font-mono mt-0.5 flex items-center gap-1.5 flex-wrap">
-                              {(() => {
-                                const discInfo = getProductDiscountInfo(item.product);
-                                if (discInfo.hasDiscount) {
-                                  return (
-                                    <>
-                                      <span className="line-through text-slate-400">Rs. {discInfo.basePrice.toFixed(2)}</span>
-                                      <span className="text-rose-600 font-black">Rs. {discInfo.effectivePrice.toFixed(2)}{isWeight ? '/kg' : ' each'}</span>
-                                    </>
-                                  );
-                                }
-                                return (
-                                  <span>Rs. {item.product.price.toFixed(2)}{isWeight ? '/kg' : ' each'}</span>
-                                );
-                              })()}
-                              <span>•</span>
-                              <span className="text-emerald-700 font-semibold">Stock: {item.product.stockQuantity}{isWeight ? 'kg' : ''}</span>
-                            </div>
-                          </div>
 
-                          {/* COMPULSORY QUANTITY CONTROLS */}
-                          <div className="flex items-center gap-1 bg-white border border-slate-300 rounded-xl p-1 shadow-xs">
-                            <button
-                              type="button"
-                              onClick={() => handleUpdateQuantity(item.product.id, Math.max(0, item.quantity - qtyStep))}
-                              className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-orange-100 hover:text-orange-700 text-slate-700 flex items-center justify-center cursor-pointer text-xs font-bold transition-colors"
-                              title={`Reduce quantity (-${qtyStep})`}
-                            >
-                              <Minus className="w-3.5 h-3.5" />
-                            </button>
-                            
-                            <input
-                              type="number"
-                              step={isWeight ? "0.001" : "1"}
-                              min="0.001"
-                              max={item.product.stockQuantity}
-                              value={item.quantity}
-                              onChange={(e) => {
-                                const val = parseFloat(e.target.value);
-                                if (!isNaN(val)) {
-                                  handleUpdateQuantity(item.product.id, val);
-                                }
-                              }}
-                              className="w-12 text-center bg-transparent text-slate-900 font-black text-xs focus:outline-none font-mono"
-                              title="Type exact weight or quantity directly"
-                            />
-
-                            <button
-                              type="button"
-                              onClick={() => handleUpdateQuantity(item.product.id, item.quantity + qtyStep)}
-                              className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-orange-100 hover:text-orange-700 text-slate-700 flex items-center justify-center cursor-pointer text-xs font-bold transition-colors"
-                              title={`Add quantity (+${qtyStep})`}
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => openManualQtyModal(item)}
-                              className="px-2 py-1 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 font-black text-[10px] transition-colors cursor-pointer flex items-center gap-0.5 shadow-2xs"
-                              title="Enter exact manual quantity"
-                            >
-                              <Calculator className="w-3 h-3" />
-                              <span>Qty</span>
-                            </button>
-                          </div>
-
-                          {/* Line Total and Instant Delete / Remove Button */}
-                          <div className="flex items-center gap-3 shrink-0">
-                            <div className="text-right">
-                              <div className="font-extrabold text-orange-600 text-xs font-mono">Rs. {item.totalPrice.toFixed(2)}</div>
-                              <div className="text-[10px] text-slate-400 font-mono">
-                                {isWeight ? `${item.quantity.toFixed(3)}kg` : `x${item.quantity}`}
+                            {/* Explicit Unit Price Badge */}
+                            <div className="flex items-center gap-2.5 flex-wrap pt-0.5">
+                              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-900 font-mono font-bold text-xs sm:text-sm">
+                                <span>Rs. {discInfo.effectivePrice.toFixed(2)}{isWeight ? '/kg' : ''}</span>
+                                {discInfo.hasDiscount && (
+                                  <span className="line-through text-slate-400 text-xs ml-1 font-mono">
+                                    Rs. {discInfo.basePrice.toFixed(2)}
+                                  </span>
+                                )}
                               </div>
+                              <span className="text-xs text-slate-500 font-mono">
+                                Stock: <strong className="text-emerald-700 font-black">{item.product.stockQuantity}{isWeight ? 'kg' : ''}</strong>
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* COMPACT DIRECT INLINE QUANTITY CONTROLS */}
+                          <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
+                            <div className="flex items-center gap-1 bg-white border border-slate-300 rounded-xl p-1 shadow-2xs">
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateQuantity(item.product.id, Math.max(0, item.quantity - qtyStep))}
+                                className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-100 hover:bg-orange-100 hover:text-orange-700 text-slate-800 flex items-center justify-center cursor-pointer text-sm font-black transition-colors"
+                                title={`Reduce quantity (-${qtyStep})`}
+                              >
+                                <Minus className="w-3.5 h-3.5" />
+                              </button>
+                              
+                              <input
+                                id={`standard-cart-qty-input-${item.product.id}`}
+                                type="number"
+                                inputMode={isWeight ? "decimal" : "numeric"}
+                                step={isWeight ? "0.001" : "1"}
+                                min="0"
+                                max={item.product.stockQuantity}
+                                value={item.quantity === 0 ? '' : item.quantity}
+                                placeholder="0"
+                                onFocus={(e) => {
+                                  e.target.select();
+                                }}
+                                onClick={(e) => {
+                                  (e.target as HTMLInputElement).select();
+                                }}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (val === '') {
+                                    handleUpdateQuantity(item.product.id, 0);
+                                    return;
+                                  }
+                                  const num = parseFloat(val);
+                                  if (!isNaN(num) && num >= 0) {
+                                    handleUpdateQuantity(item.product.id, num);
+                                  }
+                                }}
+                                onBlur={() => {
+                                  if (item.quantity <= 0) {
+                                    handleUpdateQuantity(item.product.id, 1);
+                                  }
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    if (item.quantity <= 0) {
+                                      handleUpdateQuantity(item.product.id, 1);
+                                    }
+                                    setLastEnteredProductId(null);
+                                    if (barcodeInputRef.current) {
+                                      barcodeInputRef.current.value = '';
+                                    }
+                                    setBarcodeInput('');
+                                    focusActiveScanner();
+                                  }
+                                }}
+                                className="w-16 sm:w-20 text-center bg-white text-slate-950 font-black text-sm sm:text-base border border-slate-300 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 rounded-lg font-mono py-1 px-1 cursor-text shadow-xs"
+                                title="Click or type to edit quantity (Press ENTER when done)"
+                              />
+
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateQuantity(item.product.id, item.quantity + qtyStep)}
+                                className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-100 hover:bg-orange-100 hover:text-orange-700 text-slate-800 flex items-center justify-center cursor-pointer text-sm font-black transition-colors"
+                                title={`Add quantity (+${qtyStep})`}
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                              </button>
                             </div>
 
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveItem(item.product.id)}
-                              className="p-2 rounded-xl bg-red-50 hover:bg-red-600 text-red-600 hover:text-white border border-red-200 hover:border-red-600 transition-all cursor-pointer shadow-xs group"
-                              title={`Delete "${item.product.name}" from cart`}
-                            >
-                              <Trash2 className="w-4 h-4 transition-transform group-hover:scale-110" />
-                            </button>
+                            {/* Line Total and Instant Delete / Remove Button */}
+                            <div className="flex items-center gap-2 shrink-0">
+                              <div className="text-right min-w-[75px] sm:min-w-[90px]">
+                                <div className="font-black text-orange-600 text-sm sm:text-base font-mono">Rs. {item.totalPrice.toFixed(2)}</div>
+                                <div className="text-xs text-slate-500 font-mono font-medium">
+                                  {isWeight ? `${item.quantity.toFixed(3)}kg` : `x${item.quantity}`}
+                                </div>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveItem(item.product.id)}
+                                className="p-2 rounded-xl bg-red-50 hover:bg-red-600 text-red-600 hover:text-white border border-red-200 hover:border-red-600 transition-all cursor-pointer shadow-2xs group"
+                                title={`Delete "${item.product.name}" from cart`}
+                              >
+                                <Trash2 className="w-4 h-4 transition-transform group-hover:scale-110" />
+                              </button>
+                            </div>
                           </div>
 
                         </motion.div>
@@ -2100,166 +2222,24 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
               )}
             </div>
 
-            {/* PAYMENT METHOD & TOTAL SUMMARY */}
-            <div className="pt-4 border-t border-slate-200 space-y-4">
-              
-              {/* Payment Method Selector (All Admin-Selected & Configured Methods) */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                    Payment Method
-                  </label>
-                  <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
-                    {configuredDigitalMethods.length + 1} Admin Configured
-                  </span>
-                </div>
-
-                {/* 2 Main Options: Cash and Digital Method */}
-                <div className="grid grid-cols-2 gap-2">
-                  {/* 1. CASH PAYMENT */}
-                  <button
-                    id="btn-payment-cash"
-                    type="button"
-                    onClick={() => {
-                      setPaymentMethod('cash');
-                    }}
-                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer relative ${
-                      paymentMethod === 'cash'
-                        ? 'bg-emerald-600 text-white border-emerald-700 shadow-md ring-2 ring-emerald-400/40 font-bold'
-                        : 'bg-emerald-50/70 border-emerald-200 hover:border-emerald-400 text-emerald-950'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <Banknote className={`w-5 h-5 ${paymentMethod === 'cash' ? 'text-white' : 'text-emerald-600'}`} />
-                      {paymentMethod === 'cash' && <Check className="w-4 h-4 text-white" />}
-                    </div>
-                    <div className="font-extrabold text-sm truncate">Cash</div>
-                    <div className={`text-[10px] truncate ${paymentMethod === 'cash' ? 'text-emerald-100' : 'text-slate-500'}`}>
-                      Physical Currency
-                    </div>
-                  </button>
-
-                  {/* 2. DIGITAL METHOD */}
-                  <button
-                    id="btn-payment-digital"
-                    type="button"
-                    onClick={() => {
-                      setPaymentMethod('online');
-                      if (!selectedDigitalProvider && configuredDigitalMethods.length > 0) {
-                        setSelectedDigitalProvider(configuredDigitalMethods[0].name);
-                      }
-                    }}
-                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer relative ${
-                      paymentMethod === 'online'
-                        ? 'bg-blue-600 text-white border-blue-700 shadow-md ring-2 ring-blue-400/40 font-bold'
-                        : 'bg-blue-50/70 border-blue-200 hover:border-blue-400 text-blue-950'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <CreditCard className={`w-5 h-5 ${paymentMethod === 'online' ? 'text-white' : 'text-blue-600'}`} />
-                      {paymentMethod === 'online' && <Check className="w-4 h-4 text-white" />}
-                    </div>
-                    <div className="font-extrabold text-sm truncate">Digital Method</div>
-                    <div className={`text-[10px] truncate ${paymentMethod === 'online' ? 'text-blue-100' : 'text-slate-500'}`}>
-                      Cards & Mobile Wallets
-                    </div>
-                  </button>
-                </div>
-
-                {/* SUB-GRID: Show all admin-added digital payment platforms when Digital Method is chosen */}
-                {paymentMethod === 'online' && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="mt-3 p-3.5 bg-blue-50/90 border border-blue-200 rounded-2xl space-y-2.5"
-                  >
-                    <div className="flex items-center justify-between text-xs font-black text-blue-950">
-                      <span>Select Digital Platform ({configuredDigitalMethods.length} Available):</span>
-                      <span className="text-[10px] bg-blue-200 text-blue-900 px-2 py-0.5 rounded-full font-bold">
-                        {selectedDigitalProvider || 'Choose one'}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      {configuredDigitalMethods.map((method) => {
-                        const isSubSelected = selectedDigitalProvider.toLowerCase().trim() === method.name.toLowerCase().trim();
-                        const meta = getPaymentMethodMeta(method.name);
-                        const IconComponent = meta.icon;
-
-                        return (
-                          <button
-                            key={method.id}
-                            type="button"
-                            onClick={() => setSelectedDigitalProvider(method.name)}
-                            className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer relative ${
-                              isSubSelected
-                                ? meta.activeClass
-                                : `${meta.bgClass}`
-                            }`}
-                          >
-                            <div className="flex items-center justify-between mb-0.5">
-                              <IconComponent className={`w-4 h-4 ${isSubSelected ? 'text-white' : 'text-slate-600'}`} />
-                              {isSubSelected && <Check className="w-3.5 h-3.5 text-white" />}
-                            </div>
-                            <div className="font-extrabold text-xs truncate">{method.name}</div>
-                            <div className={`text-[10px] truncate ${isSubSelected ? 'text-white/80' : 'text-slate-400'}`}>
-                              {method.instructions || 'Digital Payment'}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {selectedMethodConfig && (
-                      <div className="bg-white p-2.5 rounded-xl border border-blue-200 text-xs">
-                        <span className="font-bold text-slate-800">{selectedMethodConfig.name}</span>
-                        {selectedMethodConfig.instructions && (
-                          <p className="text-[11px] text-slate-600 mt-0.5">{selectedMethodConfig.instructions}</p>
-                        )}
-                      </div>
-                    )}
-                  </motion.div>
-                )}
+            {/* Bottom Checkout Action Area */}
+            <div className="pt-3 border-t border-slate-200 space-y-3 shrink-0">
+              <div className="flex items-center justify-between text-slate-900">
+                <span className="text-sm font-bold text-slate-500 uppercase tracking-wider">Payable Total</span>
+                <span className="text-2xl sm:text-3xl font-black text-orange-600 font-mono">
+                  Rs. {cartTotal.toFixed(2)}
+                </span>
               </div>
 
-              {/* Total Calculation Display Breakdown */}
-              <div className="bg-slate-900 text-white p-5 rounded-2xl border border-slate-800 space-y-2 shadow-lg relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
-
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Payable Grand Total</span>
-                    <span className="text-[10px] text-slate-400 font-medium">({cart.length} {cart.length === 1 ? 'item' : 'items'} in bill)</span>
-                  </div>
-                  <div className="text-2xl sm:text-3xl font-black text-amber-400 tracking-tight font-mono">
-                    Rs. {cartTotal.toFixed(2)}
-                  </div>
-                </div>
-              </div>
-
-              {/* Checkout Trigger */}
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                id="btn-complete-checkout"
-                onClick={handleCheckout}
-                disabled={checkoutLoading || cart.length === 0}
-                className="w-full py-4 bg-orange-600 hover:bg-orange-500 active:bg-orange-700 text-white font-extrabold text-sm rounded-2xl shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed uppercase tracking-wider"
+              <button
+                type="button"
+                onClick={() => setIsPaymentSummaryOpen(true)}
+                disabled={cart.length === 0}
+                className="w-full py-3 sm:py-3.5 bg-orange-600 hover:bg-orange-500 active:bg-orange-700 text-white font-black text-sm sm:text-base rounded-xl shadow-md transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed uppercase tracking-wider"
               >
-                {checkoutLoading ? (
-                  <>
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Processing Checkout...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="w-5 h-5" /> Complete Checkout & Issue Receipt
-                  </>
-                )}
-              </motion.button>
-
+                <CreditCard className="w-5 h-5" />
+                <span>Proceed to Payment (Shift+P)</span>
+              </button>
             </div>
 
           </motion.div>
@@ -2433,6 +2413,53 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           </div>
         )}
 
+        {/* Payment & Bill Summary Modal (Opened via Shift + P or Payment button) */}
+        <PaymentSummaryModal
+          isOpen={isPaymentSummaryOpen}
+          onClose={() => setIsPaymentSummaryOpen(false)}
+          cart={cart}
+          cartSubtotal={cartSubtotal}
+          cartTotal={cartTotal}
+          paymentMethod={paymentMethod}
+          setPaymentMethod={setPaymentMethod}
+          configuredDigitalMethods={configuredDigitalMethods}
+          selectedDigitalProvider={selectedDigitalProvider}
+          setSelectedDigitalProvider={setSelectedDigitalProvider}
+          onProceedToCashCheckout={(cashReceived, changeReturned) => {
+            setIsPaymentSummaryOpen(false);
+            if (cashReceived !== undefined && cashReceived >= cartTotal) {
+              executeCheckoutSale(cashReceived, changeReturned ?? (cashReceived - cartTotal));
+            } else {
+              setIsCashModalOpen(true);
+            }
+          }}
+          onCompleteDigitalCheckout={async () => {
+            setIsPaymentSummaryOpen(false);
+            await executeCheckoutSale(cartTotal, 0);
+          }}
+          checkoutLoading={checkoutLoading}
+          storeName={store.name}
+          counterName={`Counter #${currentUser.counterNumber || 1}`}
+        />
+
+        {/* Change to Give to Customer Modal (Displayed immediately after cash payment) */}
+        <CustomerChangeModal
+          isOpen={isChangeModalOpen}
+          onClose={() => {
+            setIsChangeModalOpen(false);
+            setIsReceiptOpen(true);
+          }}
+          onViewReceipt={() => {
+            setIsChangeModalOpen(false);
+            setIsReceiptOpen(true);
+          }}
+          sale={completedChangeData?.sale || completedSale}
+          store={store}
+          cashReceived={completedChangeData?.cashReceived || 0}
+          changeReturned={completedChangeData?.changeReturned || 0}
+          voiceEnabled={isVoiceAllowed && voiceEnabled}
+        />
+
         {/* Cash Payment Calculator Modal */}
         <CashPaymentModal
           isOpen={isCashModalOpen}
@@ -2519,25 +2546,17 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
             {/* Top Navigation & Header Bar */}
             <div className="bg-slate-900 text-white px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between shadow-md border-b border-slate-800 shrink-0 gap-2 sticky top-0 z-20">
               <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-                <button
-                  id="btn-close-cart-fullscreen"
-                  type="button"
-                  onClick={() => setIsCartFullScreen(false)}
-                  className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-black text-xs transition-all cursor-pointer shadow-sm group"
-                  title="Return to regular view (Press Esc)"
-                >
-                  <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
-                  <span className="hidden xs:inline">Back to Counter</span>
-                  <span className="text-[10px] bg-black/25 px-1.5 py-0.5 rounded font-mono font-normal">ESC</span>
-                </button>
-                <div className="hidden md:block border-l border-slate-700 pl-3">
+                <div className="w-9 h-9 rounded-xl bg-orange-600 flex items-center justify-center text-white font-black text-base shadow-sm">
+                  🛒
+                </div>
+                <div>
                   <div className="text-xs font-black text-white flex items-center gap-2">
                     <span>{store.name}</span>
                     <span className="text-orange-400 font-normal">•</span>
-                    <span className="text-orange-400">Full-Screen Billing Station</span>
+                    <span className="text-orange-400">Full-Screen POS Station</span>
                   </div>
                   <div className="text-[10px] text-slate-400 font-medium">
-                    Cashier: <strong className="text-slate-200">{currentUser.username}</strong>
+                    Counter #{currentUser.counterNumber || 1} • Cashier: <strong className="text-slate-200">{currentUser.username}</strong>
                   </div>
                 </div>
               </div>
@@ -2619,7 +2638,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                 </button>
               </div>
 
-              {/* Right Side Header Utilities */}
+              {/* Right Side Header Utilities & Log Out */}
               <div className="flex items-center gap-2 shrink-0">
                 <DownloadAppButton variant="header" />
 
@@ -2640,13 +2659,36 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                   </button>
                 )}
 
+                {/* Admin Back to Dashboard Button */}
+                {(onBack || currentUser.role === 'admin' || currentUser.role === 'store_admin' || currentUser.role === 'super_admin' || currentUser.role === 'branch_admin') && (
+                  <button
+                    type="button"
+                    onClick={handleBackWithAutoHold}
+                    className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-orange-600 hover:bg-orange-500 active:bg-orange-700 text-white font-black text-xs border border-orange-500 transition-all cursor-pointer shadow-md"
+                    title="Exit back to Admin Dashboard (ESC)"
+                  >
+                    <ArrowLeft className="w-4 h-4 text-white" />
+                    <span>Exit to Dashboard</span>
+                    <kbd className="px-1.5 py-0.5 rounded bg-black/40 text-[10px] font-mono text-orange-200 font-bold">ESC</kbd>
+                  </button>
+                )}
+
+                {/* Log Out Button */}
                 <button
+                  id="btn-pos-logout"
                   type="button"
-                  onClick={() => setIsCartFullScreen(false)}
-                  className="p-1.5 sm:p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
-                  title="Exit Full Screen"
+                  onClick={() => {
+                    if (onLogout) {
+                      onLogout();
+                    } else if (onBack) {
+                      onBack();
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-red-600 hover:bg-red-500 active:bg-red-700 text-white font-black text-xs shadow-md transition-all cursor-pointer"
+                  title="Log out of Cashier session"
                 >
-                  <Minimize2 className="w-4 h-4" />
+                  <LogOut className="w-4 h-4" />
+                  <span>Log Out</span>
                 </button>
               </div>
             </div>
@@ -2661,7 +2703,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                 className="flex items-center gap-2 max-w-5xl mx-auto"
               >
                 <div className="relative flex-1">
-                  <BarcodeIcon className="w-5 h-5 text-orange-600 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <BarcodeIcon className="w-6 h-6 text-orange-600 absolute left-4 top-1/2 -translate-y-1/2" />
                   <input
                     ref={fullScreenScanInputRef}
                     id="fullscreen-barcode-input"
@@ -2670,64 +2712,59 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                     autoComplete="off"
                     autoCorrect="off"
                     spellCheck={false}
-                    placeholder="Scan barcode with laser reader or type 4-digit shortcut code (e.g. 1001) / SKU..."
+                    placeholder="Scan barcode with laser reader or type Barcode / 4-digit code (e.g. 1001)..."
                     value={fullScreenScanInput}
                     onChange={(e) => {
-                      const cleaned = e.target.value.replace(/[\r\n]/g, '');
+                      const cleaned = e.target.value.replace(/[\r\n\t]/g, '');
                       setFullScreenScanInput(cleaned);
                     }}
                     onFocus={(e) => {
                       e.target.select();
                     }}
                     onKeyDown={(e) => {
+                      if (e.key === 'Escape') {
+                        e.preventDefault();
+                        if (onBack) {
+                          handleBackWithAutoHold();
+                        }
+                        return;
+                      }
                       if (e.key === 'Enter') {
                         e.preventDefault();
                         e.stopPropagation();
-                        handleProcessFullScreenScan();
+                        const val = (fullScreenScanInput || fullScreenScanInputRef.current?.value || '').trim();
+                        if (val) {
+                          handleProcessFullScreenScan(val);
+                        } else {
+                          setFullScreenScanInput('');
+                          if (fullScreenScanInputRef.current) fullScreenScanInputRef.current.value = '';
+                          focusActiveScanner();
+                        }
                       }
                     }}
                     onBlur={(e) => {
                       const related = e.relatedTarget as HTMLElement | null;
                       const isInteractive = related?.tagName === 'BUTTON' || related?.tagName === 'INPUT' || related?.tagName === 'SELECT' || related?.tagName === 'TEXTAREA' || related?.tagName === 'A';
-                      const isAnyModalOpen = isScannerOpen || isReceiptOpen || isReturnModalOpen || isReturnSlipOpen || isCashModalOpen || isWeightModalOpen || isHeldBillsModalOpen || isShortcutsModalOpen || Boolean(viewingDigitalQr) || Boolean(viewingBankQr);
+                      const isAnyModalOpen = isScannerOpen || isReceiptOpen || isChangeModalOpen || isReturnModalOpen || isReturnSlipOpen || isCashModalOpen || isPaymentSummaryOpen || isWeightModalOpen || isHeldBillsModalOpen || isShortcutsModalOpen || Boolean(viewingDigitalQr) || Boolean(viewingBankQr);
                       if (!isInteractive && !isAnyModalOpen && isCartFullScreen) {
                         setTimeout(focusActiveScanner, 20);
                       }
                     }}
-                    className="w-full pl-11 pr-24 py-2.5 bg-slate-50 border-2 border-orange-300 focus:border-orange-600 focus:bg-white rounded-xl text-slate-900 font-mono text-xs sm:text-sm font-bold shadow-inner focus:outline-none transition-all"
+                    className="w-full pl-12 pr-32 py-3.5 bg-slate-50 border-2 border-orange-400 focus:border-orange-600 focus:bg-white rounded-2xl text-slate-900 font-mono text-base sm:text-lg font-black shadow-inner focus:outline-none transition-all"
                   />
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none">
+                  <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none">
                     {scannerLastScannedStatus ? (
-                      <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full animate-pulse">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-600" /> {scannerLastScannedStatus}
+                      <span className="hidden sm:inline-flex items-center gap-1 text-xs font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded-full animate-pulse">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> {scannerLastScannedStatus}
                       </span>
                     ) : (
-                      <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" /> Ready for scan
+                      <span className="hidden sm:inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" /> Ready
                       </span>
                     )}
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-bold">↵ ENTER</span>
+                    <span className="text-xs sm:text-sm font-mono px-2.5 py-1 rounded bg-slate-200 text-slate-800 font-bold">↵ ENTER to Add</span>
                   </div>
                 </div>
-
-                <button
-                  type="submit"
-                  className="px-4 sm:px-5 py-2.5 bg-orange-600 hover:bg-orange-500 text-white font-black text-xs sm:text-sm rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
-                >
-                  <Plus className="w-4 h-4" /> <span>Add</span>
-                </button>
-
-                {isCameraScannerAllowed && (
-                  <button
-                    type="button"
-                    onClick={() => setIsScannerOpen(true)}
-                    className="px-3 sm:px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold text-xs sm:text-sm rounded-xl border border-slate-700 shadow-xs transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
-                    title="Open camera barcode scanner"
-                  >
-                    <Camera className="w-4 h-4 text-orange-400" />
-                    <span className="hidden sm:inline">Camera</span>
-                  </button>
-                )}
               </form>
 
               {/* Fast Shortcut Actions Ribbon */}
@@ -2915,19 +2952,19 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
             </AnimatePresence>
 
             {/* Main Full-Screen Layout */}
-            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 p-3 sm:p-6 overflow-y-auto overscroll-contain custom-scrollbar min-h-0 max-w-7xl mx-auto w-full">
-              {/* LEFT 8 COLS: Large Cart Items Table / List */}
-              <div className="lg:col-span-8 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden min-h-[360px] lg:min-h-0">
-                <div className="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
+            <div className="flex-1 flex flex-col p-2 sm:p-4 overflow-hidden min-h-0 max-w-[99vw] 2xl:max-w-[1800px] mx-auto w-full">
+              {/* Full Width Cart Items Table / List */}
+              <div className="flex-1 flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden min-h-0">
+                <div className="px-4 py-2.5 sm:px-5 sm:py-3 border-b border-slate-200 flex items-center justify-between bg-slate-50/70 shrink-0">
                   <div className="flex items-center gap-2">
                     <ShoppingBag className="w-4 h-4 text-orange-600" />
-                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-800">
+                    <h3 className="text-xs sm:text-sm font-black uppercase tracking-wider text-slate-800">
                       Full-Screen Active Cart ({cart.length} {cart.length === 1 ? 'item' : 'items'})
                     </h3>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-[11px] text-slate-500 font-medium hidden sm:inline">
-                      Shortcut codes & items shown below
+                      Enter product barcode/code & press Enter • Press Enter in quantity to confirm & scan next
                     </span>
                     {cart.length > 0 && (
                       <button
@@ -2943,11 +2980,11 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                 </div>
 
                 {cart.length === 0 ? (
-                  <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50/40">
-                    <div className="w-16 h-16 rounded-2xl bg-orange-50 text-orange-500 flex items-center justify-center mb-3 shadow-xs">
-                      <BarcodeIcon className="w-8 h-8" />
+                  <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50/40 min-h-[300px]">
+                    <div className="w-14 h-14 rounded-2xl bg-orange-50 text-orange-500 flex items-center justify-center mb-3 shadow-xs">
+                      <BarcodeIcon className="w-7 h-7" />
                     </div>
-                    <h4 className="text-base font-bold text-slate-800">Cart is Empty in Full Screen</h4>
+                    <h4 className="text-sm sm:text-base font-bold text-slate-800">Cart is Empty in Full Screen</h4>
                     <p className="text-xs text-slate-500 max-w-md mt-1">
                       Scan product barcode with laser reader, type 4-digit code (e.g. <strong>1001</strong>), or use the Quick Shortcuts Tray to start adding items.
                     </p>
@@ -2973,7 +3010,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                     </div>
                   </div>
                 ) : (
-                  <div className="flex-1 overflow-y-auto custom-scrollbar divide-y divide-slate-100">
+                  <div className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar divide-y divide-slate-100 min-h-0">
                     {cart.map((item, idx) => {
                       const isWeight = item.product.sellBy === 'weight' || item.product.unitType === 'kg' || Boolean(item.product.pricePerKg);
                       const qtyStep = isWeight ? 0.25 : 1;
@@ -2982,11 +3019,15 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                       return (
                         <div
                           key={item.product.id}
-                          className="p-4 flex items-center justify-between gap-4 hover:bg-orange-50/30 transition-colors"
+                          className={`py-1.5 px-3 sm:py-2 sm:px-4 flex flex-col md:flex-row md:items-center justify-between gap-2.5 transition-colors border-b ${
+                            lastEnteredProductId === item.product.id
+                              ? 'bg-emerald-50/80 border-2 border-emerald-400 ring-2 ring-emerald-400/30'
+                              : 'hover:bg-orange-50/30 bg-white border-slate-100'
+                          }`}
                         >
-                          {/* Item Index & Picture */}
+                          {/* Item Index, Picture & Main Info */}
                           <div className="flex items-center gap-3 flex-1 min-w-0">
-                            <span className="text-xs font-mono font-bold text-slate-400 w-5 text-right">
+                            <span className="text-sm sm:text-base font-mono font-black text-slate-500 w-6 text-right shrink-0">
                               {idx + 1}.
                             </span>
 
@@ -2994,25 +3035,25 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                               <img
                                 src={item.product.imageUrl}
                                 alt={item.product.name}
-                                className="w-12 h-12 rounded-xl object-cover border border-slate-200 shrink-0"
+                                className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl object-cover border border-slate-200 shrink-0 shadow-2xs"
                                 referrerPolicy="no-referrer"
                               />
                             ) : (
-                              <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+                              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0 shadow-2xs">
                                 <Package className="w-5 h-5" />
                               </div>
                             )}
 
-                            <div className="min-w-0 flex-1">
+                            <div className="min-w-0 flex-1 space-y-1">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-extrabold text-slate-900 text-sm truncate">
+                                <span className="font-black text-slate-900 text-sm sm:text-base md:text-lg truncate">
                                   {item.product.name}
                                 </span>
 
-                                {/* 4-DIGIT SHORTCUT CODE BADGE (PROMINENTLY SHOWN IN FULL SCREEN) */}
+                                {/* 4-DIGIT SHORTCUT CODE BADGE */}
                                 {item.product.shortcutCode && (
-                                  <span className="px-2 py-0.5 rounded-lg bg-orange-100 text-orange-900 border border-orange-200 font-mono font-black text-xs flex items-center gap-1 shadow-2xs">
-                                    <Hash className="w-3 h-3 text-orange-600" />
+                                  <span className="px-2 py-0.5 rounded-md bg-orange-100 text-orange-950 border border-orange-200 font-mono font-black text-xs sm:text-sm flex items-center gap-1">
+                                    <Hash className="w-3.5 h-3.5 text-orange-600" />
                                     <span>#{item.product.shortcutCode}</span>
                                   </span>
                                 )}
@@ -3024,276 +3065,168 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                                       setWeightPromptProduct(item.product);
                                       setIsWeightModalOpen(true);
                                     }}
-                                    className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-bold text-[10px] flex items-center gap-0.5 hover:bg-amber-200 cursor-pointer transition-colors"
+                                    className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-950 font-bold text-xs sm:text-sm flex items-center gap-1 hover:bg-amber-200 cursor-pointer transition-colors border border-amber-300"
                                     title="Click to adjust weight in scale calculator"
                                   >
-                                    <Scale className="w-3 h-3 text-amber-700" /> KG
+                                    <Scale className="w-3.5 h-3.5 text-amber-700" /> Scale KG
                                   </button>
                                 )}
 
                                 {discInfo.hasDiscount && (
-                                  <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 font-black text-[9px] uppercase border border-rose-200">
+                                  <span className="px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 font-bold text-xs sm:text-sm uppercase border border-rose-200">
                                     {discInfo.discountLabel}
                                   </span>
                                 )}
                               </div>
 
-                              <div className="text-[11px] text-slate-500 font-mono mt-0.5 flex items-center gap-2 flex-wrap">
-                                <span>Code: {item.product.barcode || item.product.serialNumber || 'N/A'}</span>
-                                <span>•</span>
-                                {discInfo.hasDiscount ? (
-                                  <>
-                                    <span className="line-through text-slate-400">Rs. {discInfo.basePrice.toFixed(2)}</span>
-                                    <span className="text-rose-600 font-black">Rs. {discInfo.effectivePrice.toFixed(2)}{isWeight ? '/kg' : ''}</span>
-                                  </>
-                                ) : (
-                                  <span>Rate: Rs. {item.product.price.toFixed(2)}{isWeight ? '/kg' : ''}</span>
-                                )}
-                                <span>•</span>
-                                <span className="text-emerald-700 font-semibold">Stock: {item.product.stockQuantity}{isWeight ? 'kg' : ''}</span>
+                              {/* Unit Price & Stock Details */}
+                              <div className="flex items-center gap-2.5 text-xs sm:text-sm text-slate-700 font-medium flex-wrap">
+                                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-900 font-mono font-bold text-xs sm:text-sm">
+                                  <span>Rs. {discInfo.effectivePrice.toFixed(2)}{isWeight ? '/kg' : ' each'}</span>
+                                  {discInfo.hasDiscount && (
+                                    <span className="line-through text-slate-400 text-xs ml-1.5 font-mono">
+                                      Rs. {discInfo.basePrice.toFixed(2)}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <span className="text-slate-300">•</span>
+                                <span className="font-mono text-slate-600 text-xs sm:text-sm">
+                                  Code: <strong className="text-slate-900">{item.product.barcode || item.product.serialNumber || 'N/A'}</strong>
+                                </span>
+                                <span className="text-slate-300">•</span>
+                                <span className="text-emerald-700 font-black text-xs sm:text-sm">
+                                  Stock: {item.product.stockQuantity}{isWeight ? 'kg' : ' units'}
+                                </span>
                               </div>
                             </div>
                           </div>
 
-                          {/* Quantity Controls */}
-                          <div className="flex items-center gap-2 shrink-0">
+                          {/* Right Controls: Quantity & Total & Remove */}
+                          <div className="flex items-center justify-between md:justify-end gap-3 sm:gap-4 shrink-0 pt-1 md:pt-0 border-t md:border-t-0 border-slate-100">
+                            
+                            {/* Quantity Controls (Compact & Direct inline editing) */}
+                            <div className="flex items-center gap-1 bg-slate-50 border border-slate-300 rounded-xl p-1 shadow-2xs">
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateQuantity(item.product.id, Math.max(0, item.quantity - qtyStep))}
+                                className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-white hover:bg-slate-200 text-slate-800 font-black flex items-center justify-center cursor-pointer transition-colors shadow-2xs border border-slate-200"
+                                title="Reduce quantity"
+                              >
+                                <Minus className="w-4 h-4 text-slate-700" />
+                              </button>
+
+                              <input
+                                id={`cart-qty-input-${item.product.id}`}
+                                type="number"
+                                inputMode={isWeight ? "decimal" : "numeric"}
+                                step={isWeight ? "0.01" : "1"}
+                                min="0"
+                                max={item.product.stockQuantity}
+                                value={item.quantity === 0 ? '' : item.quantity}
+                                placeholder="0"
+                                onFocus={(e) => {
+                                  e.target.select();
+                                }}
+                                onClick={(e) => {
+                                  (e.target as HTMLInputElement).select();
+                                }}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (val === '') {
+                                    handleUpdateQuantity(item.product.id, 0);
+                                    return;
+                                  }
+                                  const num = parseFloat(val);
+                                  if (!isNaN(num) && num >= 0) {
+                                    handleUpdateQuantity(item.product.id, num);
+                                  }
+                                }}
+                                onBlur={() => {
+                                  if (item.quantity <= 0) {
+                                    handleUpdateQuantity(item.product.id, 1);
+                                  }
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    if (item.quantity <= 0) {
+                                      handleUpdateQuantity(item.product.id, 1);
+                                    }
+                                    setLastEnteredProductId(null);
+                                    if (fullScreenScanInputRef.current) {
+                                      fullScreenScanInputRef.current.value = '';
+                                    }
+                                    setFullScreenScanInput('');
+                                    focusActiveScanner();
+                                  }
+                                }}
+                                className="w-18 sm:w-24 py-1.5 px-2 text-center font-mono font-black text-base sm:text-lg text-slate-950 bg-white border-2 border-slate-300 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 rounded-lg focus:outline-none shadow-xs cursor-text transition-all"
+                                title="Click or type to edit quantity (Press ENTER when done)"
+                              />
+
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateQuantity(item.product.id, item.quantity + qtyStep)}
+                                className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-white hover:bg-slate-200 text-slate-800 font-black flex items-center justify-center cursor-pointer transition-colors shadow-2xs border border-slate-200"
+                                title="Increase quantity"
+                              >
+                                <Plus className="w-4 h-4 text-slate-700" />
+                              </button>
+                            </div>
+
+                            {/* Item Total Price */}
+                            <div className="text-right min-w-[85px] sm:min-w-[105px] shrink-0">
+                              <div className="font-mono font-black text-base sm:text-lg text-orange-600">
+                                Rs. {item.totalPrice.toFixed(2)}
+                              </div>
+                              <div className="text-xs text-slate-500 font-mono font-medium">
+                                {item.quantity} × Rs. {discInfo.effectivePrice.toFixed(2)}
+                              </div>
+                            </div>
+
+                            {/* Delete Item */}
                             <button
                               type="button"
-                              onClick={() => handleUpdateQuantity(item.product.id, Math.max(0, item.quantity - qtyStep))}
-                              className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-black flex items-center justify-center cursor-pointer transition-colors"
-                              title="Reduce quantity"
+                              onClick={() => handleRemoveItem(item.product.id)}
+                              className="p-2 text-slate-400 hover:text-white hover:bg-red-600 rounded-xl cursor-pointer transition-all shrink-0 border border-slate-200 hover:border-red-600"
+                              title="Remove item"
                             >
-                              <Minus className="w-3.5 h-3.5" />
-                            </button>
-
-                            <input
-                              type="number"
-                              step={isWeight ? "0.01" : "1"}
-                              min="0"
-                              value={item.quantity}
-                              onChange={(e) => {
-                                const val = parseFloat(e.target.value);
-                                if (!isNaN(val)) {
-                                  handleUpdateQuantity(item.product.id, val);
-                                }
-                              }}
-                              className="w-16 py-1 text-center font-mono font-black text-sm bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:border-orange-500"
-                            />
-
-                            <button
-                              type="button"
-                              onClick={() => handleUpdateQuantity(item.product.id, item.quantity + qtyStep)}
-                              className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-black flex items-center justify-center cursor-pointer transition-colors"
-                              title="Increase quantity"
-                            >
-                              <Plus className="w-3.5 h-3.5" />
+                              <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
-
-                          {/* Item Total Price */}
-                          <div className="text-right min-w-[90px] shrink-0">
-                            <div className="font-mono font-black text-sm text-orange-600">
-                              Rs. {item.totalPrice.toFixed(2)}
-                            </div>
-                            <div className="text-[10px] text-slate-400">
-                              {item.quantity} × Rs. {discInfo.effectivePrice.toFixed(2)}
-                            </div>
-                          </div>
-
-                          {/* Delete Item */}
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveItem(item.product.id)}
-                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg cursor-pointer transition-colors shrink-0"
-                            title="Remove item"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
                         </div>
                       );
                     })}
                   </div>
                 )}
-              </div>
 
-              {/* RIGHT 4 COLS: Payment & Total Station */}
-              <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-6 flex flex-col justify-between overflow-y-auto custom-scrollbar space-y-4">
-                <div className="space-y-4">
-                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 border-b border-slate-200 pb-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Calculator className="w-4 h-4 text-orange-600" />
-                      <span>Payment Summary</span>
-                    </div>
-                    <span className="text-[11px] text-slate-500 font-bold">
-                      Counter #{currentUser.counterNumber || 1}
-                    </span>
-                  </h3>
-
-                  {/* Payment Method Selector in Full Screen (All Admin Selected & Configured Methods) */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-[11px] font-black text-slate-700 uppercase tracking-wider flex items-center gap-1">
-                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                        Payment Method
-                      </label>
-                      <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
-                        {paymentMethod === 'cash' ? 'Cash' : (isCustomDigitalSelected ? (customDigitalProviderInput.trim() || 'Custom') : selectedDigitalProvider)}
+                {/* Bottom Total Bar inside Full Width Cart Panel */}
+                <div className="bg-slate-900 text-white px-4 py-3 sm:px-6 sm:py-4 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3.5 shrink-0">
+                  <div className="flex items-center gap-4">
+                    <div>
+                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Payable Total</span>
+                      <span className="text-2xl sm:text-3xl md:text-4xl font-black text-amber-400 font-mono tracking-tight">
+                        Rs. {cartTotal.toFixed(2)}
                       </span>
                     </div>
-
-                    {/* 2 Main Options: Cash and Digital Method */}
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {/* Cash */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPaymentMethod('cash');
-                        }}
-                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer text-xs ${
-                          paymentMethod === 'cash'
-                            ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs font-bold'
-                            : 'bg-emerald-50/70 border-emerald-200 hover:border-emerald-400 text-emerald-950'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-extrabold flex items-center gap-1 truncate">
-                            <Banknote className="w-4 h-4 shrink-0" />
-                            Cash
-                          </span>
-                          {paymentMethod === 'cash' && <Check className="w-3.5 h-3.5 text-white shrink-0" />}
-                        </div>
-                      </button>
-
-                      {/* Digital Method */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPaymentMethod('online');
-                          if (!selectedDigitalProvider && configuredDigitalMethods.length > 0) {
-                            setSelectedDigitalProvider(configuredDigitalMethods[0].name);
-                          }
-                        }}
-                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer text-xs ${
-                          paymentMethod === 'online'
-                            ? 'bg-blue-600 text-white border-blue-700 shadow-xs font-bold'
-                            : 'bg-blue-50/70 border-blue-200 hover:border-blue-400 text-blue-950'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-extrabold flex items-center gap-1 truncate">
-                            <CreditCard className="w-4 h-4 shrink-0" />
-                            Digital Method
-                          </span>
-                          {paymentMethod === 'online' && <Check className="w-3.5 h-3.5 text-white shrink-0" />}
-                        </div>
-                      </button>
-                    </div>
-
-                    {/* Sub-grid for Digital Platforms when Digital Method is chosen */}
-                    {paymentMethod === 'online' && (
-                      <div className="mt-2.5 p-2.5 bg-blue-50/90 border border-blue-200 rounded-xl space-y-2">
-                        <div className="text-[10px] font-black uppercase text-blue-950">
-                          Select Platform ({configuredDigitalMethods.length}):
-                        </div>
-                        <div className="grid grid-cols-2 gap-1.5">
-                          {configuredDigitalMethods.map((method) => {
-                            const isSubSelected = selectedDigitalProvider.toLowerCase().trim() === method.name.toLowerCase().trim();
-                            const meta = getPaymentMethodMeta(method.name);
-                            const IconComponent = meta.icon;
-
-                            return (
-                              <button
-                                key={method.id}
-                                type="button"
-                                onClick={() => setSelectedDigitalProvider(method.name)}
-                                className={`p-2 rounded-lg border text-left transition-all cursor-pointer text-[11px] ${
-                                  isSubSelected
-                                    ? `${meta.activeClass} text-white font-bold`
-                                    : `${meta.bgClass}`
-                                }`}
-                              >
-                                <div className="flex items-center justify-between">
-                                  <span className="font-bold truncate flex items-center gap-1">
-                                    <IconComponent className="w-3 h-3 shrink-0" />
-                                    {method.name}
-                                  </span>
-                                  {isSubSelected && <Check className="w-3 h-3 text-white shrink-0" />}
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Pricing Breakdown */}
-                  <div className="space-y-2 bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs">
-                    <div className="flex justify-between text-slate-600">
-                      <span>Subtotal ({cart.length} {cart.length === 1 ? 'item' : 'items'})</span>
-                      <span className="font-mono font-bold text-slate-900">Rs. {cartSubtotal.toFixed(2)}</span>
+                    <div className="text-sm text-slate-300 font-bold border-l border-slate-700 pl-4 hidden sm:block">
+                      {cart.length} {cart.length === 1 ? 'item' : 'items'} in current bill
                     </div>
                   </div>
 
-                  {/* Net Payable Grand Total */}
-                  <div className="bg-orange-50 border-2 border-orange-200 p-4 rounded-2xl text-center space-y-1 shadow-xs">
-                    <span className="text-xs font-black uppercase tracking-wider text-orange-900">
-                      Net Total Payable
+                  <button
+                    type="button"
+                    onClick={() => setIsPaymentSummaryOpen(true)}
+                    disabled={cart.length === 0}
+                    className="w-full sm:w-auto px-7 py-3 sm:py-3.5 bg-orange-600 hover:bg-orange-500 active:bg-orange-700 text-white font-black text-sm sm:text-base rounded-xl shadow-md transition-all flex items-center justify-center gap-3 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed uppercase tracking-wider"
+                  >
+                    <CreditCard className="w-5 h-5 text-white" />
+                    <span>Proceed to Payment</span>
+                    <span className="px-2 py-0.5 rounded-lg bg-black/30 text-amber-300 text-xs font-mono font-black border border-amber-400/30">
+                      Shift + P
                     </span>
-                    <div className="text-3xl font-black font-mono text-orange-600">
-                      Rs. {cartTotal.toFixed(2)}
-                    </div>
-                  </div>
-
-                  {/* Fast Secondary Actions inside summary: Hold Bill & Access Bills */}
-                  <div className="grid grid-cols-2 gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={handleHoldBill}
-                      disabled={cart.length === 0}
-                      className="py-2 px-2 bg-amber-50 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed border border-amber-300 text-amber-900 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all"
-                      title="Hold active bill (H + D)"
-                    >
-                      <PauseCircle className="w-3.5 h-3.5 text-amber-600" />
-                      <span>Hold Bill (H+D)</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setIsHeldBillsModalOpen(true)}
-                      className="py-2 px-2 bg-purple-50 hover:bg-purple-100 border border-purple-300 text-purple-900 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all"
-                      title="Access parked bills (A + S)"
-                    >
-                      <Receipt className="w-3.5 h-3.5 text-purple-600" />
-                      <span>Access Bills ({heldBills.length})</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Primary Action Buttons */}
-                <div className="space-y-2.5 pt-3">
-                  <button
-                    type="button"
-                    disabled={cart.length === 0 || checkoutLoading}
-                    onClick={() => {
-                      if (paymentMethod === 'cash') {
-                        setIsCashModalOpen(true);
-                      } else {
-                        executeCheckoutSale(cartTotal, 0);
-                      }
-                    }}
-                    className="w-full py-3.5 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-black text-sm rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
-                  >
-                    <CheckCircle2 className="w-5 h-5" /> 
-                    {paymentMethod === 'cash' ? 'Collect Cash & Issue Receipt' : 'Complete Digital Sale'}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsCartFullScreen(false)}
-                    className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                  >
-                    <ArrowLeft className="w-4 h-4" /> Exit Full Screen (Come Back)
                   </button>
                 </div>
               </div>
@@ -3394,6 +3327,60 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
             title="POS Live Barcode Scanner"
             subtitle="Point camera at product barcode or type code and press Send"
           />
+        )}
+
+        {/* Mobile Sticky Bottom Floating Checkout Bar (Visible on mobile screens < lg when cart has items) */}
+        {cart.length > 0 && mobileTab === 'catalog' && !isCartFullScreen && (
+          <motion.div
+            initial={{ y: 80, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 80, opacity: 0 }}
+            className="lg:hidden fixed bottom-0 left-0 right-0 z-40 p-3 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 shadow-2xl safe-area-bottom"
+          >
+            <div className="flex items-center justify-between gap-3 max-w-lg mx-auto">
+              <div 
+                onClick={() => setMobileTab('cart')}
+                className="cursor-pointer flex items-center gap-2.5 min-w-0"
+              >
+                <div className="w-10 h-10 rounded-xl bg-orange-600 flex items-center justify-center text-white shrink-0 font-mono font-black text-sm relative">
+                  🛒
+                  <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-amber-400 text-slate-950 rounded-full flex items-center justify-center text-[10px] font-black border-2 border-slate-900">
+                    {cart.length}
+                  </span>
+                </div>
+                <div className="truncate">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider truncate">
+                    {cart.reduce((s, i) => s + (i.product.sellBy === 'weight' ? 1 : i.quantity), 0)} items in Cart
+                  </div>
+                  <div className="text-base font-black text-amber-400 font-mono">
+                    Rs. {cartTotal.toFixed(2)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {isCameraScannerAllowed && (
+                  <button
+                    type="button"
+                    onClick={() => setIsScannerOpen(true)}
+                    className="p-3 bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-orange-400 rounded-xl border border-slate-700 text-xs font-bold transition-all cursor-pointer flex items-center justify-center"
+                    title="Open Camera Scanner"
+                  >
+                    <Camera className="w-5 h-5" />
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setIsPaymentSummaryOpen(true)}
+                  className="px-4 py-3 bg-orange-600 hover:bg-orange-500 active:bg-orange-700 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <span>Proceed to Payment</span>
+                  <CheckCircle2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </motion.div>
         )}
 
       </div>

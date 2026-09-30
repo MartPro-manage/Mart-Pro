@@ -693,7 +693,7 @@ export const StoreAiAssistantModal: React.FC<StoreAiAssistantModalProps> = ({
           category: addResult.category,
           barcode: addResult.barcode,
           shortcutCode: addResult.shortcutCode,
-          serialNumber: addResult.barcode,
+          serialNumber: addResult.shortcutCode,
           sellBy: addResult.sellBy,
           unitType: addResult.unitType,
           weight: addResult.sellBy === 'weight' ? (addResult.unitType === 'kg' ? '1 kg' : '1 Liter') : undefined,

@@ -223,6 +223,7 @@ export default function App() {
             store={activeStore} 
             currentUser={auth.user} 
             onBack={handleUniversalReturn}
+            onLogout={handleLogout}
           />
         )}
 

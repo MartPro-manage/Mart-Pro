@@ -26,6 +26,7 @@ import {
   Coins
 } from 'lucide-react';
 import { speakMessage } from '../lib/speech';
+import { printThermalReceiptDirect } from '../utils/printThermalReceipt';
 
 interface ReceiptModalProps {
   sale: Sale | null;
@@ -200,7 +201,6 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
             <div>
               <div class="flex-row"><span>Cash Counter:</span><strong>${sale.counterName}</strong></div>
-              <div class="flex-row"><span>Cashier:</span><strong>${sale.cashierUsername}</strong></div>
               <div class="flex-row"><span>Payment Method:</span><strong class="uppercase">${sale.paymentMethod === 'online' ? `ONLINE (${sale.onlinePaymentProvider || 'DIGITAL'})` : 'CASH'}${sale.onlineTransactionId ? ` [Ref: ${sale.onlineTransactionId}]` : ''}</strong></div>
             </div>
 
@@ -209,7 +209,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             <table>
               <thead>
                 <tr>
-                  <th>Product</th>
+                  <th>Product & Discount</th>
                   <th class="text-center">Qty</th>
                   <th class="text-right">Price</th>
                   <th class="text-right">Total</th>
@@ -219,9 +219,14 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 ${(sale.items || []).map(item => {
                   const isWeight = item.sellBy === 'weight' || item.unitType === 'kg' || (item.quantity || 0) % 1 !== 0;
                   const qtyText = isWeight ? `${(item.quantity || 0) % 1 === 0 ? (item.quantity || 0) : (item.quantity || 0).toFixed(3)} kg` : (item.quantity || 0).toString();
+                  const hasDiscount = item.originalPrice && item.originalPrice > item.price;
                   return `
                     <tr>
-                      <td><strong>${item.name}</strong>${item.weightInfo ? `<br/><small style="color:#64748b">${item.weightInfo}</small>` : ''}</td>
+                      <td>
+                        <strong>${item.name}</strong>
+                        ${hasDiscount ? `<br/><small style="color:#047857; font-weight:700;">Reg: ${curr} ${item.originalPrice?.toFixed(2)} (Disc Applied)</small>` : ''}
+                        ${item.weightInfo ? `<br/><small style="color:#64748b">${item.weightInfo}</small>` : ''}
+                      </td>
                       <td class="text-center font-bold">${qtyText}</td>
                       <td class="text-right">${curr} ${(item.price || 0).toFixed(2)}${isWeight ? '/kg' : ''}</td>
                       <td class="text-right font-bold">${curr} ${(item.total || 0).toFixed(2)}</td>
@@ -345,168 +350,40 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     };
   }, [sale, store, receiptUrl]);
 
+  // Keydown listener for quick print and close
+  useEffect(() => {
+    if (!isOpen || !sale) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'p' || e.key === 'P') {
+        e.preventDefault();
+        handlePrint();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, sale, qrCodeDataUrl]);
+
   if (!isOpen || !sale) return null;
 
-  const handlePrint = () => {
-    setPrintStatus('Preparing printer...');
-    const storeName = store?.name || 'SUPERMARKET';
-    const dateStr = new Date(sale.timestamp).toLocaleString();
-
-    const receiptHtml = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Receipt #${sale.receiptNumber}</title>
-          <style>
-            @page {
-              size: 80mm auto;
-              margin: 0;
-            }
-            body {
-              font-family: 'Courier New', Courier, monospace;
-              width: 78mm;
-              margin: 0 auto;
-              padding: 12px;
-              color: #000;
-              background: #fff;
-              font-size: 11px;
-              line-height: 1.3;
-            }
-            .text-center { text-align: center; }
-            .text-right { text-align: right; }
-            .font-bold { font-weight: bold; }
-            .uppercase { text-transform: uppercase; }
-            .divider { border-top: 1px dashed #000; margin: 8px 0; }
-            .double-divider { border-top: 2px solid #000; margin: 8px 0; }
-            .store-title { font-size: 16px; font-weight: bold; letter-spacing: -0.5px; margin-bottom: 2px; }
-            .sub-title { font-size: 10px; font-weight: bold; letter-spacing: 1px; color: #333; margin-bottom: 4px; }
-            .meta-line { font-size: 10px; color: #444; }
-            .flex-row { display: flex; justify-content: space-between; font-size: 11px; }
-            table { width: 100%; border-collapse: collapse; margin: 6px 0; }
-            th { border-bottom: 1px solid #000; text-align: left; padding: 3px 0; font-size: 10px; text-transform: uppercase; }
-            td { padding: 3px 0; font-size: 11px; vertical-align: top; }
-            .total-box { font-size: 14px; font-weight: bold; margin-top: 6px; }
-          </style>
-        </head>
-        <body>
-          <div class="text-center">
-            <div class="store-title">${storeName}</div>
-            <div class="sub-title">${receiptSubHeader}</div>
-            ${store?.address ? `<div class="meta-line">${store.address}</div>` : ''}
-            ${store?.phone ? `<div class="meta-line">Tel: ${store.phone}</div>` : ''}
-            ${store?.taxRegistrationNumber ? `<div class="meta-line font-bold">${store.taxRegistrationNumber}</div>` : ''}
-            <div>Receipt No: <strong>#${sale.receiptNumber}</strong></div>
-            <div>${dateStr}</div>
-          </div>
-
-          <div class="divider"></div>
-
-          <div>
-            <div class="flex-row"><span>Cash Counter:</span><strong>${sale.counterName}</strong></div>
-            <div class="flex-row"><span>Cashier:</span><strong>${sale.cashierUsername}</strong></div>
-            <div class="flex-row"><span>Payment Method:</span><strong class="uppercase">${sale.paymentMethod}</strong></div>
-          </div>
-
-          <div class="divider"></div>
-
-          <table>
-            <thead>
-              <tr>
-                <th>Product Name</th>
-                <th class="text-center">Qty</th>
-                <th class="text-right">Price</th>
-                <th class="text-right">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${(sale.items || []).map(item => {
-                const isWeight = item.sellBy === 'weight' || item.unitType === 'kg' || (item.quantity || 0) % 1 !== 0;
-                const qtyText = isWeight ? `${(item.quantity || 0) % 1 === 0 ? (item.quantity || 0) : (item.quantity || 0).toFixed(3)} kg` : (item.quantity || 0).toString();
-                return `
-                  <tr>
-                    <td><strong>${item.name}</strong>${item.weightInfo ? `<br/><small style="color:#666">${item.weightInfo}</small>` : ''}</td>
-                    <td class="text-center">${qtyText}</td>
-                    <td class="text-right">${curr} ${(item.price || 0).toFixed(2)}${isWeight ? '/kg' : ''}</td>
-                    <td class="text-right">${curr} ${(item.total || 0).toFixed(2)}</td>
-                  </tr>
-                `;
-              }).join('')}
-            </tbody>
-          </table>
-
-          <div class="double-divider"></div>
-
-          ${sale.discountAmount && sale.discountAmount > 0 ? `
-            <div class="flex-row" style="margin-top: 4px; font-size: 11px;">
-              <span>Subtotal:</span>
-              <span>${curr} ${(sale.subtotalAmount || ((sale.totalAmount || 0) + (sale.discountAmount || 0))).toFixed(2)}</span>
-            </div>
-            <div class="flex-row font-bold" style="margin-top: 2px; font-size: 11px; color: #047857;">
-              <span>Discount ${sale.discountType === 'percentage' && sale.discountValue ? `(${sale.discountValue}%)` : ''}:</span>
-              <span>-${curr} ${(sale.discountAmount || 0).toFixed(2)}</span>
-            </div>
-          ` : ''}
-
-          <div class="flex-row total-box">
-            <span>GRAND TOTAL:</span>
-            <span>${curr} ${(sale.totalAmount || 0).toFixed(2)}</span>
-          </div>
-
-          ${sale.paymentMethod === 'cash' && sale.cashReceived !== undefined ? `
-            <div class="flex-row" style="margin-top: 4px; font-size: 11px;">
-              <span>Cash Received:</span>
-              <span>${curr} ${(sale.cashReceived || 0).toFixed(2)}</span>
-            </div>
-            <div class="flex-row font-bold" style="font-size: 11px; color: #047857;">
-              <span>Change Returned:</span>
-              <span>${curr} ${(sale.changeReturned || 0).toFixed(2)}</span>
-            </div>
-          ` : ''}
-
-          <div class="divider"></div>
-
-          <div class="text-center" style="margin-top: 12px;">
-            <p class="font-bold" style="margin: 0;">${receiptFooterText}</p>
-            <div style="font-size: 10px; font-weight: bold; margin-top: 6px;">Ref: ${sale.receiptNumber}</div>
-          </div>
-
-          ${isQrEnabled && qrCodeDataUrl ? `
-            <div class="divider"></div>
-            <div class="text-center" style="margin-top: 8px;">
-              <div style="font-size: 10px; font-weight: bold; text-transform: uppercase; margin-bottom: 4px;">${qrTitle}</div>
-              <img src="${qrCodeDataUrl}" alt="${qrTitle}" style="width: 100px; height: 100px; margin: 0 auto; display: block;" />
-              <div style="font-size: 9px; color: #555; margin-top: 2px;">Invoice #${sale.receiptNumber}</div>
-            </div>
-          ` : ''}
-
-          <script>
-            window.onload = function() {
-              setTimeout(function() {
-                window.print();
-              }, 200);
-            };
-          </script>
-        </body>
-      </html>
-    `;
-
-    try {
-      const printWin = window.open('', '_blank', 'width=450,height=600');
-      if (printWin) {
-        printWin.document.open();
-        printWin.document.write(receiptHtml);
-        printWin.document.close();
-        printWin.focus();
-        setPrintStatus('Receipt sent to printer!');
-        setTimeout(() => setPrintStatus(null), 3000);
-        return;
-      }
-    } catch (e) {
-      console.warn('Popup blocked, falling back to window.print():', e);
-    }
-
-    window.print();
+  const handlePrint = async () => {
     setPrintStatus('Printing receipt...');
+    try {
+      await printThermalReceiptDirect(sale, store, qrCodeDataUrl);
+      setPrintStatus('Receipt sent to printer!');
+    } catch (err) {
+      console.error('Print error:', err);
+      try {
+        window.print();
+        setPrintStatus('Print dialog opened');
+      } catch (e) {
+        setPrintStatus('Print error: check printer');
+      }
+    }
     setTimeout(() => setPrintStatus(null), 3000);
   };
 
@@ -589,7 +466,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto overscroll-contain">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-md overflow-y-auto overscroll-contain animate-fade-in">
       
       {/* Print-Only Stylesheet override for in-page browser print fallback */}
       <style>{`
@@ -601,11 +478,13 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             visibility: visible !important;
           }
           #printable-receipt {
-            position: fixed !important;
+            position: absolute !important;
             left: 0 !important;
             top: 0 !important;
-            width: 80mm !important;
-            padding: 10mm !important;
+            width: 78mm !important;
+            max-height: none !important;
+            overflow: visible !important;
+            padding: 4mm !important;
             margin: 0 auto !important;
             color: #000 !important;
             background: #fff !important;

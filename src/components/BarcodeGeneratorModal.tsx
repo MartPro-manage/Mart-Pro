@@ -105,10 +105,9 @@ export const BarcodeGeneratorModal: React.FC<BarcodeGeneratorModalProps> = ({
     }
   }, [isOpen, initialProduct]);
 
-  // Function to generate a clean, standard unique numeric code
+  // Function to generate a clean 5-digit unique numeric barcode
   function generateUniqueId() {
-    const randomDigits = Math.floor(10000000 + Math.random() * 90000000);
-    return `890${randomDigits}`;
+    return Math.floor(10000 + Math.random() * 90000).toString();
   }
 
   const handleGenerateRandomCode = () => {
@@ -510,10 +509,14 @@ export const BarcodeGeneratorModal: React.FC<BarcodeGeneratorModalProps> = ({
                   <BarcodeIcon className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type="text"
+                    maxLength={5}
                     required
-                    placeholder="e.g. 89012345678 or 1004"
+                    placeholder="e.g. 12345 (Max 5 digits)"
                     value={uniqueNumber}
-                    onChange={(e) => setUniqueNumber(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '').slice(0, 5);
+                      setUniqueNumber(val);
+                    }}
                     className="w-full pl-10 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs font-mono font-bold focus:outline-none focus:border-orange-500 focus:bg-white transition-all"
                   />
                 </div>

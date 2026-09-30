@@ -43,10 +43,14 @@ export function generateNext4DigitSerialNumber(existingProducts: Array<{ shortcu
 }
 
 /**
- * Generates a clean 5-digit numeric barcode (10000 - 99999).
+ * Generates a clean full numeric barcode (12 digits, e.g. 890000000000 - 890999999999).
  */
 export function generate5DigitBarcode(): string {
-  return Math.floor(10000 + Math.random() * 90000).toString();
+  return '890' + Math.floor(100000000 + Math.random() * 900000000).toString();
+}
+
+export function generateFullBarcode(): string {
+  return generate5DigitBarcode();
 }
 
 /**

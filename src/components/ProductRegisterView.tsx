@@ -510,14 +510,14 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   const handleAutoGenerateBarcodeNumber = () => {
     const newCode = generate5DigitBarcode();
     setBarcode(newCode);
-    showNotification('success', `Generated new 5-digit Barcode: ${newCode}`);
+    showNotification('success', `Generated new Full Barcode: ${newCode}`);
   };
 
   const handleSubmitProductStock = async (e: React.FormEvent) => {
     e.preventDefault();
     setMsg(null);
 
-    let trimmedBarcode = barcode.trim().replace(/\D/g, '').slice(0, 5);
+    let trimmedBarcode = barcode.trim();
     const trimmedName = name.trim();
     const trimmedWeight = weight.trim();
     const numericPrice = typeof price === 'number' ? price : parseFloat(price as any);
@@ -540,7 +540,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
       return;
     }
 
-    // Auto-generate 5-digit barcode if not entered
+    // Auto-generate full barcode if not entered
     if (!trimmedBarcode) {
       trimmedBarcode = generate5DigitBarcode();
       setBarcode(trimmedBarcode);
@@ -1146,19 +1146,19 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                 </div>
               </div>
 
-              {/* Product Barcode Field (Max 5 Digits) with Scan Trigger & Auto-Gen */}
+              {/* Product Barcode Field (Full Barcode) with Scan Trigger & Auto-Gen */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                     <BarcodeIcon className="w-3.5 h-3.5 text-orange-600" />
-                    <span>Product Barcode (Max 5 Digits)</span>
+                    <span>Product Barcode (Full Barcode)</span>
                   </label>
                   <button
                     type="button"
                     onClick={handleAutoGenerateBarcodeNumber}
                     className="text-[10px] text-orange-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
                   >
-                    <Sparkles className="w-3 h-3" /> Auto-fill 5-Digit Barcode
+                    <Sparkles className="w-3 h-3" /> Auto-fill Full Barcode
                   </button>
                 </div>
                 <div className="relative flex gap-2">
@@ -1167,15 +1167,14 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                     <input
                       ref={barcodeInputRef}
                       type="text"
-                      maxLength={5}
+                      maxLength={50}
                       autoComplete="off"
                       autoCorrect="off"
                       spellCheck={false}
-                      placeholder="Enter up to 5-digit barcode (e.g. 10245) & press Enter..."
+                      placeholder="Scan or enter full barcode (e.g. 890123456789) & press Enter..."
                       value={barcode}
                       onChange={(e) => {
-                        const cleanVal = e.target.value.replace(/\D/g, '').slice(0, 5);
-                        setBarcode(cleanVal);
+                        setBarcode(e.target.value);
                       }}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
@@ -1198,8 +1197,8 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                   )}
                 </div>
                 <div className="flex items-center justify-between text-[11px] text-slate-400 mt-1 px-1">
-                  <span>Manual Barcode is restricted to maximum 5 digits</span>
-                  <span className="font-mono font-medium text-slate-500">{barcode.length}/5 digits</span>
+                  <span>Full barcode recorded (EAN-13, UPC, Code-128, etc.)</span>
+                  <span className="font-mono font-medium text-slate-500">{barcode.length} chars</span>
                 </div>
               </div>
 

@@ -389,16 +389,15 @@ export const AiProductEditorCard: React.FC<AiProductEditorCardProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <div>
           <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-            Barcode (Max 5 Digits) {barcodeChanged && <span className="text-orange-600">• Edited</span>}
+            Barcode (Full Barcode) {barcodeChanged && <span className="text-orange-600">• Edited</span>}
           </label>
           <input
             type="text"
-            maxLength={5}
+            maxLength={50}
             value={barcode}
-            placeholder="Max 5 digits"
+            placeholder="Full Barcode"
             onChange={(e) => {
-              const val = e.target.value.replace(/\D/g, '').slice(0, 5);
-              setBarcode(val);
+              setBarcode(e.target.value);
               setSaved(false);
             }}
             disabled={isSaving}

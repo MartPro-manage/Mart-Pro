@@ -67,17 +67,12 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     }
   }, [initialTab, isOpen]);
 
-  // Trigger audio voice greeting with bill total & change when checkout completes and receipt opens
+  // Trigger audio voice greeting when receipt opens
   useEffect(() => {
     if (isOpen && sale && voiceEnabled && isVoiceAllowed) {
       const storeName = store?.name || sale?.storeName || 'our store';
       const formattedTotal = sale.totalAmount % 1 === 0 ? sale.totalAmount.toFixed(0) : sale.totalAmount.toFixed(2);
-      let speech = `Total bill is ${formattedTotal} rupees.`;
-      if (sale.paymentMethod === 'cash' && (sale.changeReturned ?? 0) > 0) {
-        const formattedChange = (sale.changeReturned || 0) % 1 === 0 ? (sale.changeReturned || 0).toFixed(0) : (sale.changeReturned || 0).toFixed(2);
-        speech += ` Change to return to customer is ${formattedChange} rupees.`;
-      }
-      speech += ` Thank you for shopping at ${storeName}!`;
+      const speech = `Thank you for shopping at ${storeName}! Total bill is ${formattedTotal} rupees.`;
       speakMessage(speech);
     }
   }, [isOpen, sale, voiceEnabled, isVoiceAllowed, store?.name]);
@@ -86,12 +81,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     if (!sale || !isVoiceAllowed) return;
     const storeName = store?.name || sale?.storeName || 'our store';
     const formattedTotal = sale.totalAmount % 1 === 0 ? sale.totalAmount.toFixed(0) : sale.totalAmount.toFixed(2);
-    let speech = `Total bill is ${formattedTotal} rupees.`;
-    if (sale.paymentMethod === 'cash' && (sale.changeReturned ?? 0) > 0) {
-      const formattedChange = (sale.changeReturned || 0) % 1 === 0 ? (sale.changeReturned || 0).toFixed(0) : (sale.changeReturned || 0).toFixed(2);
-      speech += ` Change to return to customer is ${formattedChange} rupees.`;
-    }
-    speech += ` Thank you for shopping at ${storeName}!`;
+    const speech = `Thank you for shopping at ${storeName}! Total bill is ${formattedTotal} rupees.`;
     speakMessage(speech);
   };
 
@@ -468,35 +458,6 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-md overflow-y-auto overscroll-contain animate-fade-in">
       
-      {/* Print-Only Stylesheet override for in-page browser print fallback */}
-      <style>{`
-        @media print {
-          body * {
-            visibility: hidden !important;
-          }
-          #printable-receipt, #printable-receipt * {
-            visibility: visible !important;
-          }
-          #printable-receipt {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 78mm !important;
-            max-height: none !important;
-            overflow: visible !important;
-            padding: 4mm !important;
-            margin: 0 auto !important;
-            color: #000 !important;
-            background: #fff !important;
-            box-shadow: none !important;
-            border: none !important;
-          }
-          .no-print {
-            display: none !important;
-          }
-        }
-      `}</style>
-
       <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl relative space-y-5 max-h-[92vh] flex flex-col my-auto overflow-y-auto overscroll-contain custom-scrollbar">
         
         {/* Header (Hidden during print) */}

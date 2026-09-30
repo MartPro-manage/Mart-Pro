@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ProductReturn, Store } from '../types';
+import { printReturnSlipDirect } from '../utils/printThermalReceipt';
 import { 
   Printer, 
   Share2, 
@@ -45,143 +46,20 @@ export const ReturnSlipModal: React.FC<ReturnSlipModalProps> = ({
 
   const totalUnits = itemsList.reduce((sum, item) => sum + (item.quantity || 0), 0);
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     setPrintStatus('Preparing return slip printer...');
-
-    const storeName = store?.name || returnRecord.storeName || 'SUPERMARKET';
-    const dateStr = new Date(returnRecord.timestamp).toLocaleString();
-
-    const slipHtml = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Return Slip #${returnRecord.returnSlipNumber}</title>
-          <style>
-            @page {
-              size: 80mm auto;
-              margin: 0;
-            }
-            body {
-              font-family: 'Courier New', Courier, monospace;
-              width: 78mm;
-              margin: 0 auto;
-              padding: 12px;
-              color: #000;
-              background: #fff;
-              font-size: 11px;
-              line-height: 1.3;
-            }
-            .text-center { text-align: center; }
-            .text-right { text-align: right; }
-            .font-bold { font-weight: bold; }
-            .uppercase { text-transform: uppercase; }
-            .divider { border-top: 1px dashed #000; margin: 8px 0; }
-            .double-divider { border-top: 2px solid #000; margin: 8px 0; }
-            .store-title { font-size: 16px; font-weight: bold; letter-spacing: -0.5px; margin-bottom: 2px; }
-            .sub-title { font-size: 11px; font-weight: bold; letter-spacing: 1px; color: #b91c1c; margin-bottom: 6px; }
-            .flex-row { display: flex; justify-content: space-between; font-size: 11px; }
-            table { width: 100%; border-collapse: collapse; margin: 6px 0; }
-            th { border-bottom: 1px solid #000; text-align: left; padding: 3px 0; font-size: 10px; text-transform: uppercase; }
-            td { padding: 3px 0; font-size: 11px; vertical-align: top; }
-            .total-box { font-size: 14px; font-weight: bold; margin-top: 6px; color: #b91c1c; }
-          </style>
-        </head>
-        <body>
-          <div class="text-center">
-            <div class="store-title">${storeName}</div>
-            <div class="sub-title">CUSTOMER RETURN & REFUND VOUCHER</div>
-            <div>Slip No: <strong>#${returnRecord.returnSlipNumber}</strong></div>
-            <div>${dateStr}</div>
-          </div>
-
-          <div class="divider"></div>
-
-          <div>
-            <div class="flex-row"><span>Counter:</span><strong>${returnRecord.counterName}</strong></div>
-            <div class="flex-row"><span>Cashier:</span><strong>${returnRecord.cashierUsername}</strong></div>
-            <div class="flex-row"><span>Refund Mode:</span><strong class="uppercase">${returnRecord.refundMethod} REFUND</strong></div>
-            ${returnRecord.originalReceiptNumber ? `<div class="flex-row"><span>Orig. Invoice:</span><strong>#${returnRecord.originalReceiptNumber}</strong></div>` : ''}
-          </div>
-
-          <div class="divider"></div>
-
-          <table>
-            <thead>
-              <tr>
-                <th>Returned Item</th>
-                <th class="text-center">Qty</th>
-                <th class="text-right">Unit Price</th>
-                <th class="text-right">Refund Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${itemsList.map(item => `
-                <tr>
-                  <td>
-                    <strong>${item.productName}</strong>
-                    ${item.barcode ? `<div style="font-size: 9px; color: #555;">Code: ${item.barcode}</div>` : ''}
-                  </td>
-                  <td class="text-center font-bold">${item.quantity}</td>
-                  <td class="text-right">Rs. ${(item.price || 0).toFixed(2)}</td>
-                  <td class="text-right font-bold">Rs. ${(item.refundAmount || 0).toFixed(2)}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-
-          <div class="double-divider"></div>
-
-          <div class="flex-row total-box">
-            <span>TOTAL REFUNDED:</span>
-            <span>Rs. ${(returnRecord.refundAmount ?? 0).toFixed(2)}</span>
-          </div>
-
-          ${returnRecord.reason ? `
-            <div style="margin-top: 6px; font-size: 10px;">
-              <strong>Return Reason:</strong> ${returnRecord.reason}
-            </div>
-          ` : ''}
-
-          <div style="margin-top: 6px; font-size: 10px; color: #047857;">
-            ✔ Restock Status: <strong>${totalUnits} unit(s) returned to store inventory</strong>
-          </div>
-
-          <div class="divider"></div>
-
-          <div class="text-center" style="margin-top: 12px;">
-            <p class="font-bold" style="margin: 0;">REFUND PROCESSED BY ${(store?.name || returnRecord.storeName || 'OUR STORE').toUpperCase()}</p>
-            <p style="margin: 4px 0 0 0; font-size: 10px;">Amount deducted from sales register & returned to inventory.</p>
-            <div style="font-size: 10px; font-weight: bold; margin-top: 6px;">Ref: ${returnRecord.returnSlipNumber}</div>
-          </div>
-
-          <script>
-            window.onload = function() {
-              setTimeout(function() {
-                window.print();
-              }, 200);
-            };
-          </script>
-        </body>
-      </html>
-    `;
-
     try {
-      const printWin = window.open('', '_blank', 'width=450,height=600');
-      if (printWin) {
-        printWin.document.open();
-        printWin.document.write(slipHtml);
-        printWin.document.close();
-        printWin.focus();
-        setPrintStatus('Return slip sent to printer!');
-        setTimeout(() => setPrintStatus(null), 3000);
-        return;
+      await printReturnSlipDirect(returnRecord, store);
+      setPrintStatus('Return slip sent to printer!');
+    } catch (err) {
+      console.error('Print return slip error:', err);
+      try {
+        window.print();
+        setPrintStatus('Print dialog opened');
+      } catch (e) {
+        setPrintStatus('Print error: check printer');
       }
-    } catch (e) {
-      console.warn('Popup blocked, falling back to window.print():', e);
     }
-
-    window.print();
-    setPrintStatus('Printing return slip...');
     setTimeout(() => setPrintStatus(null), 3000);
   };
 

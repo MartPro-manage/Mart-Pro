@@ -1,4 +1,5 @@
-import express, { Request, Response } from 'express';
+import express from 'express';
+import type { Request, Response } from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -73,3 +74,4 @@ startServer().catch((err) => {
   console.error('[Mart Pro Server] Failed to start:', err);
   process.exit(1);
 });
+

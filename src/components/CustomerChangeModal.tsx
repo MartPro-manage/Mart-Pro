@@ -11,7 +11,7 @@ import {
   X
 } from 'lucide-react';
 import { Sale, Store } from '../types';
-import { speakMessage } from '../lib/speech';
+import { speakMessage, speakCustomerChange } from '../lib/speech';
 import { printThermalReceiptDirect } from '../utils/printThermalReceipt';
 
 interface CustomerChangeModalProps {
@@ -73,16 +73,16 @@ export const CustomerChangeModal: React.FC<CustomerChangeModalProps> = ({
     }
   };
 
+  const handleReplayVoice = () => {
+    if (!sale) return;
+    speakCustomerChange(sale.totalAmount || 0, cashReceived, changeReturned);
+  };
+
   useEffect(() => {
-    if (isOpen) {
-      // Voice prompt to remind cashier of change
-      if (voiceEnabled) {
-        if (changeReturned > 0) {
-          const formattedChange = changeReturned % 1 === 0 ? changeReturned.toFixed(0) : changeReturned.toFixed(2);
-          speakMessage(`Please give ${formattedChange} rupees change to the customer.`);
-        } else {
-          speakMessage(`Payment received. No change required.`);
-        }
+    if (isOpen && sale) {
+      // Voice prompt to clearly announce total bill, cash received and change return to cashier & customer
+      if (voiceEnabled && store?.voiceAnnouncementEnabled !== false) {
+        speakCustomerChange(sale.totalAmount || 0, cashReceived, changeReturned);
       }
 
       // Keyboard listener: Enter or Space advances to receipt, P prints directly
@@ -90,6 +90,9 @@ export const CustomerChangeModal: React.FC<CustomerChangeModalProps> = ({
         if (e.key === 'p' || e.key === 'P') {
           e.preventDefault();
           handleDirectPrint();
+        } else if (e.key === 'v' || e.key === 'V') {
+          e.preventDefault();
+          handleReplayVoice();
         } else if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           onViewReceipt();
@@ -102,7 +105,7 @@ export const CustomerChangeModal: React.FC<CustomerChangeModalProps> = ({
       window.addEventListener('keydown', handleKeyDown);
       return () => window.removeEventListener('keydown', handleKeyDown);
     }
-  }, [isOpen, changeReturned, voiceEnabled, onViewReceipt, sale, store]);
+  }, [isOpen, changeReturned, cashReceived, voiceEnabled, onViewReceipt, sale, store]);
 
   if (!isOpen || !sale) return null;
 
@@ -131,6 +134,16 @@ export const CustomerChangeModal: React.FC<CustomerChangeModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleReplayVoice}
+              className="p-2 rounded-xl bg-white/15 hover:bg-white/25 text-white transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-bold"
+              title="Replay audio announcement (V)"
+            >
+              <Volume2 className="w-4 h-4 text-amber-300" />
+              <span className="hidden sm:inline">Replay Voice</span>
+            </button>
+
             <button
               type="button"
               onClick={onViewReceipt}

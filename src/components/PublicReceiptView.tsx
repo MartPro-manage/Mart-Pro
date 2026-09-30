@@ -5,6 +5,7 @@ import { Sale, Store } from '../types';
 import { isSaleExpired, getReceiptRemainingDays } from '../lib/salesCleanup';
 import JsBarcode from 'jsbarcode';
 import html2canvas from 'html2canvas';
+import { printReceiptHtmlDirect } from '../utils/printThermalReceipt';
 import { 
   CheckCircle2, 
   Printer, 
@@ -619,8 +620,16 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
   };
 
   // 2. Print or Save as PDF
-  const handlePrintPdf = () => {
-    window.print();
+  const handlePrintPdf = async () => {
+    if (!sale) return;
+    try {
+      const html = getReceiptHtmlContent();
+      await printReceiptHtmlDirect(html);
+      showNotification('Print dialog opened!');
+    } catch (e) {
+      console.error('Print error:', e);
+      window.print();
+    }
   };
 
   // 3. Download HTML Receipt

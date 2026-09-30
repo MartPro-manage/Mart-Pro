@@ -1387,19 +1387,18 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
       setCompletedSale(completedSaleData);
       setCart([]);
       
-      // Always show Receipt Modal upon checkout completion so receipt is visible and ready to print!
-      setIsReceiptOpen(true);
-      
-      // If cash payment, also set change data and trigger Change to Customer Assistant if change is due
-      if (paymentMethod === 'cash') {
+      // If cash payment and change is due, show Change to Customer modal first (it will announce change clearly).
+      // When cashier clicks Next in Change modal, it smoothly transitions to the Receipt Modal.
+      if (paymentMethod === 'cash' && (changeReturned ?? 0) > 0) {
         setCompletedChangeData({
           sale: completedSaleData,
           cashReceived: cashReceived ?? cartTotal,
           changeReturned: changeReturned ?? 0
         });
-        if ((changeReturned ?? 0) > 0) {
-          setIsChangeModalOpen(true);
-        }
+        setIsChangeModalOpen(true);
+        setIsReceiptOpen(false);
+      } else {
+        setIsReceiptOpen(true);
       }
       
       // Voice & Text Thank You greeting with Total Bill Amount & Change Return for purchase according to store name

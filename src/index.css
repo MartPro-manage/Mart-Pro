@@ -162,7 +162,7 @@ input:focus, select:focus, textarea:focus {
   transition: all 0.2s ease;
 }
 
-html, body, #root {
+html, body {
   max-width: 100vw;
   overflow-x: hidden;
   margin: 0;
@@ -177,5 +177,79 @@ body {
   overflow-x: hidden;
   background-color: #f8fafc;
 }
+
+/* Dedicated Thermal POS & Standard Printer Styles */
+@media print {
+  @page {
+    size: 80mm auto;
+    margin: 0mm;
+  }
+
+  html, body {
+    width: 80mm !important;
+    min-width: 80mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    color: #000 !important;
+    overflow: visible !important;
+  }
+
+  /* Hide app navigation and interactive non-printable buttons during print */
+  .no-print,
+  button,
+  header,
+  nav {
+    display: none !important;
+  }
+
+  /* Show dedicated thermal receipt print container */
+  #thermal-direct-print-container {
+    display: block !important;
+    position: static !important;
+    width: 78mm !important;
+    max-width: 78mm !important;
+    margin: 0 auto !important;
+    padding: 2mm !important;
+    background: #fff !important;
+    color: #000 !important;
+    visibility: visible !important;
+  }
+
+  #thermal-direct-print-container * {
+    visibility: visible !important;
+    color: #000 !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* Printable receipt containers inside modals and public views */
+  #printable-receipt,
+  #printable-public-receipt,
+  #printable-return-slip {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    width: 78mm !important;
+    max-width: 78mm !important;
+    margin: 0 auto !important;
+    padding: 2mm !important;
+    background: #fff !important;
+    color: #000 !important;
+    box-shadow: none !important;
+    border: none !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  #printable-receipt *,
+  #printable-public-receipt *,
+  #printable-return-slip * {
+    visibility: visible !important;
+    color: #000 !important;
+  }
+}
+
 
 

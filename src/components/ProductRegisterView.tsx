@@ -546,21 +546,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
       setBarcode(trimmedBarcode);
     }
 
-    // Check for Barcode and Name Mismatch
-    if (trimmedBarcode) {
-      const existingBarcodeProduct = products.find(
-        p => p.barcode && p.barcode.trim().toLowerCase() === trimmedBarcode.toLowerCase()
-      );
-
-      if (existingBarcodeProduct && existingBarcodeProduct.id !== existingProduct?.id && existingBarcodeProduct.name.trim().toLowerCase() !== trimmedName.toLowerCase()) {
-        showNotification(
-          'error',
-          `Cannot proceed! Barcode "${trimmedBarcode}" is already registered under product name "${existingBarcodeProduct.name}".`
-        );
-        return;
-      }
-    }
-
+    // Find if barcode already belongs to an existing product in catalog
     const existingBarcodeMatch = trimmedBarcode 
       ? products.find(p => p.barcode && p.barcode.trim().toLowerCase() === trimmedBarcode.toLowerCase())
       : undefined;
@@ -2404,6 +2390,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
           isOpen={isExcelModalOpen}
           onClose={() => setIsExcelModalOpen(false)}
           store={store}
+          existingProducts={products}
           onSendToAi={(parsedRows) => {
             setSpreadsheetProductsForAi(parsedRows);
             setIsExcelModalOpen(false);

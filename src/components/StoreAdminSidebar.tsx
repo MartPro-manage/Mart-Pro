@@ -23,6 +23,7 @@ import {
   Scale,
   Activity,
   Calendar,
+  CalendarCheck2,
   DollarSign,
   CreditCard,
   Banknote,
@@ -46,6 +47,7 @@ export type StoreAdminTab =
   | 'expenses'
   | 'suppliers'
   | 'staff' 
+  | 'attendance'
   | 'staff_operations'
   | 'settings';
 
@@ -220,12 +222,6 @@ export const StoreAdminSidebar: React.FC<StoreAdminSidebarProps> = ({
           id: 'staff' as StoreAdminTab,
           label: 'Staff & Salaries',
           icon: Users,
-          badge: `${stats.staffCount}`
-        },
-        {
-          id: 'staff_operations' as StoreAdminTab,
-          label: 'Staff & Operations (Online/Offline)',
-          icon: Activity,
           badge: `${stats.staffCount}`
         },
         {

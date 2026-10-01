@@ -87,14 +87,6 @@ export function getThermalReceiptInnerHtml(sale: Sale, store?: Store | null, qrC
         <span>Subtotal:</span>
         <span>${curr} ${(subtotal || 0).toFixed(2)}</span>
       </div>
-      <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; margin: 2px 0;">
-        <span>Discount:</span>
-        <span>${totalDiscount > 0 ? `-${curr} ${totalDiscount.toFixed(2)}` : `${curr} 0.00`}</span>
-      </div>
-      <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; margin: 2px 0;">
-        <span>Total Discount:</span>
-        <span>${totalDiscount > 0 ? `-${curr} ${totalDiscount.toFixed(2)}` : `${curr} 0.00`}</span>
-      </div>
 
       <div style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 900; margin: 6px 0; padding: 4px 0; border-top: 1px solid #000; border-bottom: 1px solid #000;">
         <span>NET TOTAL:</span>

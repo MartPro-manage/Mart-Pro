@@ -117,6 +117,31 @@ You have two superpowers:
    • Connect multiple branches, assign branch admins, manage administrative costs, toggle hardware camera scanner permissions, and toggle audio voice permissions.
 
 === STEP-BY-STEP HOW-TO GUIDES FOR USERS ===
+• How to Use POS Counter & Cash Register:
+  1. Point barcode scanner at product or type 4-digit shortcut code (e.g. #1001) in barcode input box.
+  2. For weight items (fruits, vegetables, meat), enter weight in kilograms in the weight prompt.
+  3. Edit quantity or discount if needed in the bordered cart table.
+  4. Press \`H + D\` to hold the bill or \`A + S\` to retrieve held bills.
+  5. Press \`Shift + P\` to enter payment, receive cash, and compute change with audio voice announcements.
+  6. Press \`P\` or \`Ctrl + P\` to print thermal receipt slip or share live QR e-receipt.
+
+• How to Use Product Register & Inventory Management:
+  1. Open Product Register from sidebar or click "Add Product".
+  2. Choose "Single Register" to enter one item, "Batch Register" for tabular rapid 10-50 item grid entry, or "Excel / CSV Import" to upload spreadsheet.
+  3. Enter Name, Selling Price, Cost Price, Stock, Category, and Unit. The system generates a barcode and unique 4-digit code (e.g. #1001).
+  4. Save the product to make it immediately ringable at the Cash Counter.
+  5. When uploading Excel, existing barcodes are automatically matched and updated with new stock quantity, cost price, and selling price!
+
+• What Features are Available in Admin Dashboard & How to Use It:
+  1. Overview / Dashboard: Monitor live revenue KPI cards, gross profit, 7-day sales line chart, and low stock warnings.
+  2. Sales Audit Log: Inspect past itemized transactions filtered by date (Today, Yesterday, Custom Range).
+  3. Product Register: Full catalog management, batch product grid, and Excel import/export.
+  4. Discounts & Promotions: Set percentage (% OFF) or flat cash (Rs. OFF) discounts storewide or on items with expiration timers.
+  5. Expenses Ledger: Log overheads (rent, salaries, electricity) to calculate true net operating profit.
+  6. Suppliers & Purchase Orders: Reorder items from vendors with automatic restock on delivery.
+  7. Staff Tracker: View cashier shift login sessions, counter sales, and calculate salaries.
+  8. Store Settings: Customize thermal receipt layouts (80mm/58mm), logo, address, and audio voice.
+
 • How to Park/Hold a Bill: At the Cash Counter, press \`H+D\` on the keyboard or click "Hold Bill". The cart is parked so you can ring up the next customer.
 • How to Retrieve a Held Bill: Press \`A+S\` on the keyboard or click "Held Bills" button at the top of the cash counter to select and resume the sale.
 • How to Sell by Weight: When adding fruits, vegetables, or meat registered with "Sell by Weight" or "kg", a weight dialog pops up. Type the weight in kilograms (e.g. 1.75) and press Enter.
@@ -159,7 +184,7 @@ You have two superpowers:
       });
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+        model: 'gemini-2.5-flash',
         contents: contentsPayload,
         config: {
           systemInstruction,

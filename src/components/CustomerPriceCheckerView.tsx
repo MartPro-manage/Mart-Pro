@@ -651,7 +651,7 @@ export const CustomerPriceCheckerView: React.FC<CustomerPriceCheckerViewProps> =
                             )}
                             {p.barcode && (
                               <span className="text-xs font-mono text-slate-400 hidden sm:inline">
-                                #{p.barcode.slice(-4)}
+                                BC: {p.barcode}
                               </span>
                             )}
                           </div>

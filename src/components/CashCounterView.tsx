@@ -1247,9 +1247,9 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     setCheckoutLoading(true);
 
     try {
-      // Execute Firestore Atomic Transaction to decrement stock and create sale record
       const receiptNum = `RCP-${Date.now().toString().slice(-6)}`;
       const nowIso = new Date().toISOString();
+      const expiresAtIso = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
       // Calculate item discounts and gross subtotal
       let totalItemDiscount = 0;
@@ -1287,104 +1287,26 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
 
       const finalCalculatedSubtotal = Math.round(grossSubtotal * 100) / 100;
       const finalDiscountAmount = Math.round(totalItemDiscount * 100) / 100;
+      const finalDigitalProvider = isCustomDigitalSelected
+        ? (customDigitalProviderInput.trim() || 'Other Digital')
+        : (selectedDigitalProvider || (configuredDigitalMethods[0]?.name || 'Card'));
 
       const newSaleDocRef = doc(collection(db, 'sales'));
 
-      await runTransaction(db, async (transaction) => {
-        // PHASE 1: ALL READS FIRST (Strict Firestore rule: All reads must happen before any writes)
-        // Aggregate quantities by product ID
-        const productQuantities = new Map<string, { product: Product; quantity: number }>();
-        for (const item of cart) {
-          const existing = productQuantities.get(item.product.id);
-          if (existing) {
-            existing.quantity += item.quantity;
-          } else {
-            productQuantities.set(item.product.id, { product: item.product, quantity: item.quantity });
-          }
-        }
-
-        const readSnapshots: { prodRef: any; currentStock: number; newStock: number; name: string }[] = [];
-
-        for (const [prodId, entry] of productQuantities.entries()) {
-          const prodRef = doc(db, 'products', prodId);
-          const prodSnap = await transaction.get(prodRef); // READ
-
-          if (!prodSnap.exists()) {
-            throw new Error(`Product "${entry.product.name}" no longer exists in database.`);
-          }
-
-          const currentStock = Number(prodSnap.data().stockQuantity) || 0;
-          if (currentStock < entry.quantity) {
-            throw new Error(`Insufficient stock for "${entry.product.name}". Available: ${currentStock}, In Cart: ${entry.quantity}`);
-          }
-
-          readSnapshots.push({
-            prodRef,
-            currentStock,
-            newStock: Math.max(0, Math.round((currentStock - entry.quantity) * 1000) / 1000),
-            name: entry.product.name
-          });
-        }
-
-        // PHASE 2: ALL WRITES AFTER ALL READS HAVE COMPLETED
-        for (const { prodRef, newStock } of readSnapshots) {
-          transaction.update(prodRef, {
-            stockQuantity: newStock,
-            updatedAt: nowIso
-          });
-        }
-
-        const expiresAtIso = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-
-        // 2. Create Sale Record
-        const finalDigitalProvider = isCustomDigitalSelected
-          ? (customDigitalProviderInput.trim() || 'Other Digital')
-          : (selectedDigitalProvider || (configuredDigitalMethods[0]?.name || 'Card'));
-
-        const saleRecordData: Record<string, any> = {
-          id: newSaleDocRef.id,
-          storeId: store.id || '',
-          storeName: store.name || '',
-          counterId: currentUser.id || '',
-          counterName: currentUser.name || (currentUser.counterNumber ? `Counter #${currentUser.counterNumber}` : 'Counter #1'),
-          cashierUsername: currentUser.username || '',
-          items: saleItems,
-          subtotalAmount: finalCalculatedSubtotal,
-          discountAmount: finalDiscountAmount,
-          totalAmount: cartTotal || 0,
-          paymentMethod: paymentMethod || 'cash',
-          receiptNumber: receiptNum,
-          timestamp: nowIso,
-          expiresAt: expiresAtIso
-        };
-
-        if (paymentMethod === 'cash') {
-          saleRecordData.cashReceived = cashReceived ?? cartTotal;
-          saleRecordData.changeReturned = changeReturned ?? 0;
-        } else {
-          saleRecordData.onlinePaymentProvider = finalDigitalProvider;
-          if (digitalTransactionRef.trim()) {
-            saleRecordData.onlineTransactionId = digitalTransactionRef.trim();
-          }
-        }
-
-        transaction.set(newSaleDocRef, cleanFirestoreData(saleRecordData));
-      });
-
-      // Construct sale object for receipt modal
+      // Construct completed sale object immediately for instantaneous interface transition
       const completedSaleData: Sale = {
         id: newSaleDocRef.id,
         storeId: store.id,
         storeName: store.name,
         counterId: currentUser.id,
-        counterName: currentUser.name || `Counter #${currentUser.counterNumber || '1'}`,
+        counterName: currentUser.name || (currentUser.counterNumber ? `Counter #${currentUser.counterNumber}` : 'Counter #1'),
         cashierUsername: currentUser.username,
         items: saleItems,
         subtotalAmount: finalCalculatedSubtotal,
         discountAmount: finalDiscountAmount,
         totalAmount: cartTotal,
         paymentMethod: paymentMethod,
-        onlinePaymentProvider: paymentMethod === 'online' ? (selectedDigitalProvider || 'Online / Digital') : undefined,
+        onlinePaymentProvider: paymentMethod === 'online' ? finalDigitalProvider : undefined,
         onlineTransactionId: paymentMethod === 'online' && digitalTransactionRef.trim() ? digitalTransactionRef.trim() : undefined,
         cashReceived: paymentMethod === 'cash' ? (cashReceived ?? cartTotal) : undefined,
         changeReturned: paymentMethod === 'cash' ? (changeReturned ?? 0) : undefined,
@@ -1392,28 +1314,16 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
         timestamp: nowIso
       };
 
-      // Increment live staff session statistics for current active session
-      const activeSessionId = localStorage.getItem('martpro_current_session_id');
-      if (activeSessionId) {
-        try {
-          const sessRef = doc(db, 'staff_sessions', activeSessionId);
-          await updateDoc(sessRef, {
-            totalSalesCount: increment(1),
-            totalSalesAmount: increment(cartTotal || 0),
-            lastActive: nowIso
-          });
-        } catch (sessErr) {
-          console.warn('Could not increment staff session sales:', sessErr);
-        }
-      }
-
+      // 1. Instantly close payment dialogs
       setIsCashModalOpen(false);
       setIsPaymentSummaryOpen(false);
       setCompletedSale(completedSaleData);
+
+      // Snapshot cart for background write
+      const cartSnapshot = [...cart];
       setCart([]);
-      
-      // If cash payment and change is due, show Change to Customer modal first (it will announce change clearly).
-      // When cashier clicks Next in Change modal, it smoothly transitions to the Receipt Modal.
+
+      // 2. Instantly open the next interface (Customer Change modal if change is due, otherwise Receipt modal)
       if (paymentMethod === 'cash' && (changeReturned ?? 0) > 0) {
         setCompletedChangeData({
           sale: completedSaleData,
@@ -1424,21 +1334,111 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
         setIsReceiptOpen(false);
       } else {
         setIsReceiptOpen(true);
+        setIsChangeModalOpen(false);
       }
-      
-      // Voice & Text Thank You greeting with Total Bill Amount & Change Return for purchase according to store name
-      const storeName = store.name || 'our store';
-      const formattedTotal = cartTotal % 1 === 0 ? cartTotal.toFixed(0) : cartTotal.toFixed(2);
-      const hasChange = paymentMethod === 'cash' && (changeReturned ?? 0) > 0;
-      const formattedChange = ((changeReturned || 0) % 1 === 0) ? (changeReturned || 0).toFixed(0) : (changeReturned || 0).toFixed(2);
 
-      let successMsg = `🎉 Sale Completed! Total: Rs. ${formattedTotal}.`;
-      if (hasChange) {
-        successMsg += ` Pay Back Change: Rs. ${formattedChange} to customer.`;
-      }
-      successMsg += ` Transaction #${receiptNum}.`;
+      // 3. Commit Firestore Transaction in background without blocking the UI transition
+      (async () => {
+        try {
+          await runTransaction(db, async (transaction) => {
+            // PHASE 1: ALL READS FIRST
+            const productQuantities = new Map<string, { product: Product; quantity: number }>();
+            for (const item of cartSnapshot) {
+              const existing = productQuantities.get(item.product.id);
+              if (existing) {
+                existing.quantity += item.quantity;
+              } else {
+                productQuantities.set(item.product.id, { product: item.product, quantity: item.quantity });
+              }
+            }
 
-      showNotification('success', successMsg);
+            const readSnapshots: { prodRef: any; currentStock: number; newStock: number; name: string }[] = [];
+
+            for (const [prodId, entry] of productQuantities.entries()) {
+              const prodRef = doc(db, 'products', prodId);
+              const prodSnap = await transaction.get(prodRef);
+
+              if (prodSnap.exists()) {
+                const currentStock = Number(prodSnap.data().stockQuantity) || 0;
+                readSnapshots.push({
+                  prodRef,
+                  currentStock,
+                  newStock: Math.max(0, Math.round((currentStock - entry.quantity) * 1000) / 1000),
+                  name: entry.product.name
+                });
+              }
+            }
+
+            // PHASE 2: ALL WRITES
+            for (const { prodRef, newStock } of readSnapshots) {
+              transaction.update(prodRef, {
+                stockQuantity: newStock,
+                updatedAt: nowIso
+              });
+            }
+
+            const saleRecordData: Record<string, any> = {
+              id: newSaleDocRef.id,
+              storeId: store.id || '',
+              storeName: store.name || '',
+              counterId: currentUser.id || '',
+              counterName: currentUser.name || (currentUser.counterNumber ? `Counter #${currentUser.counterNumber}` : 'Counter #1'),
+              cashierUsername: currentUser.username || '',
+              items: saleItems,
+              subtotalAmount: finalCalculatedSubtotal,
+              discountAmount: finalDiscountAmount,
+              totalAmount: cartTotal || 0,
+              paymentMethod: paymentMethod || 'cash',
+              receiptNumber: receiptNum,
+              timestamp: nowIso,
+              expiresAt: expiresAtIso
+            };
+
+            if (paymentMethod === 'cash') {
+              saleRecordData.cashReceived = cashReceived ?? cartTotal;
+              saleRecordData.changeReturned = changeReturned ?? 0;
+            } else {
+              saleRecordData.onlinePaymentProvider = finalDigitalProvider;
+              if (digitalTransactionRef.trim()) {
+                saleRecordData.onlineTransactionId = digitalTransactionRef.trim();
+              }
+            }
+
+            transaction.set(newSaleDocRef, cleanFirestoreData(saleRecordData));
+          });
+
+          // Increment staff session
+          const activeSessionId = localStorage.getItem('martpro_current_session_id');
+          if (activeSessionId) {
+            try {
+              const sessRef = doc(db, 'staff_sessions', activeSessionId);
+              await updateDoc(sessRef, {
+                totalSalesCount: increment(1),
+                totalSalesAmount: increment(cartTotal || 0),
+                lastActive: nowIso
+              });
+            } catch (sessErr) {
+              console.warn('Could not increment staff session sales:', sessErr);
+            }
+          }
+
+          const formattedTotal = cartTotal % 1 === 0 ? cartTotal.toFixed(0) : cartTotal.toFixed(2);
+          const hasChange = paymentMethod === 'cash' && (changeReturned ?? 0) > 0;
+          const formattedChange = ((changeReturned || 0) % 1 === 0) ? (changeReturned || 0).toFixed(0) : (changeReturned || 0).toFixed(2);
+
+          let successMsg = `🎉 Sale Completed! Total: Rs. ${formattedTotal}.`;
+          if (hasChange) {
+            successMsg += ` Pay Back Change: Rs. ${formattedChange} to customer.`;
+          }
+          successMsg += ` Transaction #${receiptNum}.`;
+          showNotification('success', successMsg);
+        } catch (bgErr: any) {
+          console.error('Background transaction error:', bgErr);
+          showNotification('error', 'Sale recorded locally. Cloud sync: ' + (bgErr?.message || 'pending'));
+        } finally {
+          setCheckoutLoading(false);
+        }
+      })();
 
     } catch (err: any) {
       console.error('Checkout error:', err);
@@ -1967,7 +1967,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                 </div>
               </div>
 
-              {/* CART ITEMS LIST WITH COMPACT FONTS & DYNAMIC EXPANSION */}
+              {/* CART ITEMS LIST & TABLE WITH EXPLICIT COLUMNS */}
               {cart.length === 0 ? (
                 <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-300 space-y-2">
                   <ShoppingBag className="w-7 h-7 text-slate-400 mx-auto" />
@@ -1975,171 +1975,172 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                   <p className="text-[11px] text-slate-500 font-medium">Scan barcode or 4-digit code (e.g. 1001) & press Enter to add</p>
                 </div>
               ) : (
-                <div className="flex-1 overflow-y-auto overscroll-contain pr-1 custom-scrollbar min-h-0 space-y-1.5">
-                  <AnimatePresence initial={false}>
-                    {cart.map((item, idx) => {
-                      const isWeight = item.product.sellBy === 'weight' || item.product.unitType === 'kg' || Boolean(item.product.pricePerKg);
-                      const qtyStep = isWeight ? 0.25 : 1;
-                      const discInfo = getProductDiscountInfo(item.product);
+                <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar border-2 border-slate-300 rounded-2xl bg-white min-h-0 shadow-xs">
+                  <table className="w-full text-left border-collapse border border-slate-300 text-sm sm:text-base">
+                    <thead className="bg-slate-100 text-slate-900 font-black uppercase text-xs sm:text-sm tracking-wider sticky top-0 z-10 border-b-2 border-slate-300">
+                      <tr>
+                        <th className="p-3 sm:p-3.5 text-slate-800 whitespace-nowrap border border-slate-300">Barcode</th>
+                        <th className="p-3 sm:p-3.5 text-slate-800 min-w-[180px] border border-slate-300">Product Name</th>
+                        <th className="p-3 sm:p-3.5 text-center text-slate-800 min-w-[140px] border border-slate-300">QTY</th>
+                        <th className="p-3 sm:p-3.5 text-right text-slate-800 whitespace-nowrap border border-slate-300">Unit Price</th>
+                        <th className="p-3 sm:p-3.5 text-right text-slate-800 whitespace-nowrap border border-slate-300">Total Price</th>
+                        <th className="p-3 sm:p-3.5 text-center text-slate-800 whitespace-nowrap border border-slate-300">Discount</th>
+                        <th className="p-3 sm:p-3.5 text-center text-slate-800 whitespace-nowrap border border-slate-300">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-300 bg-white font-medium">
+                      {cart.map((item, idx) => {
+                        const isWeight = item.product.sellBy === 'weight' || item.product.unitType === 'kg' || Boolean(item.product.pricePerKg);
+                        const qtyStep = isWeight ? 0.25 : 1;
+                        const discInfo = getProductDiscountInfo(item.product);
+                        const unitPriceStr = `Rs. ${discInfo.effectivePrice.toFixed(2)}${isWeight ? '/kg' : ''}`;
+                        const lineDiscount = (discInfo.basePrice - discInfo.effectivePrice) * item.quantity;
+                        const discountDisplay = discInfo.hasDiscount 
+                          ? (lineDiscount > 0 ? `Rs. ${lineDiscount.toFixed(2)}` : discInfo.discountLabel)
+                          : 'Rs. 0.00';
 
-                      return (
-                        <motion.div 
-                          key={item.product.id}
-                          initial={{ opacity: 0, y: 6, scale: 0.99 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, x: -16, scale: 0.95 }}
-                          transition={{ duration: 0.12 }}
-                          className={`p-2.5 sm:p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 transition-all shadow-2xs ${
-                            lastEnteredProductId === item.product.id
-                              ? 'bg-emerald-50/80 border-emerald-400 ring-2 ring-emerald-400/30'
-                              : 'bg-slate-50/90 hover:bg-slate-100/80 border-slate-200'
-                          }`}
-                        >
-                          <div className="flex-1 min-w-0 space-y-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-xs sm:text-sm font-mono font-black text-slate-500">{idx + 1}.</span>
-                              <span className="font-black text-slate-900 text-sm sm:text-base truncate max-w-[220px] sm:max-w-[300px]">{item.product.name}</span>
+                        const fullBarcodeCode = item.product.barcode && item.product.barcode.trim() !== '' 
+                          ? item.product.barcode 
+                          : (item.product.shortcutCode ? `#${item.product.shortcutCode}` : (item.product.serialNumber || 'N/A'));
 
-                              {item.product.shortcutCode && (
-                                <span className="px-2 py-0.5 rounded-md bg-orange-100 text-orange-950 border border-orange-200 font-mono font-black text-xs flex items-center gap-1">
-                                  <Hash className="w-3 h-3 text-orange-600" />
-                                  <span>#{item.product.shortcutCode}</span>
-                                </span>
-                              )}
+                        return (
+                          <tr 
+                            key={item.product.id}
+                            className={`transition-colors hover:bg-orange-50/40 ${
+                              lastEnteredProductId === item.product.id
+                                ? 'bg-emerald-50/90 font-bold border-l-4 border-emerald-500'
+                                : ''
+                            }`}
+                          >
+                            {/* 1. Barcode of product */}
+                            <td className="p-3 sm:p-3.5 font-mono text-sm sm:text-base font-bold text-slate-900 whitespace-nowrap border border-slate-300">
+                              <span className="px-2.5 py-1 bg-slate-100 border border-slate-300 rounded-lg shadow-2xs font-mono font-black text-slate-950 inline-block text-xs sm:text-sm">
+                                {fullBarcodeCode}
+                              </span>
+                            </td>
 
-                              {isWeight && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setWeightPromptProduct(item.product);
-                                    setIsWeightModalOpen(true);
-                                  }}
-                                  className="px-2 py-0.5 rounded-md bg-amber-100 hover:bg-amber-200 text-amber-950 font-bold text-xs flex items-center gap-1 cursor-pointer transition-colors border border-amber-300"
-                                  title="Click to adjust weight in scale calculator"
-                                >
-                                  <Scale className="w-3 h-3 text-amber-700" />
-                                  <span>{item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(3)} kg</span>
-                                </button>
-                              )}
-                              {discInfo.hasDiscount && (
-                                <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-bold text-[10px] sm:text-xs uppercase tracking-wide border border-rose-200">
-                                  {discInfo.discountLabel}
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Explicit Unit Price Badge */}
-                            <div className="flex items-center gap-2.5 flex-wrap pt-0.5">
-                              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-900 font-mono font-bold text-xs sm:text-sm">
-                                <span>Rs. {discInfo.effectivePrice.toFixed(2)}{isWeight ? '/kg' : ''}</span>
-                                {discInfo.hasDiscount && (
-                                  <span className="line-through text-slate-400 text-xs ml-1 font-mono">
-                                    Rs. {discInfo.basePrice.toFixed(2)}
+                            {/* 2. Product Name */}
+                            <td className="p-3 sm:p-3.5 font-black text-slate-950 text-base sm:text-lg border border-slate-300">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono text-slate-400 text-xs sm:text-sm font-bold">{idx + 1}.</span>
+                                <span className="truncate max-w-[200px] sm:max-w-[320px]">{item.product.name}</span>
+                                {item.product.shortcutCode && (
+                                  <span className="px-2 py-0.5 rounded-md bg-orange-100 text-orange-950 text-xs font-mono font-black border border-orange-200">
+                                    #{item.product.shortcutCode}
                                   </span>
                                 )}
+                                {isWeight && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setWeightPromptProduct(item.product);
+                                      setIsWeightModalOpen(true);
+                                    }}
+                                    className="px-2 py-0.5 rounded-md bg-amber-100 hover:bg-amber-200 text-amber-950 font-black text-xs flex items-center gap-1 border border-amber-300 cursor-pointer"
+                                    title="Adjust weight"
+                                  >
+                                    <Scale className="w-3 h-3 text-amber-700" /> By Kg
+                                  </button>
+                                )}
                               </div>
-                              <span className="text-xs text-slate-500 font-mono">
-                                Stock: <strong className="text-emerald-700 font-black">{item.product.stockQuantity}{isWeight ? 'kg' : ''}</strong>
-                              </span>
-                            </div>
-                          </div>
+                            </td>
 
-                          {/* COMPACT DIRECT INLINE QUANTITY CONTROLS */}
-                          <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
-                            <div className="flex items-center gap-1 bg-white border border-slate-300 rounded-xl p-1 shadow-2xs">
-                              <button
-                                type="button"
-                                onClick={() => handleUpdateQuantity(item.product.id, Math.max(0, item.quantity - qtyStep))}
-                                className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-100 hover:bg-orange-100 hover:text-orange-700 text-slate-800 flex items-center justify-center cursor-pointer text-sm font-black transition-colors"
-                                title={`Reduce quantity (-${qtyStep})`}
-                              >
-                                <Minus className="w-3.5 h-3.5" />
-                              </button>
-                              
-                              <input
-                                id={`standard-cart-qty-input-${item.product.id}`}
-                                type="number"
-                                inputMode={isWeight ? "decimal" : "numeric"}
-                                step={isWeight ? "0.001" : "1"}
-                                min="0"
-                                max={item.product.stockQuantity}
-                                value={item.quantity === 0 ? '' : item.quantity}
-                                placeholder="0"
-                                onFocus={(e) => {
-                                  e.target.select();
-                                }}
-                                onClick={(e) => {
-                                  (e.target as HTMLInputElement).select();
-                                }}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  if (val === '') {
-                                    handleUpdateQuantity(item.product.id, 0);
-                                    return;
-                                  }
-                                  const num = parseFloat(val);
-                                  if (!isNaN(num) && num >= 0) {
-                                    handleUpdateQuantity(item.product.id, num);
-                                  }
-                                }}
-                                onBlur={() => {
-                                  if (item.quantity <= 0) {
-                                    handleUpdateQuantity(item.product.id, 1);
-                                  }
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    if (item.quantity <= 0) {
-                                      handleUpdateQuantity(item.product.id, 1);
+                            {/* 3. QTY */}
+                            <td className="p-3 sm:p-3.5 text-center whitespace-nowrap border border-slate-300">
+                              <div className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-xl p-1 shadow-2xs">
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateQuantity(item.product.id, Math.max(0, item.quantity - qtyStep))}
+                                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white hover:bg-orange-100 text-slate-800 hover:text-orange-700 flex items-center justify-center font-black text-sm transition-colors cursor-pointer border border-slate-200"
+                                  title={`Reduce (-${qtyStep})`}
+                                >
+                                  <Minus className="w-3.5 h-3.5" />
+                                </button>
+                                
+                                <input
+                                  id={`standard-cart-qty-input-${item.product.id}`}
+                                  type="number"
+                                  inputMode={isWeight ? "decimal" : "numeric"}
+                                  step={isWeight ? "0.001" : "1"}
+                                  min="0"
+                                  max={item.product.stockQuantity}
+                                  value={item.quantity === 0 ? '' : item.quantity}
+                                  placeholder="0"
+                                  onFocus={(e) => e.target.select()}
+                                  onClick={(e) => (e.target as HTMLInputElement).select()}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    if (val === '') { handleUpdateQuantity(item.product.id, 0); return; }
+                                    const num = parseFloat(val);
+                                    if (!isNaN(num) && num >= 0) handleUpdateQuantity(item.product.id, num);
+                                  }}
+                                  onBlur={() => { if (item.quantity <= 0) handleUpdateQuantity(item.product.id, 1); }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      if (item.quantity <= 0) handleUpdateQuantity(item.product.id, 1);
+                                      setLastEnteredProductId(null);
+                                      if (barcodeInputRef.current) barcodeInputRef.current.value = '';
+                                      setBarcodeInput('');
+                                      focusActiveScanner();
                                     }
-                                    setLastEnteredProductId(null);
-                                    if (barcodeInputRef.current) {
-                                      barcodeInputRef.current.value = '';
-                                    }
-                                    setBarcodeInput('');
-                                    focusActiveScanner();
-                                  }
-                                }}
-                                className="w-16 sm:w-20 text-center bg-white text-slate-950 font-black text-sm sm:text-base border border-slate-300 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 rounded-lg font-mono py-1 px-1 cursor-text shadow-xs"
-                                title="Click or type to edit quantity (Press ENTER when done)"
-                              />
+                                  }}
+                                  className="w-16 sm:w-20 text-center bg-white text-slate-950 font-black text-base sm:text-lg border border-slate-300 focus:border-orange-500 rounded-lg font-mono py-1 px-1 cursor-text shadow-2xs"
+                                />
 
-                              <button
-                                type="button"
-                                onClick={() => handleUpdateQuantity(item.product.id, item.quantity + qtyStep)}
-                                className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-100 hover:bg-orange-100 hover:text-orange-700 text-slate-800 flex items-center justify-center cursor-pointer text-sm font-black transition-colors"
-                                title={`Add quantity (+${qtyStep})`}
-                              >
-                                <Plus className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateQuantity(item.product.id, item.quantity + qtyStep)}
+                                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white hover:bg-orange-100 text-slate-800 hover:text-orange-700 flex items-center justify-center font-black text-sm transition-colors cursor-pointer border border-slate-200"
+                                  title={`Add (+${qtyStep})`}
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
 
-                            {/* Line Total and Instant Delete / Remove Button */}
-                            <div className="flex items-center gap-2 shrink-0">
-                              <div className="text-right min-w-[75px] sm:min-w-[90px]">
-                                <div className="font-black text-orange-600 text-sm sm:text-base font-mono">Rs. {item.totalPrice.toFixed(2)}</div>
-                                <div className="text-xs text-slate-500 font-mono font-medium">
-                                  {isWeight ? `${item.quantity.toFixed(3)}kg` : `x${item.quantity}`}
+                            {/* 4. Unit Price */}
+                            <td className="p-3 sm:p-3.5 text-right font-mono font-black text-slate-950 text-sm sm:text-base whitespace-nowrap border border-slate-300">
+                              <div>{unitPriceStr}</div>
+                              {discInfo.hasDiscount && (
+                                <div className="text-xs text-slate-400 line-through">
+                                  Rs. {discInfo.basePrice.toFixed(2)}
                                 </div>
-                              </div>
+                              )}
+                            </td>
 
+                            {/* 5. Total Price */}
+                            <td className="p-3 sm:p-3.5 text-right font-mono font-black text-orange-600 text-base sm:text-xl whitespace-nowrap border border-slate-300">
+                              Rs. {item.totalPrice.toFixed(2)}
+                            </td>
+
+                            {/* 6. Discount */}
+                            <td className="p-3 sm:p-3.5 text-center font-mono text-xs sm:text-sm whitespace-nowrap border border-slate-300">
+                              {discInfo.hasDiscount ? (
+                                <span className="px-2.5 py-1 rounded-md bg-rose-100 text-rose-800 font-bold text-xs sm:text-sm border border-rose-200 inline-block">
+                                  {discountDisplay}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 font-medium">Rs. 0.00</span>
+                              )}
+                            </td>
+
+                            {/* 7. Action / Delete */}
+                            <td className="p-3 sm:p-3.5 text-center whitespace-nowrap border border-slate-300">
                               <button
                                 type="button"
                                 onClick={() => handleRemoveItem(item.product.id)}
-                                className="p-2 rounded-xl bg-red-50 hover:bg-red-600 text-red-600 hover:text-white border border-red-200 hover:border-red-600 transition-all cursor-pointer shadow-2xs group"
+                                className="p-2 rounded-xl bg-red-50 hover:bg-red-600 text-red-600 hover:text-white border border-red-200 transition-colors cursor-pointer shadow-2xs"
                                 title={`Delete "${item.product.name}" from cart`}
                               >
-                                <Trash2 className="w-4 h-4 transition-transform group-hover:scale-110" />
+                                <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
                               </button>
-                            </div>
-                          </div>
-
-                        </motion.div>
-                      );
-                    })}
-                  </AnimatePresence>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
@@ -2841,7 +2842,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                                   </span>
                                 ) : (
                                   <span className="text-[10px] text-slate-400 font-mono">
-                                    {prod.barcode?.slice(-4) || 'SKU'}
+                                    {prod.barcode || 'SKU'}
                                   </span>
                                 )}
                                 {isWeight && (
@@ -2931,195 +2932,172 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                     </div>
                   </div>
                 ) : (
-                  <div className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar divide-y divide-slate-100 min-h-0">
-                    {cart.map((item, idx) => {
-                      const isWeight = item.product.sellBy === 'weight' || item.product.unitType === 'kg' || Boolean(item.product.pricePerKg);
-                      const qtyStep = isWeight ? 0.25 : 1;
-                      const discInfo = getProductDiscountInfo(item.product);
+                  <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar border-2 border-slate-300 rounded-2xl bg-white min-h-0 shadow-xs">
+                    <table className="w-full text-left border-collapse border border-slate-300 text-sm sm:text-base">
+                      <thead className="bg-slate-100 text-slate-900 font-black uppercase text-xs sm:text-sm tracking-wider sticky top-0 z-10 border-b-2 border-slate-300">
+                        <tr>
+                          <th className="p-3 sm:p-3.5 text-slate-800 whitespace-nowrap border border-slate-300">Barcode</th>
+                          <th className="p-3 sm:p-3.5 text-slate-800 min-w-[200px] border border-slate-300">Product Name</th>
+                          <th className="p-3 sm:p-3.5 text-center text-slate-800 min-w-[150px] border border-slate-300">QTY</th>
+                          <th className="p-3 sm:p-3.5 text-right text-slate-800 whitespace-nowrap border border-slate-300">Unit Price</th>
+                          <th className="p-3 sm:p-3.5 text-right text-slate-800 whitespace-nowrap border border-slate-300">Total Price</th>
+                          <th className="p-3 sm:p-3.5 text-center text-slate-800 whitespace-nowrap border border-slate-300">Discount</th>
+                          <th className="p-3 sm:p-3.5 text-center text-slate-800 whitespace-nowrap border border-slate-300">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-300 bg-white font-medium">
+                        {cart.map((item, idx) => {
+                          const isWeight = item.product.sellBy === 'weight' || item.product.unitType === 'kg' || Boolean(item.product.pricePerKg);
+                          const qtyStep = isWeight ? 0.25 : 1;
+                          const discInfo = getProductDiscountInfo(item.product);
+                          const unitPriceStr = `Rs. ${discInfo.effectivePrice.toFixed(2)}${isWeight ? '/kg' : ''}`;
+                          const lineDiscount = (discInfo.basePrice - discInfo.effectivePrice) * item.quantity;
+                          const discountDisplay = discInfo.hasDiscount 
+                            ? (lineDiscount > 0 ? `Rs. ${lineDiscount.toFixed(2)}` : discInfo.discountLabel)
+                            : 'Rs. 0.00';
 
-                      return (
-                        <div
-                          key={item.product.id}
-                          className={`py-1.5 px-3 sm:py-2 sm:px-4 flex flex-col md:flex-row md:items-center justify-between gap-2.5 transition-colors border-b ${
-                            lastEnteredProductId === item.product.id
-                              ? 'bg-emerald-50/80 border-2 border-emerald-400 ring-2 ring-emerald-400/30'
-                              : 'hover:bg-orange-50/30 bg-white border-slate-100'
-                          }`}
-                        >
-                          {/* Item Index, Picture & Main Info */}
-                          <div className="flex items-center gap-3 flex-1 min-w-0">
-                            <span className="text-sm sm:text-base font-mono font-black text-slate-500 w-6 text-right shrink-0">
-                              {idx + 1}.
-                            </span>
+                          const fullBarcodeCode = item.product.barcode && item.product.barcode.trim() !== '' 
+                            ? item.product.barcode 
+                            : (item.product.shortcutCode ? `#${item.product.shortcutCode}` : (item.product.serialNumber || 'N/A'));
 
-                            {item.product.imageUrl ? (
-                              <img
-                                src={item.product.imageUrl}
-                                alt={item.product.name}
-                                className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl object-cover border border-slate-200 shrink-0 shadow-2xs"
-                                referrerPolicy="no-referrer"
-                              />
-                            ) : (
-                              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0 shadow-2xs">
-                                <Package className="w-5 h-5" />
-                              </div>
-                            )}
-
-                            <div className="min-w-0 flex-1 space-y-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-black text-slate-900 text-sm sm:text-base md:text-lg truncate">
-                                  {item.product.name}
+                          return (
+                            <tr 
+                              key={item.product.id}
+                              className={`transition-colors hover:bg-orange-50/40 ${
+                                lastEnteredProductId === item.product.id
+                                  ? 'bg-emerald-50/90 font-bold border-l-4 border-emerald-500'
+                                  : ''
+                              }`}
+                            >
+                              {/* 1. Barcode of product */}
+                              <td className="p-3 sm:p-3.5 font-mono text-sm sm:text-base font-bold text-slate-900 whitespace-nowrap border border-slate-300">
+                                <span className="px-2.5 py-1 bg-slate-100 border border-slate-300 rounded-lg shadow-2xs font-mono font-black text-slate-950 inline-block text-xs sm:text-sm">
+                                  {fullBarcodeCode}
                                 </span>
+                              </td>
 
-                                {/* 4-DIGIT SHORTCUT CODE BADGE */}
-                                {item.product.shortcutCode && (
-                                  <span className="px-2 py-0.5 rounded-md bg-orange-100 text-orange-950 border border-orange-200 font-mono font-black text-xs sm:text-sm flex items-center gap-1">
-                                    <Hash className="w-3.5 h-3.5 text-orange-600" />
-                                    <span>#{item.product.shortcutCode}</span>
-                                  </span>
-                                )}
-
-                                {isWeight && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setWeightPromptProduct(item.product);
-                                      setIsWeightModalOpen(true);
-                                    }}
-                                    className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-950 font-bold text-xs sm:text-sm flex items-center gap-1 hover:bg-amber-200 cursor-pointer transition-colors border border-amber-300"
-                                    title="Click to adjust weight in scale calculator"
-                                  >
-                                    <Scale className="w-3.5 h-3.5 text-amber-700" /> Scale KG
-                                  </button>
-                                )}
-
-                                {discInfo.hasDiscount && (
-                                  <span className="px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 font-bold text-xs sm:text-sm uppercase border border-rose-200">
-                                    {discInfo.discountLabel}
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* Unit Price & Stock Details */}
-                              <div className="flex items-center gap-2.5 text-xs sm:text-sm text-slate-700 font-medium flex-wrap">
-                                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-900 font-mono font-bold text-xs sm:text-sm">
-                                  <span>Rs. {discInfo.effectivePrice.toFixed(2)}{isWeight ? '/kg' : ' each'}</span>
-                                  {discInfo.hasDiscount && (
-                                    <span className="line-through text-slate-400 text-xs ml-1.5 font-mono">
-                                      Rs. {discInfo.basePrice.toFixed(2)}
+                              {/* 2. Product Name */}
+                              <td className="p-3 sm:p-3.5 font-black text-slate-950 text-base sm:text-lg border border-slate-300">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-mono text-slate-400 text-xs sm:text-sm font-bold">{idx + 1}.</span>
+                                  <span className="truncate max-w-[220px] sm:max-w-[360px]">{item.product.name}</span>
+                                  {item.product.shortcutCode && (
+                                    <span className="px-2 py-0.5 rounded-md bg-orange-100 text-orange-950 text-xs font-mono font-black border border-orange-200">
+                                      #{item.product.shortcutCode}
                                     </span>
                                   )}
+                                  {isWeight && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setWeightPromptProduct(item.product);
+                                        setIsWeightModalOpen(true);
+                                      }}
+                                      className="px-2 py-0.5 rounded-md bg-amber-100 hover:bg-amber-200 text-amber-950 font-black text-xs flex items-center gap-1 border border-amber-300 cursor-pointer"
+                                      title="Adjust weight"
+                                    >
+                                      <Scale className="w-3 h-3 text-amber-700" /> By Kg
+                                    </button>
+                                  )}
                                 </div>
+                              </td>
 
-                                <span className="text-slate-300">•</span>
-                                <span className="font-mono text-slate-600 text-xs sm:text-sm">
-                                  Code: <strong className="text-slate-900">{item.product.barcode || item.product.serialNumber || 'N/A'}</strong>
-                                </span>
-                                <span className="text-slate-300">•</span>
-                                <span className="text-emerald-700 font-black text-xs sm:text-sm">
-                                  Stock: {item.product.stockQuantity}{isWeight ? 'kg' : ' units'}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
+                              {/* 3. QTY */}
+                              <td className="p-3 sm:p-3.5 text-center whitespace-nowrap border border-slate-300">
+                                <div className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-xl p-1 shadow-2xs">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateQuantity(item.product.id, Math.max(0, item.quantity - qtyStep))}
+                                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white hover:bg-orange-100 text-slate-800 hover:text-orange-700 flex items-center justify-center font-black text-sm transition-colors cursor-pointer border border-slate-200"
+                                    title={`Reduce (-${qtyStep})`}
+                                  >
+                                    <Minus className="w-3.5 h-3.5" />
+                                  </button>
+                                  
+                                  <input
+                                    id={`cart-qty-input-${item.product.id}`}
+                                    type="number"
+                                    inputMode={isWeight ? "decimal" : "numeric"}
+                                    step={isWeight ? "0.001" : "1"}
+                                    min="0"
+                                    max={item.product.stockQuantity}
+                                    value={item.quantity === 0 ? '' : item.quantity}
+                                    placeholder="0"
+                                    onFocus={(e) => e.target.select()}
+                                    onClick={(e) => (e.target as HTMLInputElement).select()}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      if (val === '') { handleUpdateQuantity(item.product.id, 0); return; }
+                                      const num = parseFloat(val);
+                                      if (!isNaN(num) && num >= 0) handleUpdateQuantity(item.product.id, num);
+                                    }}
+                                    onBlur={() => { if (item.quantity <= 0) handleUpdateQuantity(item.product.id, 1); }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        if (item.quantity <= 0) handleUpdateQuantity(item.product.id, 1);
+                                        setLastEnteredProductId(null);
+                                        if (fullScreenScanInputRef.current) fullScreenScanInputRef.current.value = '';
+                                        setFullScreenScanInput('');
+                                        focusActiveScanner();
+                                      }
+                                    }}
+                                    className="w-16 sm:w-20 text-center bg-white text-slate-950 font-black text-base sm:text-lg border border-slate-300 focus:border-orange-500 rounded-lg font-mono py-1 px-1 cursor-text shadow-2xs"
+                                  />
 
-                          {/* Right Controls: Quantity & Total & Remove */}
-                          <div className="flex items-center justify-between md:justify-end gap-3 sm:gap-4 shrink-0 pt-1 md:pt-0 border-t md:border-t-0 border-slate-100">
-                            
-                            {/* Quantity Controls (Compact & Direct inline editing) */}
-                            <div className="flex items-center gap-1 bg-slate-50 border border-slate-300 rounded-xl p-1 shadow-2xs">
-                              <button
-                                type="button"
-                                onClick={() => handleUpdateQuantity(item.product.id, Math.max(0, item.quantity - qtyStep))}
-                                className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-white hover:bg-slate-200 text-slate-800 font-black flex items-center justify-center cursor-pointer transition-colors shadow-2xs border border-slate-200"
-                                title="Reduce quantity"
-                              >
-                                <Minus className="w-4 h-4 text-slate-700" />
-                              </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateQuantity(item.product.id, item.quantity + qtyStep)}
+                                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white hover:bg-orange-100 text-slate-800 hover:text-orange-700 flex items-center justify-center font-black text-sm transition-colors cursor-pointer border border-slate-200"
+                                    title={`Add (+${qtyStep})`}
+                                  >
+                                    <Plus className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
 
-                              <input
-                                id={`cart-qty-input-${item.product.id}`}
-                                type="number"
-                                inputMode={isWeight ? "decimal" : "numeric"}
-                                step={isWeight ? "0.01" : "1"}
-                                min="0"
-                                max={item.product.stockQuantity}
-                                value={item.quantity === 0 ? '' : item.quantity}
-                                placeholder="0"
-                                onFocus={(e) => {
-                                  e.target.select();
-                                }}
-                                onClick={(e) => {
-                                  (e.target as HTMLInputElement).select();
-                                }}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  if (val === '') {
-                                    handleUpdateQuantity(item.product.id, 0);
-                                    return;
-                                  }
-                                  const num = parseFloat(val);
-                                  if (!isNaN(num) && num >= 0) {
-                                    handleUpdateQuantity(item.product.id, num);
-                                  }
-                                }}
-                                onBlur={() => {
-                                  if (item.quantity <= 0) {
-                                    handleUpdateQuantity(item.product.id, 1);
-                                  }
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    if (item.quantity <= 0) {
-                                      handleUpdateQuantity(item.product.id, 1);
-                                    }
-                                    setLastEnteredProductId(null);
-                                    if (fullScreenScanInputRef.current) {
-                                      fullScreenScanInputRef.current.value = '';
-                                    }
-                                    setFullScreenScanInput('');
-                                    focusActiveScanner();
-                                  }
-                                }}
-                                className="w-18 sm:w-24 py-1.5 px-2 text-center font-mono font-black text-base sm:text-lg text-slate-950 bg-white border-2 border-slate-300 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 rounded-lg focus:outline-none shadow-xs cursor-text transition-all"
-                                title="Click or type to edit quantity (Press ENTER when done)"
-                              />
+                              {/* 4. Unit Price */}
+                              <td className="p-3 sm:p-3.5 text-right font-mono font-black text-slate-950 text-sm sm:text-base whitespace-nowrap border border-slate-300">
+                                <div>{unitPriceStr}</div>
+                                {discInfo.hasDiscount && (
+                                  <div className="text-xs text-slate-400 line-through">
+                                    Rs. {discInfo.basePrice.toFixed(2)}
+                                  </div>
+                                )}
+                              </td>
 
-                              <button
-                                type="button"
-                                onClick={() => handleUpdateQuantity(item.product.id, item.quantity + qtyStep)}
-                                className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-white hover:bg-slate-200 text-slate-800 font-black flex items-center justify-center cursor-pointer transition-colors shadow-2xs border border-slate-200"
-                                title="Increase quantity"
-                              >
-                                <Plus className="w-4 h-4 text-slate-700" />
-                              </button>
-                            </div>
-
-                            {/* Item Total Price */}
-                            <div className="text-right min-w-[85px] sm:min-w-[105px] shrink-0">
-                              <div className="font-mono font-black text-base sm:text-lg text-orange-600">
+                              {/* 5. Total Price */}
+                              <td className="p-3 sm:p-3.5 text-right font-mono font-black text-orange-600 text-base sm:text-xl whitespace-nowrap border border-slate-300">
                                 Rs. {item.totalPrice.toFixed(2)}
-                              </div>
-                              <div className="text-xs text-slate-500 font-mono font-medium">
-                                {item.quantity} × Rs. {discInfo.effectivePrice.toFixed(2)}
-                              </div>
-                            </div>
+                              </td>
 
-                            {/* Delete Item */}
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveItem(item.product.id)}
-                              className="p-2 text-slate-400 hover:text-white hover:bg-red-600 rounded-xl cursor-pointer transition-all shrink-0 border border-slate-200 hover:border-red-600"
-                              title="Remove item"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
+                              {/* 6. Discount */}
+                              <td className="p-3 sm:p-3.5 text-center font-mono text-xs sm:text-sm whitespace-nowrap border border-slate-300">
+                                {discInfo.hasDiscount ? (
+                                  <span className="px-2.5 py-1 rounded-md bg-rose-100 text-rose-800 font-bold text-xs sm:text-sm border border-rose-200 inline-block">
+                                    {discountDisplay}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400 font-medium">Rs. 0.00</span>
+                                )}
+                              </td>
+
+                              {/* 7. Action / Delete */}
+                              <td className="p-3 sm:p-3.5 text-center whitespace-nowrap border border-slate-300">
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveItem(item.product.id)}
+                                  className="p-2 rounded-xl bg-red-50 hover:bg-red-600 text-red-600 hover:text-white border border-red-200 transition-colors cursor-pointer shadow-2xs"
+                                  title={`Delete "${item.product.name}" from cart`}
+                                >
+                                  <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 )}
 

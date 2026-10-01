@@ -35,6 +35,7 @@ import { SupplierManagementView } from './SupplierManagementView';
 import { StaffSessionsView } from './StaffSessionsView';
 import { PaymentMethodsView } from './PaymentMethodsView';
 import { StoreStaffTrackerView } from './StoreStaffTrackerView';
+import { StaffAttendanceView } from './StaffAttendanceView';
 import { 
   TrendingUp, 
   Package, 
@@ -48,6 +49,7 @@ import {
   ReceiptText,
   Scale,
   Activity,
+  CalendarCheck2,
   Eye, 
   ArrowUpRight, 
   RefreshCw,
@@ -1127,6 +1129,11 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       title: 'Recent Customer Receipts',
       subtitle: 'All recent customer checkout slips and transaction history',
       icon: ReceiptText
+    },
+    attendance: {
+      title: 'Staff Attendance & Reports',
+      subtitle: 'Daily staff check-in/check-out tracking and custom month attendance reports',
+      icon: CalendarCheck2
     },
     staff_operations: {
       title: 'Staff & Operations (Online / Offline Status)',
@@ -2931,9 +2938,20 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
 
         {/* TAB: STAFF & OPERATIONS */}
         {activeTab === 'staff_operations' && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
+          <div className="space-y-6">
             <StoreStaffTrackerView store={liveStore} currentUser={currentUser} storeUsers={storeUsers} />
-          </motion.div>
+          </div>
+        )}
+
+        {/* TAB: STAFF ATTENDANCE & MONTHLY REPORTS */}
+        {activeTab === 'attendance' && (
+          <div className="space-y-6">
+            <StaffAttendanceView
+              store={liveStore}
+              currentUser={currentUser}
+              storeUsers={storeUsers}
+            />
+          </div>
         )}
 
         {/* TAB: STORE EXPENSE MANAGEMENT */}

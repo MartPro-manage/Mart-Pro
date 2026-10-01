@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { AuthState, Store, Sale } from './types';
-import { ensureSuperAdminExists, db, doc, updateDoc, setDoc } from './lib/firebase';
+import { AuthState, Store, Sale, UserAccount } from './types';
+import { ensureSuperAdminExists, db, doc, updateDoc, setDoc, collection, query, where, getDocs, onSnapshot } from './lib/firebase';
 import { Login } from './components/Login';
 import { Navbar, AppNavView } from './components/Navbar';
 import { SuperAdminDashboard } from './components/SuperAdminDashboard';
@@ -10,6 +10,7 @@ import { CashCounterView } from './components/CashCounterView';
 import { CustomerPriceCheckerView } from './components/CustomerPriceCheckerView';
 import { SupplierManagementView } from './components/SupplierManagementView';
 import { StaffSessionsView } from './components/StaffSessionsView';
+import { StaffAttendanceView } from './components/StaffAttendanceView';
 import { ReceiptModal } from './components/ReceiptModal';
 import { PublicReceiptView } from './components/PublicReceiptView';
 
@@ -46,6 +47,31 @@ export default function App() {
 
   // Inspected store for Super Admin
   const [inspectedStore, setInspectedStore] = useState<Store | null>(null);
+
+  // Synchronized store users for attendance and operations
+  const [storeUsers, setStoreUsers] = useState<UserAccount[]>([]);
+
+  useEffect(() => {
+    const storeIdToWatch = inspectedStore?.id || auth.store?.id;
+    if (!storeIdToWatch) return;
+
+    const q = query(
+      collection(db, 'users'),
+      where('storeId', 'in', [storeIdToWatch, 'all', auth.store?.parentStoreId || storeIdToWatch])
+    );
+
+    const unsub = onSnapshot(q, (snapshot) => {
+      const list: UserAccount[] = [];
+      snapshot.forEach(docSnap => {
+        list.push({ id: docSnap.id, ...docSnap.data() } as UserAccount);
+      });
+      setStoreUsers(list);
+    }, (err) => {
+      console.warn('Error fetching store users:', err);
+    });
+
+    return () => unsub();
+  }, [auth.store?.id, auth.store?.parentStoreId, inspectedStore?.id]);
 
   // Selected receipt to view
   const [selectedReceiptSale, setSelectedReceiptSale] = useState<Sale | null>(null);
@@ -137,11 +163,15 @@ export default function App() {
       console.warn('Auto-holding bill on logout warning:', err);
     }
 
+    const nowIso = new Date().toISOString();
     const activeSessionId = localStorage.getItem('martpro_current_session_id');
+    const loggedUser = auth.user;
+
+    // 1. Mark current staff session as offline
     if (activeSessionId) {
       try {
         await updateDoc(doc(db, 'staff_sessions', activeSessionId), {
-          logoutTime: new Date().toISOString(),
+          logoutTime: nowIso,
           status: 'offline'
         });
       } catch (err) {
@@ -149,6 +179,36 @@ export default function App() {
       }
       localStorage.removeItem('martpro_current_session_id');
     }
+
+    // 2. Query and mark any other active sessions for this user as offline
+    if (loggedUser) {
+      try {
+        const uQuery = query(
+          collection(db, 'staff_sessions'),
+          where('userId', '==', loggedUser.id),
+          where('status', '==', 'online')
+        );
+        const uSnap = await getDocs(uQuery);
+        const updates = uSnap.docs.map(d => updateDoc(doc(db, 'staff_sessions', d.id), {
+          logoutTime: nowIso,
+          status: 'offline'
+        }));
+        await Promise.allSettled(updates);
+
+        // Also update users document status if exists
+        try {
+          await updateDoc(doc(db, 'users', loggedUser.id), {
+            isOnline: false,
+            lastLogout: nowIso
+          });
+        } catch {
+          // ignore
+        }
+      } catch (sessErr) {
+        console.warn('Error clearing user online status:', sessErr);
+      }
+    }
+
     setAuth({ user: null, store: null });
     setActiveNavView('dashboard');
     setInspectedStore(null);
@@ -241,6 +301,16 @@ export default function App() {
           <CustomerPriceCheckerView 
             store={activeStore} 
             currentUser={auth.user} 
+            onBack={handleUniversalReturn}
+          />
+        )}
+
+        {/* 6. STAFF ATTENDANCE & MONTHLY REPORTS */}
+        {activeNavView === 'attendance' && activeStore && (
+          <StaffAttendanceView 
+            store={activeStore} 
+            currentUser={auth.user} 
+            storeUsers={storeUsers}
             onBack={handleUniversalReturn}
           />
         )}

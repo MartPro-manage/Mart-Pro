@@ -25,7 +25,7 @@ import {
   Clock,
   Coins
 } from 'lucide-react';
-import { speakMessage } from '../lib/speech';
+import { speakMessage, formatAmountWords, isSaleAnnounced, markSaleAsAnnounced } from '../lib/speech';
 import { printThermalReceiptDirect } from '../utils/printThermalReceipt';
 
 interface ReceiptModalProps {
@@ -67,21 +67,26 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     }
   }, [initialTab, isOpen]);
 
-  // Trigger audio voice greeting when receipt opens
+  const announcedSaleIdRef = useRef<string | null>(null);
+
+  // Trigger audio voice greeting when receipt opens strictly ONE time per transaction
   useEffect(() => {
     if (isOpen && sale && voiceEnabled && isVoiceAllowed) {
-      const storeName = store?.name || sale?.storeName || 'our store';
-      const formattedTotal = sale.totalAmount % 1 === 0 ? sale.totalAmount.toFixed(0) : sale.totalAmount.toFixed(2);
-      const speech = `Thank you for shopping at ${storeName}! Total bill is ${formattedTotal} rupees.`;
-      speakMessage(speech);
+      // If already announced (e.g. in Change Modal or previously), do not duplicate
+      if (!isSaleAnnounced(sale.id) && announcedSaleIdRef.current !== sale.id) {
+        announcedSaleIdRef.current = sale.id;
+        markSaleAsAnnounced(sale.id);
+        const storeName = store?.name || sale?.storeName || 'our store';
+        const speech = `Thank you for shopping at ${storeName}! Total bill is ${formatAmountWords(sale.totalAmount)}.`;
+        speakMessage(speech);
+      }
     }
-  }, [isOpen, sale, voiceEnabled, isVoiceAllowed, store?.name]);
+  }, [isOpen, sale?.id, voiceEnabled, isVoiceAllowed, store?.name]);
 
   const handleReplayVoice = () => {
     if (!sale || !isVoiceAllowed) return;
     const storeName = store?.name || sale?.storeName || 'our store';
-    const formattedTotal = sale.totalAmount % 1 === 0 ? sale.totalAmount.toFixed(0) : sale.totalAmount.toFixed(2);
-    const speech = `Thank you for shopping at ${storeName}! Total bill is ${formattedTotal} rupees.`;
+    const speech = `Thank you for shopping at ${storeName}! Total bill is ${formatAmountWords(sale.totalAmount)}.`;
     speakMessage(speech);
   };
 
@@ -134,13 +139,6 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     });
     text += `-----------------------------------\n`;
     text += `SUBTOTAL:       ${curr} ${(subtotal || 0).toFixed(2)}\n`;
-    if (totalDiscount > 0) {
-      text += `DISCOUNT${sale.discountType === 'percentage' && sale.discountValue ? ` (${sale.discountValue}%)` : ''}:   -${curr} ${totalDiscount.toFixed(2)}\n`;
-      text += `TOTAL DISCOUNT: -${curr} ${totalDiscount.toFixed(2)}\n`;
-    } else {
-      text += `DISCOUNT:       ${curr} 0.00\n`;
-      text += `TOTAL DISCOUNT: ${curr} 0.00\n`;
-    }
     text += `-----------------------------------\n`;
     text += `TOTAL AMOUNT:   ${curr} ${(sale.totalAmount || 0).toFixed(2)}\n`;
     if (sale.paymentMethod === 'cash' && sale.cashReceived !== undefined) {
@@ -263,14 +261,6 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             <div class="flex-row" style="color: #64748b;">
               <span>Subtotal:</span>
               <span>${curr} ${(subtotal || 0).toFixed(2)}</span>
-            </div>
-            <div class="flex-row font-bold" style="color: ${totalDiscount > 0 ? '#047857' : '#64748b'};">
-              <span>Discount ${sale.discountType === 'percentage' && sale.discountValue ? `(${sale.discountValue}%)` : ''}:</span>
-              <span>${totalDiscount > 0 ? `-${curr} ${totalDiscount.toFixed(2)}` : `${curr} 0.00`}</span>
-            </div>
-            <div class="flex-row font-bold" style="color: ${totalDiscount > 0 ? '#047857' : '#64748b'};">
-              <span>Total Discount:</span>
-              <span>${totalDiscount > 0 ? `-${curr} ${totalDiscount.toFixed(2)}` : `${curr} 0.00`}</span>
             </div>
 
             <div class="flex-row total-box">
@@ -724,16 +714,6 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                     <div className="flex justify-between text-xs text-slate-600">
                       <span>Subtotal:</span>
                       <span className="font-mono font-semibold">{curr} {(subtotal || 0).toFixed(2)}</span>
-                    </div>
-
-                    <div className={`flex justify-between text-xs font-bold ${totalDiscount > 0 ? 'text-emerald-700' : 'text-slate-500'}`}>
-                      <span>Discount {sale.discountType === 'percentage' && sale.discountValue ? `(${sale.discountValue}%)` : ''}:</span>
-                      <span className="font-mono">{totalDiscount > 0 ? `-${curr} ${totalDiscount.toFixed(2)}` : `${curr} 0.00`}</span>
-                    </div>
-
-                    <div className={`flex justify-between text-xs font-bold ${totalDiscount > 0 ? 'text-emerald-700' : 'text-slate-500'}`}>
-                      <span>Total Discount:</span>
-                      <span className="font-mono">{totalDiscount > 0 ? `-${curr} ${totalDiscount.toFixed(2)}` : `${curr} 0.00`}</span>
                     </div>
 
                     <div className={`flex justify-between text-sm font-black text-slate-900 pt-1.5 ${

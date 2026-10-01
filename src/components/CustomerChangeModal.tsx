@@ -59,6 +59,7 @@ export const CustomerChangeModal: React.FC<CustomerChangeModalProps> = ({
   voiceEnabled = true
 }) => {
   const [isPrinting, setIsPrinting] = useState(false);
+  const announcedSaleIdRef = React.useRef<string | null>(null);
 
   const handleDirectPrint = async () => {
     if (!sale) return;
@@ -75,14 +76,17 @@ export const CustomerChangeModal: React.FC<CustomerChangeModalProps> = ({
 
   const handleReplayVoice = () => {
     if (!sale) return;
-    speakCustomerChange(sale.totalAmount || 0, cashReceived, changeReturned);
+    speakCustomerChange(sale.totalAmount || 0, cashReceived, changeReturned, sale.id, true);
   };
 
   useEffect(() => {
     if (isOpen && sale) {
-      // Voice prompt to clearly announce total bill, cash received and change return to cashier & customer
+      // Voice prompt to clearly announce total bill, cash received and change return strictly ONE time
       if (voiceEnabled && store?.voiceAnnouncementEnabled !== false) {
-        speakCustomerChange(sale.totalAmount || 0, cashReceived, changeReturned);
+        if (announcedSaleIdRef.current !== sale.id) {
+          announcedSaleIdRef.current = sale.id;
+          speakCustomerChange(sale.totalAmount || 0, cashReceived, changeReturned, sale.id, false);
+        }
       }
 
       // Keyboard listener: Enter or Space advances to receipt, P prints directly

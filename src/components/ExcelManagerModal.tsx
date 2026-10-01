@@ -27,6 +27,8 @@ import { BatchProductRow, parseExcelProductFile, generateRandomBarcode } from '.
 import { getAllCategories, saveNewCategoryToStore, DEFAULT_PRESET_CATEGORIES } from '../lib/categories';
 import { playScanSuccessBeep } from '../lib/sound';
 import { ScannableBarcodePreview } from './ScannableBarcodePreview';
+import { db, doc, setDoc, cleanFirestoreData } from '../lib/firebase';
+import { generateNextShortcutCode } from '../utils/productShortcuts';
 
 export interface SpreadsheetRowItem {
   id: string;
@@ -82,7 +84,105 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
 
   // Uploading status
   const [isUploading, setIsUploading] = useState(false);
+  const [isSavingDirectly, setIsSavingDirectly] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // Direct Save to Firestore Stock with Automatic Barcode Matching & Stock Increments
+  const handleSaveDirectToStock = async () => {
+    setHasAttemptedSubmit(true);
+    setUploadError(null);
+
+    const rowsWithData = rows.filter(r => 
+      r.name.trim().length > 0 || 
+      r.costPrice !== '' ||
+      r.price !== '' || 
+      r.quantity !== '' || 
+      r.barcode.trim().length > 0
+    );
+
+    if (rowsWithData.length === 0) {
+      setUploadError('Please fill in product details (Name, Cost Price, Selling Price, and Quantity) for at least one item before saving.');
+      return;
+    }
+
+    const incompleteRows = rowsWithData.filter(r => {
+      const hasName = r.name.trim().length > 0;
+      const numCost = typeof r.costPrice === 'number' ? r.costPrice : parseFloat(String(r.costPrice));
+      const hasValidCost = !isNaN(numCost) && numCost > 0;
+      const numPrice = typeof r.price === 'number' ? r.price : parseFloat(String(r.price));
+      const hasValidPrice = !isNaN(numPrice) && numPrice > 0;
+      const numQty = typeof r.quantity === 'number' ? r.quantity : parseFloat(String(r.quantity));
+      const hasValidQty = r.quantity !== '' && !isNaN(numQty) && numQty >= 0;
+      
+      return !hasName || !hasValidCost || !hasValidPrice || !hasValidQty;
+    });
+
+    if (incompleteRows.length > 0) {
+      setUploadError(`Cannot proceed: ${incompleteRows.length} product row(s) are missing required fields. Cost Price (> 0) and Selling Price (> 0) are compulsory for every row.`);
+      return;
+    }
+
+    setIsSavingDirectly(true);
+    try {
+      let savedCount = 0;
+      const assignedPool = [...(existingProducts || [])];
+
+      for (const r of rowsWithData) {
+        const barcodeTrimmed = r.barcode ? r.barcode.trim() : '';
+        const pCost = typeof r.costPrice === 'number' ? r.costPrice : parseFloat(String(r.costPrice)) || 0;
+        const pPrice = typeof r.price === 'number' ? r.price : parseFloat(String(r.price)) || 0;
+        const pQty = typeof r.quantity === 'number' ? r.quantity : parseFloat(String(r.quantity)) || 0;
+        const rowCategory = r.category.trim() || 'General';
+
+        // Match existing product in store database by barcode
+        const existing = barcodeTrimmed 
+          ? (existingProducts || []).find(prod => prod.barcode && prod.barcode.trim().toLowerCase() === barcodeTrimmed.toLowerCase())
+          : undefined;
+
+        const prodId = existing ? existing.id : `prod_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        const shortcutCode = existing?.shortcutCode || generateNextShortcutCode(assignedPool);
+
+        if (!existing) {
+          assignedPool.push({ shortcutCode } as Product);
+        }
+
+        const updatedQty = existing ? (existing.stockQuantity || 0) + pQty : pQty;
+
+        await setDoc(doc(db, 'products', prodId), cleanFirestoreData({
+          id: prodId,
+          storeId: store.id,
+          barcode: barcodeTrimmed || (existing?.barcode || ''),
+          serialNumber: barcodeTrimmed || (existing?.serialNumber || shortcutCode),
+          shortcutCode: shortcutCode,
+          name: r.name.trim() || existing?.name || 'Unnamed Product',
+          category: rowCategory || existing?.category || 'General',
+          sellBy: 'unit',
+          unitType: 'piece',
+          price: pPrice,
+          costPrice: pCost,
+          stockQuantity: updatedQty,
+          minStockLevel: existing?.minStockLevel || 5,
+          createdAt: existing?.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }), { merge: true });
+
+        savedCount++;
+      }
+
+      playScanSuccessBeep();
+      onClose();
+      if (onProductsSaved) {
+        onProductsSaved(savedCount);
+      }
+      if (onDirectRegisterSuccess) {
+        onDirectRegisterSuccess(savedCount);
+      }
+    } catch (err: any) {
+      setUploadError(`Failed to save products to database: ${err?.message || 'Firestore write error'}`);
+    } finally {
+      setIsSavingDirectly(false);
+    }
+  };
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -784,6 +884,18 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
                 >
                   Cancel
                 </button>
+
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  type="button"
+                  onClick={handleSaveDirectToStock}
+                  disabled={isSavingDirectly}
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+                  <span>{isSavingDirectly ? 'Saving to Stock...' : 'Save All to Stock'}</span>
+                </motion.button>
 
                 <motion.button
                   whileHover={{ scale: 1.02 }}

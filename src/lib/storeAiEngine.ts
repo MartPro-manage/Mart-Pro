@@ -5,7 +5,7 @@ export interface AiQueryResult {
   speechText: string;
   matchedProducts: Product[];
   highlightedProduct: Product | null;
-  intent: 'top_selling' | 'cheapest' | 'price_check' | 'stock_check' | 'category_list' | 'store_stat' | 'general';
+  intent: 'top_selling' | 'cheapest' | 'price_check' | 'stock_check' | 'category_list' | 'store_stat' | 'general' | 'guide';
   categoryTag?: string;
 }
 
@@ -107,6 +107,267 @@ export function processStoreAiQuery(
   const targetCategory = extractCategoryKeyword(rawQuery);
 
   // 0. SOFTWARE FUNCTIONALITY & HOW-TO GUIDES
+
+  // COMBINED SYSTEM GUIDE (POS Counter + Product Register + Software Guide)
+  if (
+    (q.includes('pos') && (q.includes('product register') || q.includes('register') || q.includes('software guide'))) ||
+    (q.includes('how to use pos') && q.includes('register')) ||
+    q.includes('pos counter product register') ||
+    (q.includes('pos') && q.includes('admin') && q.includes('guide'))
+  ) {
+    const reply = `📖 **MART PRO MASTER SYSTEM GUIDE: POS COUNTER, PRODUCT REGISTER & ADMIN DASHBOARD**\n\n` +
+      `Here is your complete, all-in-one operating manual for running your supermarket:\n\n` +
+      `🛒 **1. HOW TO OPERATE THE POS CASH COUNTER:**\n` +
+      `   • **Barcode Scanning:** Scan items with any USB/wireless scanner or camera. Full barcodes are auto-matched.\n` +
+      `   • **4-Digit Fast Codes:** Cashiers can type any item's 4-digit code (e.g. \`#1001\`) into the barcode box for instant billing.\n` +
+      `   • **Scale & Weight Items:** For goods sold by kg/liter (fruits, veg, meat), a weight prompt auto-opens. Type weight in kg (e.g. \`1.25\`) to compute exact price.\n` +
+      `   • **Bordered POS Table:** Items appear in a clean table showing Barcode, Name, Qty, Unit Price, Total, and Discount.\n` +
+      `   • **Park & Resume Bills:** Press \`H + D\` to hold the current customer's cart, and press \`A + S\` to resume held carts.\n` +
+      `   • **Settlement & Change:** Press \`Shift + P\` to complete billing. System calculates change due with voice announcements.\n` +
+      `   • **Receipts:** Press \`P\` or \`Ctrl + P\` for instant 80mm/58mm thermal receipts with live QR code e-receipts.\n\n` +
+      `📦 **2. HOW TO USE THE PRODUCT REGISTER & CATALOG:**\n` +
+      `   • **Single Item Register:** Go to Admin -> Product Register. Enter product Name, Selling Price, Cost Price, Stock, Category, Unit (piece/kg), and Barcode. A unique 4-digit shortcut code (e.g. \`#1001\`) is auto-generated!\n` +
+      `   • **Batch Multi-Product Grid:** Click "Batch Register" to enter 10 to 50 products rapidly in a fast spreadsheet grid with Tab navigation.\n` +
+      `   • **Excel / CSV Device Upload:** Click "Excel / CSV Import" to upload supplier sheets. Columns are auto-detected (Barcode, Name, Cost, Price, Qty). If an entered barcode already exists in stock, it automatically updates existing stock quantity, cost, and price!\n` +
+      `   • **Real-Time Catalog Search:** Search products by name, barcode, or 4-digit code to update prices and stock levels instantly.\n\n` +
+      `🏢 **3. STORE ADMIN DASHBOARD FEATURES & HOW TO USE:**\n` +
+      `   • **Sales Analytics:** Live revenue KPI cards, gross profit, and 7-day sales line chart.\n` +
+      `   • **Audit Log:** Inspect past itemized transaction receipts filtered by date.\n` +
+      `   • **Discounts & Promotions:** Create % OFF or Rs. OFF promotions with expiration timers.\n` +
+      `   • **Expenses Ledger:** Record operating overheads (rent, salaries) to calculate true Net Operating Profit.\n` +
+      `   • **Supplier Orders:** Place purchase orders with automatic stock replenishment upon delivery.\n` +
+      `   • **Staff Management:** Track cashier shifts, counter billing, and calculate salaries.\n` +
+      `   • **Store Settings:** Configure receipt formats, store logo, address, and voice announcements.`;
+
+    return {
+      reply,
+      speechText: `Here is your complete guide for POS counter billing, Product register management, and Admin dashboard features.`,
+      matchedProducts: [],
+      highlightedProduct: null,
+      intent: 'guide'
+    };
+  }
+
+  // Product Register & Inventory Management Guide
+  if (
+    q.includes('product register') || 
+    q.includes('how to use product register') || 
+    q.includes('how to register product') || 
+    q.includes('register product') || 
+    q.includes('register products') || 
+    q.includes('item register') || 
+    q.includes('catalog register') || 
+    q.includes('how to add product') || 
+    q.includes('add product guide') ||
+    q.includes('register item') ||
+    q.includes('how to register') ||
+    q.includes('batch register')
+  ) {
+    const reply = `📦 **PRODUCT REGISTER & INVENTORY MANAGEMENT GUIDE:**\n\n` +
+      `The Product Register allows you to add, manage, and synchronize your store's entire stock catalog:\n\n` +
+      `1. 📝 **Single Product Registration:**\n` +
+      `   • Click **"Product Register"** in the sidebar -> click **"Add New Product"**.\n` +
+      `   • **Required Fields:** Product Name, Category, Retail Selling Price, Wholesale Cost Price, and Stock Quantity.\n` +
+      `   • **Unit & Sell By:** Choose *Per Piece* (unit) or *Sell By Weight* (*kg*, *gram*, *liter*).\n` +
+      `   • **Barcode Number:** Scan barcode from the physical item, type it manually, or click **"Generate Random Barcode"**.\n` +
+      `   • **4-Digit POS Shortcut Code:** The system automatically assigns a consecutive code (e.g. \`#1001\`, \`#1002\`) so cashiers can type \`1001\` for instant billing at checkout!\n` +
+      `   • Click **"Save Product"** to register it directly into your live Firestore catalog.\n\n` +
+      `2. 📑 **Batch Multi-Product Registration (10 to 50 Items):**\n` +
+      `   • Click **"Batch Register"** to open the rapid tabular spreadsheet.\n` +
+      `   • Use the **Tab** key to navigate smoothly across rows.\n` +
+      `   • Generates unique 4-digit codes automatically for each row.\n` +
+      `   • Click **"Save All to Stock"** to commit all items in one click!\n\n` +
+      `3. 📊 **Excel / CSV Upload from Your Device:**\n` +
+      `   • Click **"Excel / CSV Import"** or drag-and-drop a spreadsheet from your device.\n` +
+      `   • **Auto-Column Detection:** Automatically maps Barcode, Product Name, Quantity, Cost Price, Selling Price, and Category.\n` +
+      `   • **Automatic Stock Updates:** If a barcode in the spreadsheet already exists in your stock, the system automatically updates the existing record with the new Quantity, Cost Price, and Selling Price!\n\n` +
+      `4. 🔍 **Catalog Search, Price Updates & Low-Stock Alerts:**\n` +
+      `   • Search any item by name, barcode, or 4-digit shortcut.\n` +
+      `   • Update prices or restock levels on the fly.\n` +
+      `   • Items falling below their minimum stock alert level appear automatically in the **Low Stock Alerts** widget!`;
+
+    return {
+      reply,
+      speechText: `In Product Register, you can add single items, use batch registration for 50 items at once, or upload Excel spreadsheets with automatic barcode stock updates.`,
+      matchedProducts: [],
+      highlightedProduct: null,
+      intent: 'guide'
+    };
+  }
+
+  // POS Counter & Cash Register Operating Guide
+  if (
+    q.includes('pos') || 
+    q.includes('cash register') || 
+    q.includes('cash counter') || 
+    q.includes('billing counter') || 
+    q.includes('how to use pos') || 
+    q.includes('how to use cash counter') ||
+    q.includes('how to use cash register') ||
+    q.includes('pos counter') ||
+    q.includes('pos guide') ||
+    q.includes('cash register guide')
+  ) {
+    const reply = `🛒 **COMPLETE POS COUNTER & CASH REGISTER OPERATING MANUAL:**\n\n` +
+      `The Mart Pro Cash Counter POS is designed for ultra-fast, zero-delay billing and cashier operations:\n\n` +
+      `1. 📦 **Scanning & Adding Products to Cart:**\n` +
+      `   • **Hardware Barcode Scanner:** Point any USB/wireless barcode scanner at products. Full barcode numbers are auto-recorded & matched instantly.\n` +
+      `   • **📷 Camera Barcode Scanner:** Click **"Open Camera Scanner"** to scan using your laptop, phone, or tablet camera.\n` +
+      `   • **🔢 4-Digit Product Shortcuts:** Type a product's 4-digit code (e.g. \`1001\` or \`#1001\`) into the barcode box & press \`ENTER\`.\n` +
+      `   • **⚡ Quick Shortcuts Tray:** Click any product card in the top shortcuts bar to add it directly to cart.\n\n` +
+      `2. ⚖️ **Weighted Products & Scale Items (Per Kg / Liters):**\n` +
+      `   • When adding loose goods (fruits, vegetables, meat, oil), the **Weight Prompt Calculator** automatically opens.\n` +
+      `   • Enter the weight in kg (e.g. \`1.25\` kg) or volume (liters) — the system computes the exact price automatically.\n\n` +
+      `3. 📋 **Cart Table & Quantity Editing:**\n` +
+      `   • As items are added, a **Bordered POS Table** is dynamically generated with explicit columns:\n` +
+      `     - **Barcode / Code** | **Product Name** | **QTY** | **Unit Price** | **Total Price** | **Discount** | **Action**\n` +
+      `   • Edit quantity using \`-\` / \`+\` buttons, click to type numbers directly, or press \`ENTER\` to jump to the next scan.\n\n` +
+      `4. ⏸️ **Park / Hold Bills (\`H + D\` / \`A + S\`):**\n` +
+      `   • **Hold Active Cart (\`H + D\`):** If a customer forgets an item, press \`H + D\` to park their bill in memory and serve the next person.\n` +
+      `   • **Resume Held Bill (\`A + S\`):** Press \`A + S\` to open the Held Bills Queue and restore any parked customer cart instantly.\n\n` +
+      `5. 💳 **Payment Settlement & Change Calculator:**\n` +
+      `   • Press \`Shift + P\` to open the **Payment Summary**.\n` +
+      `   • **Cash Payment:** Enter cash tendered (or click quick cash bills like Rs. 500, 1000, 5000). System calculates change due with live audio voice announcement & Customer Change Modal.\n` +
+      `   • **Digital Payments:** Select EasyPaisa, JazzCash, Card, or Raast QR Code to record digital reference transactions.\n\n` +
+      `6. 🖨️ **Thermal Receipt Printing & E-Receipts:**\n` +
+      `   • Press \`P\` or \`Ctrl + P\` to print 80mm or 58mm thermal receipts with store logo, address, itemized breakdown, discounts, and customer QR code e-receipt links!\n\n` +
+      `7. 🔄 **Product Returns & Refund Vouchers (\`R + N\`):**\n` +
+      `   • Press \`R + N\` to process customer returns. It auto-restocks inventory, updates revenue, and prints refund slips.`;
+
+    return {
+      reply,
+      speechText: `At the POS counter, scan barcodes or type 4-digit codes. Use H D to hold bills, Shift P for payment, and P to print thermal receipts.`,
+      matchedProducts: [],
+      highlightedProduct: null,
+      intent: 'guide'
+    };
+  }
+
+  // Admin Dashboard Features & Details Guide
+  if (
+    q.includes('admin dashboard feature') || 
+    (q.includes('feature') && (q.includes('admin') || q.includes('dashboard'))) || 
+    q.includes('admin feature') || 
+    q.includes('dashboard feature') || 
+    q.includes('what feature') || 
+    q.includes('admin detail') || 
+    q.includes('dashboard detail')
+  ) {
+    const reply = `🏢 **STORE ADMIN DASHBOARD — FEATURES & MODULES DETAIL:**\n\n` +
+      `The Store Admin Dashboard is your central control tower for managing store operations, inventory, finances, and staff:\n\n` +
+      `1. 📊 **Real-Time Executive Financial Analytics:**\n` +
+      `   • **KPI Metric Cards:** Live view of Today's Revenue, Gross Profit, Total Invoices, and Inventory Value at Wholesale Cost vs Retail Price.\n` +
+      `   • **7-Day Revenue Trend Chart:** Visual line chart tracking day-by-day store income growth.\n` +
+      `   • **24-Hour Hourly Sales Chart:** Bar chart showing peak sales hours throughout the day.\n` +
+      `   • **Sales Audit Log:** Filter transactions by date (Today, Yesterday, Custom Range), inspect itemized receipts, and audit cashier billing sessions.\n\n` +
+      `2. 📦 **Product Register & Catalog Management:**\n` +
+      `   • **Single Item Register:** Add products with barcode, 4-digit shortcut code, category, price, wholesale cost, stock, unit type (piece/kg/liter), and image.\n` +
+      `   • **Batch Multi-Product Register:** Fast spreadsheet grid to add 10–50 products at once with auto 4-digit code generation.\n` +
+      `   • **Excel / CSV Bulk Import:** Upload supplier spreadsheets with intelligent auto-column mapping.\n` +
+      `   • **Low Stock & Reorder Alerts:** Real-time alert list for items dropping below minimum stock levels.\n\n` +
+      `3. 🏷️ **Discounts & Promotional Engine:**\n` +
+      `   • Apply Percentage (% OFF) or Flat Cash (Rs. OFF) discounts storewide or on selected items.\n` +
+      `   • Set promotional expiration timers (1 day, 1 week, end of month).\n` +
+      `   • Displays original price, promotional discount, and customer savings on thermal receipts.\n\n` +
+      `4. 💰 **Expense Tracking & Net Operating Profit Ledger:**\n` +
+      `   • Record store overheads (rent, electricity, staff salaries, maintenance, transport).\n` +
+      `   • Automatically subtracts expenses from Gross Profit to compute true Net Operating Profit.\n\n` +
+      `5. 🚚 **Supplier Management & Purchase Restocking:**\n` +
+      `   • Maintain supplier contact ledgers and purchase orders.\n` +
+      `   • Track order statuses (Pending, Ordered, Delivered) and automatically restock inventory upon delivery.\n\n` +
+      `6. 👥 **Cashier Staff Management & Session Auditing:**\n` +
+      `   • Track cashier login/logout sessions, active counter numbers, invoices created, and revenue per staff member.\n` +
+      `   • Manage base salaries, bonuses, and commission records.\n\n` +
+      `7. ⚙️ **Store Customization & Thermal Printer Setup:**\n` +
+      `   • Customize store branding, logo, tax registration number, thermal receipt format (Standard, Classic, Eco), header/footer notes, and audio voice toggles.`;
+
+    return {
+      reply,
+      speechText: `The Admin Dashboard provides real-time sales analytics, inventory management, batch product registration, discount engine, expense tracking, supplier restocking, cashier auditing, and receipt settings.`,
+      matchedProducts: [],
+      highlightedProduct: null,
+      intent: 'guide'
+    };
+  }
+
+  // How to Use Admin Dashboard Guide
+  if (
+    q.includes('how to use admin') || 
+    q.includes('how to use dashboard') || 
+    q.includes('admin guide') || 
+    q.includes('dashboard guide') || 
+    q.includes('admin dashboard') || 
+    q.includes('use admin')
+  ) {
+    const reply = `⚙️ **HOW TO USE THE STORE ADMIN DASHBOARD — STEP-BY-STEP OPERATING GUIDE:**\n\n` +
+      `Here is how to navigate and manage your store using the Admin Dashboard:\n\n` +
+      `1. 🧭 **Navigating the Main Sidebar Menu:**\n` +
+      `   • **Dashboard / Overview:** View live revenue KPI cards, gross profit, sales volume charts, and low stock warnings.\n` +
+      `   • **Sales Audit Log:** Inspect past receipts, filter by date, and track total sales revenue.\n` +
+      `   • **Product Register:** Manage your product catalog, prices, wholesale costs, and stock levels.\n` +
+      `   • **Discounts & Promotions:** Create promotional sales (% OFF or Rs. OFF) with expiration dates.\n` +
+      `   • **Expenses Ledger:** Log store operating costs (rent, salaries, electricity) for net profit calculation.\n` +
+      `   • **Supplier Orders:** Manage wholesale suppliers and place purchase restocking orders.\n` +
+      `   • **Staff Tracker:** Audit cashier login sessions, active counters, and individual staff sales.\n` +
+      `   • **Store Settings:** Configure receipt templates, store logo, address, and hardware permissions.\n\n` +
+      `2. 📦 **How to Add Products to Inventory:**\n` +
+      `   • Click **"Product Register"** in the sidebar.\n` +
+      `   • Choose **"Single Register"** for individual items, **"Batch Register"** for multi-item spreadsheet entry, or **"Excel Import"** to upload files.\n` +
+      `   • Enter name, retail price, cost price, stock, and barcode. The system auto-generates a unique **4-digit shortcut code** (e.g. \`#1001\`).\n\n` +
+      `3. 🏷️ **How to Set Discounts for Customers:**\n` +
+      `   • Click **"Discounts & Promotions"** -> Choose **"All Products"** or select specific items.\n` +
+      `   • Select discount type (% OFF or Rs. OFF), enter value, set expiration date, and click **"Apply Discount"**.\n\n` +
+      `4. 💰 **How to Record Operating Expenses:**\n` +
+      `   • Click **"Expenses Ledger"** -> Click **"Add Expense"** -> Enter category (Rent, Utilities, Salary), amount, and date. Net Profit will update automatically.\n\n` +
+      `5. 🖨️ **How to Customize Thermal Receipts:**\n` +
+      `   • Click **"Store Settings"** -> Scroll to **"Receipt Settings"** -> Select layout (Standard 80mm, Classic 58mm, or Eco), update store header/footer text, and upload your store logo.`;
+
+    return {
+      reply,
+      speechText: `Navigate the sidebar to manage Sales, Product Register, Discounts, Expenses, Suppliers, Staff, and Store Settings. Ask me if you need help with any specific action!`,
+      matchedProducts: [],
+      highlightedProduct: null,
+      intent: 'guide'
+    };
+  }
+
+  // General Software / System Guide
+  if (
+    q.includes('guide') || 
+    q.includes('how to use') || 
+    q.includes('help') || 
+    q.includes('manual') || 
+    q.includes('tutorial') || 
+    q.includes('how system works') || 
+    q.includes('guide me') ||
+    q.includes('software guide') ||
+    q.includes('system guide')
+  ) {
+    const reply = `📖 **MART PRO SUPERMARKET MANAGEMENT SYSTEM — COMPLETE GUIDE:**\n\n` +
+      `Welcome! Mart Pro is your complete solution for supermarket checkout and administration. Here are the core areas:\n\n` +
+      `🛒 **1. Cash Counter POS & Billing:**\n` +
+      `   • Fast barcode scanning, 4-digit code typing (\`#1001\`), per-kg weight scale calculation, parking bills (\`H+D\` / \`A+S\`), and thermal receipt printing (\`P\`).\n\n` +
+      `🏢 **2. Store Admin Dashboard:**\n` +
+      `   • Real-time financial revenue metrics, gross profit, stock valuations, 7-day sales charts, and transaction inspection.\n\n` +
+      `📦 **3. Product Register & Stock Management:**\n` +
+      `   • Register products via Single Form, Batch Multi-Product Grid, or Excel/CSV spreadsheet upload.\n\n` +
+      `🏷️ **4. Discounts & Promotions Engine:**\n` +
+      `   • Create storewide or item-level promotional discounts with automatic customer savings display on receipts.\n\n` +
+      `💰 **5. Expenses & Net Profit Ledger:**\n` +
+      `   • Record store operating overheads to compute true Net Operating Profit.\n\n` +
+      `🚚 **6. Supplier Management & Restocking:**\n` +
+      `   • Place supplier purchase orders and auto-restock inventory upon delivery.\n\n` +
+      `💡 *Tip: Click any quick suggestion chip above or ask me a specific question for instant step-by-step guidance!*`;
+
+    return {
+      reply,
+      speechText: `Mart Pro includes POS billing, Admin analytics, product registration, discount management, expense tracking, and supplier restocking. Ask me any question for step by step guidance!`,
+      matchedProducts: [],
+      highlightedProduct: null,
+      intent: 'guide'
+    };
+  }
+
   // Keyboard shortcuts guide
   if (q.includes('shortcut') || q.includes('short cut') || q.includes('key combination') || q.includes('hotkey') || q.includes('keys')) {
     const reply = `⌨️ **Mart Pro POS Keyboard Shortcuts Guide:**\n\n` +
@@ -124,7 +385,7 @@ export function processStoreAiQuery(
       speechText: `Mart Pro has fast keyboard shortcuts like H D to hold bills, A S to retrieve held bills, S K for product shortcuts, and R N for returns.`,
       matchedProducts: [],
       highlightedProduct: null,
-      intent: 'general'
+      intent: 'guide'
     };
   }
 
@@ -140,7 +401,7 @@ export function processStoreAiQuery(
       speechText: `To hold a bill, press H D or click Hold Bill. To retrieve it later, press A S or click Held Bills.`,
       matchedProducts: [],
       highlightedProduct: null,
-      intent: 'general'
+      intent: 'guide'
     };
   }
 
@@ -158,7 +419,7 @@ export function processStoreAiQuery(
       speechText: `To process a return, press R N or click Product Return at the cash counter, specify the items, and print a verified refund voucher.`,
       matchedProducts: [],
       highlightedProduct: null,
-      intent: 'general'
+      intent: 'guide'
     };
   }
 
@@ -177,7 +438,7 @@ export function processStoreAiQuery(
       speechText: `You can set percentage or flat cash discounts from the Discounts Manager in Store Admin. Receipts will automatically display original price, discount amount, and total savings.`,
       matchedProducts: [],
       highlightedProduct: null,
-      intent: 'general'
+      intent: 'guide'
     };
   }
 
@@ -194,7 +455,7 @@ export function processStoreAiQuery(
       speechText: `For weight items, register them with Sell by Weight. Scanning them at checkout pops up the weight prompt to enter kilograms.`,
       matchedProducts: [],
       highlightedProduct: null,
-      intent: 'general'
+      intent: 'guide'
     };
   }
 
@@ -211,7 +472,7 @@ export function processStoreAiQuery(
       speechText: `Press P to print thermal receipts. The software supports 80 millimeter and 58 millimeter thermal printers and QR code e receipts.`,
       matchedProducts: [],
       highlightedProduct: null,
-      intent: 'general'
+      intent: 'guide'
     };
   }
 
@@ -229,7 +490,7 @@ export function processStoreAiQuery(
       speechText: `To import products, go to Product Register and click Excel Import, or attach your spreadsheet directly into this AI chat.`,
       matchedProducts: [],
       highlightedProduct: null,
-      intent: 'general'
+      intent: 'guide'
     };
   }
 

@@ -127,8 +127,6 @@ export const StaffSessionsView: React.FC<StaffSessionsViewProps> = ({
   // Hire Staff Modal State
   const [isHireStaffModalOpen, setIsHireStaffModalOpen] = useState(false);
   const [newStaffName, setNewStaffName] = useState('');
-  const [newStaffUsername, setNewStaffUsername] = useState('');
-  const [newStaffPassword, setNewStaffPassword] = useState('');
   const [newStaffRole, setNewStaffRole] = useState<string>('cash_counter');
   const [customRoleName, setCustomRoleName] = useState('');
   const [newStaffCounter, setNewStaffCounter] = useState('1');
@@ -378,12 +376,10 @@ export const StaffSessionsView: React.FC<StaffSessionsViewProps> = ({
     );
   });
 
-  // Hire New Staff Member with Salary
+  // Hire New Staff Member with Salary (Username & Password auto-generated)
   const handleHireStaff = async (e: React.FormEvent) => {
     e.preventDefault();
     const name = newStaffName.trim();
-    const username = newStaffUsername.trim().toLowerCase();
-    const password = newStaffPassword.trim();
     const salary = Number(newStaffSalary) || 0;
 
     let finalRole = newStaffRole;
@@ -396,21 +392,34 @@ export const StaffSessionsView: React.FC<StaffSessionsViewProps> = ({
       finalRole = typedRole.toLowerCase().replace(/\s+/g, '_');
     }
 
-    if (!name || !username || !password) {
-      showNotification('error', 'Please provide staff name, username, and password.');
+    if (!name) {
+      showNotification('error', 'Please provide staff full name.');
       return;
     }
 
     setLoading(true);
     try {
-      // Check username uniqueness
-      const existingQuery = query(collection(db, 'users'), where('username', '==', username));
-      const snap = await getDocs(existingQuery);
-      if (!snap.empty) {
-        showNotification('error', `Username "${username}" is already taken.`);
-        setLoading(false);
-        return;
+      const cleanBase = name.toLowerCase().replace(/[^a-z0-9]/g, '_') || 'staff';
+      let username = '';
+      let isUnique = false;
+      let attempts = 0;
+
+      while (!isUnique && attempts < 10) {
+        const randNum = Math.floor(1000 + Math.random() * 9000);
+        username = `${cleanBase}_${randNum}`;
+        const existingQuery = query(collection(db, 'users'), where('username', '==', username));
+        const snap = await getDocs(existingQuery);
+        if (snap.empty) {
+          isUnique = true;
+        }
+        attempts++;
       }
+
+      if (!username) {
+        username = `${cleanBase}_${Date.now().toString().slice(-4)}`;
+      }
+
+      const password = `staff_${Math.floor(1000 + Math.random() * 9000)}`;
 
       const userDocRef = doc(collection(db, 'users'));
       const newStaffAccount: UserAccount = {
@@ -430,11 +439,9 @@ export const StaffSessionsView: React.FC<StaffSessionsViewProps> = ({
 
       await setDoc(userDocRef, newStaffAccount);
 
-      showNotification('success', `Staff member ${name} (${finalRole.replace(/_/g, ' ')}) hired with monthly salary of Rs. ${salary.toLocaleString()}!`);
+      showNotification('success', `Staff member ${name} (@${username}) hired successfully with salary Rs. ${salary.toLocaleString()}!`);
       setIsHireStaffModalOpen(false);
       setNewStaffName('');
-      setNewStaffUsername('');
-      setNewStaffPassword('');
       setNewStaffSalary('');
       setCustomRoleName('');
       setNewStaffRole('cash_counter');
@@ -618,7 +625,7 @@ export const StaffSessionsView: React.FC<StaffSessionsViewProps> = ({
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-slate-50 flex flex-col font-sans">
       {/* Top Action Header */}
-      <div className="bg-white border-b border-slate-200 sticky top-16 z-30 shadow-2xs">
+      <div className="bg-white border-b border-slate-200 relative z-10 shadow-2xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-3">
           
           <div className="flex items-center gap-3">
@@ -1037,31 +1044,7 @@ export const StaffSessionsView: React.FC<StaffSessionsViewProps> = ({
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-bold text-slate-700 uppercase mb-1">Username</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. ali_cashier"
-                      value={newStaffUsername}
-                      onChange={(e) => setNewStaffUsername(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-medium focus:bg-white focus:outline-none focus:border-emerald-500 font-mono"
-                    />
-                  </div>
 
-                  <div>
-                    <label className="block font-bold text-slate-700 uppercase mb-1">Password</label>
-                    <input
-                      type="password"
-                      required
-                      placeholder="••••••••"
-                      value={newStaffPassword}
-                      onChange={(e) => setNewStaffPassword(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-medium focus:bg-white focus:outline-none focus:border-emerald-500"
-                    />
-                  </div>
-                </div>
 
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-3">

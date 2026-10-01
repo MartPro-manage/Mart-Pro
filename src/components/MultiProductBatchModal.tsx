@@ -201,14 +201,14 @@ export const MultiProductBatchModal: React.FC<MultiProductBatchModalProps> = ({
       // Build map of existing products by barcode or ID for updates
       const barcodeMap = new Map<string, Product>();
       (existingProducts || []).forEach(p => {
-        if (p.barcode) barcodeMap.set(p.barcode, p);
+        if (p.barcode) barcodeMap.set(p.barcode.trim().toLowerCase(), p);
       });
 
       const assignedShortcutsPool = [...existingProducts];
 
       for (const row of rows) {
         const barcodeTrimmed = row.barcode ? row.barcode.trim() : '';
-        const existing = barcodeTrimmed ? barcodeMap.get(barcodeTrimmed) : undefined;
+        const existing = barcodeTrimmed ? barcodeMap.get(barcodeTrimmed.toLowerCase()) : undefined;
         const productId = existing ? existing.id : `prod_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
         // Assign or preserve unique 4-digit shortcut code

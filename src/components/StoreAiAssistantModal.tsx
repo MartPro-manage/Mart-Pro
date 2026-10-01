@@ -43,6 +43,104 @@ interface Message {
   actionTaken?: boolean;
 }
 
+/**
+ * Formatted Markdown Text renderer for AI Copilot responses
+ */
+const FormattedMarkdownText: React.FC<{ text: string; isUser?: boolean }> = ({ text, isUser = false }) => {
+  if (!text) return null;
+
+  if (isUser) {
+    return <div className="whitespace-pre-wrap font-sans leading-relaxed">{text}</div>;
+  }
+
+  const lines = text.split('\n');
+
+  const formatInline = (content: string) => {
+    // split by code tags `...`
+    const codeParts = content.split(/(`[^`]+`)/g);
+    return codeParts.map((cPart, cIdx) => {
+      if (cPart.startsWith('`') && cPart.endsWith('`') && cPart.length > 2) {
+        const codeVal = cPart.slice(1, -1);
+        return (
+          <code key={cIdx} className="px-1.5 py-0.5 mx-0.5 rounded-md font-mono text-[11px] sm:text-xs font-bold bg-amber-100/90 text-amber-950 border border-amber-300/80 shadow-2xs inline-block">
+            {codeVal}
+          </code>
+        );
+      }
+
+      // split by **bold**
+      const boldParts = cPart.split(/(\*\*[^*]+\*\*)/g);
+      return boldParts.map((bPart, bIdx) => {
+        if (bPart.startsWith('**') && bPart.endsWith('**') && bPart.length > 4) {
+          return (
+            <strong key={bIdx} className="font-black text-slate-900">
+              {bPart.slice(2, -2)}
+            </strong>
+          );
+        }
+        if (bPart.startsWith('*') && bPart.endsWith('*') && bPart.length > 2) {
+          return (
+            <em key={bIdx} className="italic text-slate-600">
+              {bPart.slice(1, -1)}
+            </em>
+          );
+        }
+        return bPart;
+      });
+    });
+  };
+
+  return (
+    <div className="space-y-1.5 font-sans leading-relaxed text-slate-800">
+      {lines.map((line, idx) => {
+        const trimmed = line.trim();
+        if (!trimmed) return <div key={idx} className="h-1" />;
+
+        // Header lines starting with emojis or main title
+        const isHeading = (trimmed.startsWith('🛒') || trimmed.startsWith('🏢') || trimmed.startsWith('⚙️') || trimmed.startsWith('📖') || trimmed.startsWith('⌨️') || trimmed.startsWith('👋')) && trimmed.includes('**');
+        
+        if (isHeading) {
+          return (
+            <div key={idx} className="my-2 p-2.5 rounded-xl bg-orange-50/90 border border-orange-200/90 text-orange-950 font-black text-xs sm:text-sm shadow-2xs">
+              {formatInline(trimmed)}
+            </div>
+          );
+        }
+
+        // List item bullet
+        if (trimmed.startsWith('•') || trimmed.startsWith('-')) {
+          const bulletText = trimmed.substring(1).trim();
+          return (
+            <div key={idx} className="flex items-start gap-2 pl-1.5 text-xs sm:text-sm my-0.5">
+              <span className="text-orange-600 font-extrabold leading-tight text-sm">•</span>
+              <span className="flex-1">{formatInline(bulletText)}</span>
+            </div>
+          );
+        }
+
+        // Numbered item
+        const numMatch = trimmed.match(/^(\d+)\.\s+(.*)/);
+        if (numMatch) {
+          return (
+            <div key={idx} className="flex items-start gap-2 pl-0.5 font-medium text-xs sm:text-sm my-1 text-slate-900">
+              <span className="px-2 py-0.5 rounded-md bg-orange-600 text-white font-extrabold text-[10px] shrink-0 shadow-2xs mt-0.5">
+                {numMatch[1]}
+              </span>
+              <span className="flex-1">{formatInline(numMatch[2])}</span>
+            </div>
+          );
+        }
+
+        return (
+          <p key={idx} className="text-xs sm:text-sm my-0.5">
+            {formatInline(trimmed)}
+          </p>
+        );
+      })}
+    </div>
+  );
+};
+
 interface StoreAiAssistantModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -1004,8 +1102,16 @@ export const StoreAiAssistantModal: React.FC<StoreAiAssistantModalProps> = ({
       let reply = '';
       let candidates: Product[] | undefined = undefined;
 
-      // Check for 4-Digit Shortcut queries
-      if (q.includes('shortcut') || q.includes('short cut') || q.includes('4-digit') || q.includes('4 digit') || q.includes('short code') || q.includes('pos code')) {
+      // Smart Query Resolution for Software Help Guides & Category/Product Specific Queries
+      const engineRes = processStoreAiQuery(questionText, safeProducts, sales);
+      if (engineRes.intent === 'guide' || engineRes.intent !== 'general' || engineRes.matchedProducts.length > 0) {
+        reply = engineRes.reply;
+        if (engineRes.matchedProducts.length > 0) {
+          candidates = engineRes.matchedProducts;
+        }
+      }
+      // Check for 4-Digit Shortcut queries if not handled by guide
+      else if (!reply && (q.includes('shortcut') || q.includes('short cut') || q.includes('4-digit') || q.includes('4 digit') || q.includes('short code') || q.includes('pos code'))) {
         let matchedProd = safeProducts.find(p => p.name && q.includes(p.name.toLowerCase()));
         if (matchedProd) {
           reply = `🔢 **4-Digit POS Shortcut Code for "${matchedProd.name}":**\n\n• **Shortcut Code:** **#${matchedProd.shortcutCode || 'N/A'}**\n• **Retail Price:** Rs. ${matchedProd.price.toFixed(2)}${matchedProd.sellBy === 'weight' ? `/${matchedProd.unitType || 'kg'}` : ''}\n• **Barcode:** \`${matchedProd.barcode || 'N/A'}\`\n• **Available Stock:** ${matchedProd.stockQuantity} ${matchedProd.sellBy === 'weight' ? matchedProd.unitType || 'kg' : 'units'}\n\n💡 **Tip:** Cashiers can type \`${matchedProd.shortcutCode}\` anywhere at the cash counter or press \`S+K\` to view all shortcuts!`;
@@ -1013,15 +1119,6 @@ export const StoreAiAssistantModal: React.FC<StoreAiAssistantModalProps> = ({
         } else {
           const sampleList = safeProducts.slice(0, 6).map(p => `• **${p.name}**: \`#${p.shortcutCode || '----'}\` (Rs. ${p.price.toFixed(2)})`).join('\n');
           reply = `🔢 **4-Digit POS Product Shortcuts:**\n\n${sampleList}\n\n💡 **How to use 4-digit shortcuts:**\n1. Press **S + K** anywhere at the Cash Counter to open the Shortcuts Directory.\n2. Or simply type any 4-digit code (e.g. \`1001\`) into the barcode scanner box at checkout to instantly add item to cart!`;
-        }
-      }
-
-      // Smart Query Resolution for Category/Product Specific Queries (e.g. "top selling oil", "cheapest ghee", "price of zeera biscuit")
-      const engineRes = processStoreAiQuery(questionText, products, sales);
-      if (engineRes.intent !== 'general' || engineRes.matchedProducts.length > 0) {
-        reply = engineRes.reply;
-        if (engineRes.matchedProducts.length > 0) {
-          candidates = engineRes.matchedProducts;
         }
       }
       // 1. Cheapest item (storewide)
@@ -1142,52 +1239,75 @@ export const StoreAiAssistantModal: React.FC<StoreAiAssistantModalProps> = ({
     }
   };
 
-  // Commit parsed products from AI directly into Firestore
+  // Commit parsed products from AI directly into Firestore with automatic barcode stock updates
   const handleCommitParsedProducts = async (msgId: string, productsToSave: BatchProductRow[]) => {
     setIsProcessing(true);
     try {
       let saved = 0;
+      let updatedCount = 0;
+      let newCount = 0;
       const assignedPool = [...(products || [])];
-      const savedShortcuts: Array<{ name: string; code: string }> = [];
+      const savedShortcuts: Array<{ name: string; code: string; isUpdate?: boolean }> = [];
 
       for (const p of productsToSave) {
-        const prodId = `prod_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-        const shortcutCode = p.shortcutCode || generateNextShortcutCode(assignedPool);
-        assignedPool.push({ shortcutCode } as Product);
-        savedShortcuts.push({ name: p.name, code: shortcutCode });
+        const barcodeTrimmed = p.barcode ? p.barcode.trim() : '';
+        
+        // Match existing product in store database by full barcode
+        const existing = barcodeTrimmed 
+          ? (products || []).find(prod => prod.barcode && prod.barcode.trim().toLowerCase() === barcodeTrimmed.toLowerCase())
+          : undefined;
+
+        const prodId = existing ? existing.id : `prod_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        const shortcutCode = existing?.shortcutCode || p.shortcutCode || generateNextShortcutCode(assignedPool);
+
+        if (!existing) {
+          assignedPool.push({ shortcutCode } as Product);
+        }
+        savedShortcuts.push({ name: p.name || existing?.name || 'Product', code: shortcutCode, isUpdate: !!existing });
+
+        // Update stock: add new quantity to existing stock quantity, and update cost price & selling price
+        const updatedQty = existing ? (existing.stockQuantity || 0) + Number(p.quantity || 0) : Number(p.quantity || 0);
+        const updatedSellingPrice = Number(p.price) > 0 ? Number(p.price) : (existing?.price || 0);
+        const updatedCostPrice = Number(p.costPrice) > 0 ? Number(p.costPrice) : (existing?.costPrice || 0);
 
         await setDoc(doc(db, 'products', prodId), cleanFirestoreData({
           id: prodId,
           storeId: store.id,
-          barcode: p.barcode,
-          serialNumber: p.serialNumber || p.barcode,
+          barcode: barcodeTrimmed || (existing?.barcode || ''),
+          serialNumber: p.serialNumber || barcodeTrimmed || (existing?.serialNumber || shortcutCode),
           shortcutCode: shortcutCode,
-          name: p.name,
-          category: p.category || 'General',
-          sellBy: p.sellBy,
-          unitType: p.unitType,
-          price: Number(p.price),
-          costPrice: Number(p.costPrice) || 0,
-          stockQuantity: Number(p.quantity),
-          minStockLevel: 5,
-          weight: p.sellBy === 'weight' ? (p.unitType === 'kg' ? '1 kg' : '1 Liter') : undefined,
-          createdAt: new Date().toISOString(),
+          name: p.name?.trim() || existing?.name || 'Unnamed Product',
+          category: p.category?.trim() || existing?.category || 'General',
+          sellBy: p.sellBy || existing?.sellBy || 'unit',
+          unitType: p.unitType || existing?.unitType || 'piece',
+          price: updatedSellingPrice,
+          costPrice: updatedCostPrice,
+          stockQuantity: updatedQty,
+          minStockLevel: existing?.minStockLevel || 5,
+          weight: p.sellBy === 'weight' ? (p.unitType === 'kg' ? '1 kg' : '1 Liter') : existing?.weight,
+          createdAt: existing?.createdAt || new Date().toISOString(),
           updatedAt: new Date().toISOString()
         }), { merge: true });
+
+        if (existing) {
+          updatedCount++;
+        } else {
+          newCount++;
+        }
         saved++;
       }
 
       const shortcutSummary = savedShortcuts.slice(0, 6)
-        .map(s => `• **${s.name}**: \`#${s.code}\``)
+        .map(s => `• **${s.name}** (\`#${s.code}\`): ${s.isUpdate ? '🔄 Stock & Price Updated' : '✨ New Product Saved'}`)
         .join('\n');
-      const extraShortcuts = savedShortcuts.length > 6 ? `\n...and ${savedShortcuts.length - 6} more with assigned 4-digit codes.` : '';
+      const extraShortcuts = savedShortcuts.length > 6 ? `\n...and ${savedShortcuts.length - 6} more processed with assigned 4-digit codes.` : '';
 
       setMessages(prev => prev.map(m => {
         if (m.id === msgId) {
           return {
             ...m,
             actionTaken: true,
-            text: m.text + `\n\n🎉 **Successfully registered ${saved} products into ${store.name} inventory!**\n\n🔢 **Assigned 4-Digit POS Shortcut Keys:**\n${shortcutSummary}${extraShortcuts}\n\nThey are now live and ready for instant shortcut key typing and barcode scanning at the Cash Counter POS.`
+            text: m.text + `\n\n🎉 **Processed ${saved} products for "${store.name}"!**\n• **${newCount} New Products** registered into inventory.\n• **${updatedCount} Existing Products** updated with new stock quantity, cost price, and selling price.\n\n🔢 **Product POS Shortcut Status:**\n${shortcutSummary}${extraShortcuts}\n\nThey are live and updated in your store catalog!`
           };
         }
         return m;
@@ -1320,6 +1440,30 @@ export const StoreAiAssistantModal: React.FC<StoreAiAssistantModalProps> = ({
           {(activeChipCategory === 'all' || activeChipCategory === 'guides') && (
             <>
               <button
+                onClick={() => handleAskQuestion("How to use POS counter and cash register?")}
+                className="px-2.5 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg whitespace-nowrap transition-colors font-bold flex items-center gap-1 cursor-pointer shadow-xs"
+              >
+                🛒 How to Use POS Counter
+              </button>
+              <button
+                onClick={() => handleAskQuestion("How to use product register to add and manage products?")}
+                className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg whitespace-nowrap transition-colors font-bold flex items-center gap-1 cursor-pointer shadow-xs"
+              >
+                📦 Product Register Guide
+              </button>
+              <button
+                onClick={() => handleAskQuestion("What features are available in admin dashboard and how to use it?")}
+                className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg whitespace-nowrap transition-colors font-bold flex items-center gap-1 cursor-pointer shadow-xs"
+              >
+                🏢 Admin Dashboard Features
+              </button>
+              <button
+                onClick={() => handleAskQuestion("How to use store admin dashboard step by step?")}
+                className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg whitespace-nowrap transition-colors font-bold flex items-center gap-1 cursor-pointer shadow-xs"
+              >
+                ⚙️ How to Use Admin
+              </button>
+              <button
                 onClick={() => handleAskQuestion("What are all the POS keyboard shortcuts?")}
                 className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-lg border border-blue-200 whitespace-nowrap transition-colors font-semibold flex items-center gap-1 cursor-pointer"
               >
@@ -1414,7 +1558,7 @@ export const StoreAiAssistantModal: React.FC<StoreAiAssistantModalProps> = ({
                     : 'bg-white text-slate-800 border border-slate-200 rounded-tl-none shadow-sm'
                 }`}
               >
-                <div className="whitespace-pre-wrap font-sans">{msg.text}</div>
+                <FormattedMarkdownText text={msg.text} isUser={msg.sender === 'user'} />
 
                 {/* Interactive AI Product Editor Card */}
                 {msg.productEditDraft && (

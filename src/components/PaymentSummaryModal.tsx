@@ -362,7 +362,7 @@ export const PaymentSummaryModal: React.FC<PaymentSummaryModalProps> = ({
             >
               <Banknote className="w-5 h-5 text-white" />
               <span>
-                Complete Cash Payment & Give Change {changeToCustomer > 0 ? `(Rs. ${changeToCustomer.toFixed(0)})` : ''}
+                Complete Payment {changeToCustomer > 0 ? `& Return Change (Rs. ${changeToCustomer.toFixed(0)})` : ''}
               </span>
               <ArrowRight className="w-4 h-4" />
             </button>
@@ -381,7 +381,7 @@ export const PaymentSummaryModal: React.FC<PaymentSummaryModalProps> = ({
               ) : (
                 <>
                   <CheckCircle2 className="w-5 h-5" />
-                  <span>Complete Digital Payment & Issue Receipt</span>
+                  <span>Complete Payment & Issue Receipt</span>
                 </>
               )}
             </button>

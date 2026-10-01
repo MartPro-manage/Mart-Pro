@@ -483,13 +483,6 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
 
     txt += `${subDivider}\n`;
     txt += `SUBTOTAL:       ${curr} ${(subtotal || 0).toFixed(2)}\n`;
-    if (totalDiscount > 0) {
-      txt += `DISCOUNT:       -${curr} ${totalDiscount.toFixed(2)}\n`;
-      txt += `TOTAL DISCOUNT: -${curr} ${totalDiscount.toFixed(2)}\n`;
-    } else {
-      txt += `DISCOUNT:       ${curr} 0.00\n`;
-      txt += `TOTAL DISCOUNT: ${curr} 0.00\n`;
-    }
     txt += `GRAND TOTAL:    ${curr} ${sale.totalAmount.toFixed(2)}\n`;
     if (sale.paymentMethod === 'cash' && sale.cashReceived !== undefined) {
       txt += `CASH RECEIVED:  ${curr} ${sale.cashReceived.toFixed(2)}\n`;
@@ -580,14 +573,6 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
     <div class="row">
       <span>Subtotal:</span>
       <span>${curr} ${(subtotal || 0).toFixed(2)}</span>
-    </div>
-    <div class="row" style="color: ${totalDiscount > 0 ? '#047857' : '#64748b'}; font-weight: bold;">
-      <span>Discount:</span>
-      <span>${totalDiscount > 0 ? `-${curr} ${totalDiscount.toFixed(2)}` : `${curr} 0.00`}</span>
-    </div>
-    <div class="row" style="color: ${totalDiscount > 0 ? '#047857' : '#64748b'}; font-weight: bold;">
-      <span>Total Discount:</span>
-      <span>${totalDiscount > 0 ? `-${curr} ${totalDiscount.toFixed(2)}` : `${curr} 0.00`}</span>
     </div>
 
     <div class="total-row">
@@ -1087,15 +1072,7 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
                     <div className="pt-3 border-t-2 border-slate-900 space-y-1.5">
                       <div className="flex justify-between text-xs text-slate-600">
                         <span>Subtotal Amount:</span>
-                        <span className="font-mono font-semibold">{curr} {(subtotal || 0).toFixed(2)}</span>
-                      </div>
-                      <div className={`flex justify-between text-xs font-bold ${totalDiscount > 0 ? 'text-emerald-700' : 'text-slate-500'}`}>
-                        <span>Discount {sale.discountType === 'percentage' && sale.discountValue ? `(${sale.discountValue}%)` : ''}:</span>
-                        <span className="font-mono">{totalDiscount > 0 ? `-${curr} ${totalDiscount.toFixed(2)}` : `${curr} 0.00`}</span>
-                      </div>
-                      <div className={`flex justify-between text-xs font-bold ${totalDiscount > 0 ? 'text-emerald-700' : 'text-slate-500'}`}>
-                        <span>Total Discount:</span>
-                        <span className="font-mono">{totalDiscount > 0 ? `-${curr} ${totalDiscount.toFixed(2)}` : `${curr} 0.00`}</span>
+                        <span className="font-mono font-semibold">{curr} ${(subtotal || 0).toFixed(2)}</span>
                       </div>
 
                       <div className="flex justify-between text-base sm:text-lg font-black text-slate-900 pt-2 border-t border-slate-200">

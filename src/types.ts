@@ -145,6 +145,7 @@ export interface StaffAttendanceRecord {
   status: 'present' | 'absent' | 'late' | 'half_day' | 'leave';
   checkInTime?: string; // e.g. "09:00 AM"
   checkOutTime?: string; // e.g. "06:00 PM"
+  workingHours?: number;
   notes?: string;
   markedByUsername?: string;
   markedByRole?: string;

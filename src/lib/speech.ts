@@ -20,6 +20,9 @@ if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
   }
 }
 
+// Global registry of announced sales to guarantee speech occurs strictly ONE time per transaction
+const announcedSalesRegistry = new Set<string>();
+
 // Format text for clear, natural human pronunciation
 export const formatTextForSpeech = (text: string): string => {
   return text
@@ -37,6 +40,16 @@ export const formatTextForSpeech = (text: string): string => {
     .replace(/•/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+};
+
+export const formatAmountWords = (val: number): string => {
+  const rounded = Math.round(val * 100) / 100;
+  const whole = Math.floor(rounded);
+  const fraction = Math.round((rounded - whole) * 100);
+  if (fraction > 0) {
+    return `${whole} rupees and ${fraction} paisa`;
+  }
+  return `${whole} rupees`;
 };
 
 export const getBestAvailableVoice = (): SpeechSynthesisVoice | null => {
@@ -79,28 +92,39 @@ export interface SpeakOptions {
   volume?: number;
 }
 
+let lastSpokenText = '';
+let lastSpokenTime = 0;
+
 export const speakMessage = (
   text: string = 'Thank you for your purchase!',
   options: SpeakOptions = {}
 ): boolean => {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-    console.warn('Speech synthesis is not supported in this browser environment.');
     return false;
   }
 
   try {
+    const formatted = formatTextForSpeech(text);
+    if (!formatted) return false;
+
+    // Strict deduplication: Ignore if identical message was spoken within 4 seconds
+    const now = Date.now();
+    if (formatted === lastSpokenText && now - lastSpokenTime < 4000) {
+      return false;
+    }
+
+    lastSpokenText = formatted;
+    lastSpokenTime = now;
+
+    // Cancel any previous active utterance to avoid overlapping or garbled speech
+    window.speechSynthesis.cancel();
+
     // Chrome freeze safeguard: resume if paused
     if (window.speechSynthesis.paused) {
       window.speechSynthesis.resume();
     }
 
-    // Cancel any previous utterance to avoid overlaps and queue delays
-    window.speechSynthesis.cancel();
-
-    const formatted = formatTextForSpeech(text);
-    if (!formatted) return false;
-
-    // A brief 40ms timeout ensures Chrome has cleared previous utterances completely before starting new one
+    // Brief timeout ensures previous utterance is fully cleared from audio buffer
     setTimeout(() => {
       try {
         if (window.speechSynthesis.paused) {
@@ -108,7 +132,7 @@ export const speakMessage = (
         }
 
         const utterance = new SpeechSynthesisUtterance(formatted);
-        utterance.rate = options.rate ?? 0.88; 
+        utterance.rate = options.rate ?? 0.9; 
         utterance.pitch = options.pitch ?? 1.0;
         utterance.volume = options.volume ?? 1.0;
         utterance.lang = 'en-US';
@@ -133,34 +157,48 @@ export const speakMessage = (
 };
 
 /**
- * Specifically format and speak customer change announcement with exact rupees and paisas
+ * Specifically format and speak customer change announcement with exact rupees and paisas.
+ * Guaranteed to execute strictly ONE time per sale transaction unless explicitly replayed.
  */
 export const speakCustomerChange = (
   totalBill: number,
   cashReceived: number,
-  changeToReturn: number
+  changeToReturn: number,
+  saleId?: string,
+  forceReplay: boolean = false
 ) => {
+  if (saleId && !forceReplay) {
+    if (announcedSalesRegistry.has(saleId)) {
+      return false; // Already announced one time
+    }
+    announcedSalesRegistry.add(saleId);
+  }
+
   const round2 = (num: number) => Math.round(num * 100) / 100;
   const billVal = round2(totalBill);
   const receivedVal = round2(cashReceived);
   const changeVal = round2(changeToReturn);
 
-  const formatAmountWords = (val: number) => {
-    const whole = Math.floor(val);
-    const fraction = Math.round((val - whole) * 100);
-    if (fraction > 0) {
-      return `${whole} rupees and ${fraction} paisa`;
-    }
-    return `${whole} rupees`;
-  };
-
   if (changeVal > 0) {
-    const speech = `Total bill is ${formatAmountWords(billVal)}. Cash received is ${formatAmountWords(receivedVal)}. Please give ${formatAmountWords(changeVal)} change to the customer.`;
-    return speakMessage(speech, { rate: 0.88 });
+    const speech = `Total bill is ${formatAmountWords(billVal)}. Cash received is ${formatAmountWords(receivedVal)}. Return ${formatAmountWords(changeVal)} change to customer.`;
+    return speakMessage(speech, { rate: 0.9 });
   } else {
-    const speech = `Total bill is ${formatAmountWords(billVal)}. Exact cash received. No change required.`;
-    return speakMessage(speech, { rate: 0.88 });
+    const speech = `Total bill is ${formatAmountWords(billVal)}. Exact payment received. Thank you!`;
+    return speakMessage(speech, { rate: 0.9 });
   }
+};
+
+/**
+ * Mark a sale as already announced to avoid duplicate speech from downstream receipt modals
+ */
+export const markSaleAsAnnounced = (saleId: string) => {
+  if (saleId) {
+    announcedSalesRegistry.add(saleId);
+  }
+};
+
+export const isSaleAnnounced = (saleId: string): boolean => {
+  return saleId ? announcedSalesRegistry.has(saleId) : false;
 };
 
 

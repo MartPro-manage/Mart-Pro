@@ -379,7 +379,7 @@ export const CashPaymentModal: React.FC<CashPaymentModalProps> = ({
                     <>
                       <CheckCircle2 className="w-5 h-5" /> 
                       <span>
-                        Complete Checkout {changeToReturn > 0 ? `(Pay Back Rs. ${changeToReturn.toFixed(0)})` : ''}
+                        Complete Payment {changeToReturn > 0 ? `(Pay Back Rs. ${changeToReturn.toFixed(0)})` : ''}
                       </span>
                     </>
                   )}
@@ -634,7 +634,7 @@ export const CashPaymentModal: React.FC<CashPaymentModalProps> = ({
                 <>
                   <CheckCircle2 className="w-4 h-4" /> 
                   <span>
-                    Complete Sale {changeToReturn > 0 ? `(Return Rs. ${changeToReturn.toFixed(0)})` : ''}
+                    Complete Payment {changeToReturn > 0 ? `(Return Rs. ${changeToReturn.toFixed(0)})` : ''}
                   </span>
                 </>
               )}

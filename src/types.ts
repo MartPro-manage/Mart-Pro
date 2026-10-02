@@ -14,6 +14,7 @@ export interface Store {
   specialStoreId?: string; // Special assigned Store ID
   isLinked?: boolean; // Interconnected status
   adminUsername: string;
+  adminGmailId?: string;
   adminPassword?: string;
   status?: 'active' | 'disabled';
   parentStoreId?: string; // If this is a branch of a parent chain/store
@@ -38,6 +39,10 @@ export interface Store {
   receiptQrImageUrl?: string; // Uploaded custom picture/image of the QR code instead of link
   logoUrl?: string; // Black & white store logo (data URL or image URL)
   receiptFormat?: 'standard' | 'classic_detailed' | 'compact_eco'; // 3 distinct receipt templates
+  receiptFontFamily?: string;
+  receiptFontBold?: boolean;
+  receiptFontItalic?: boolean;
+  receiptBorderRadius?: string;
   taxRegistrationNumber?: string;
   lowStockAlertThreshold?: number;
   currencySymbol?: string;
@@ -228,6 +233,7 @@ export interface HeldBill {
   storeId: string;
   counterId?: string;
   counterName?: string;
+  cashierName?: string;
   cashierUsername?: string;
   customerName?: string;
   notes?: string;
@@ -282,6 +288,7 @@ export interface Sale {
   storeName?: string;
   counterId: string;
   counterName: string;
+  cashierName?: string;
   cashierUsername: string;
   items: SaleItem[];
   subtotalAmount?: number;
@@ -295,6 +302,7 @@ export interface Sale {
   cashReceived?: number;
   changeReturned?: number;
   receiptNumber: string;
+  customerEmail?: string;
   timestamp: string;
   expiresAt?: string;
   isSlipDeleted?: boolean;
@@ -322,6 +330,7 @@ export interface ProductReturn {
   storeName?: string;
   counterId: string;
   counterName: string;
+  cashierName?: string;
   cashierUsername: string;
   productId: string;
   productName: string;

@@ -39,7 +39,8 @@ import {
   MapPin,
   Store as StoreIcon,
   FileText,
-  QrCode
+  QrCode,
+  Mail
 } from 'lucide-react';
 
 interface StoreSettingsViewProps {
@@ -71,7 +72,12 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
   const [receiptQrImageUrl, setReceiptQrImageUrl] = useState<string>(store.receiptQrImageUrl || '');
   const [returnPolicyDays, setReturnPolicyDays] = useState<number>(store.returnPolicyDays || 7);
   const [receiptFormat, setReceiptFormat] = useState<'standard' | 'classic_detailed' | 'compact_eco'>(store.receiptFormat || 'standard');
+  const [receiptFontFamily, setReceiptFontFamily] = useState(store.receiptFontFamily || 'Courier New');
+  const [receiptFontBold, setReceiptFontBold] = useState<boolean>(Boolean(store.receiptFontBold));
+  const [receiptFontItalic, setReceiptFontItalic] = useState<boolean>(Boolean(store.receiptFontItalic));
+  const [receiptBorderRadius, setReceiptBorderRadius] = useState(store.receiptBorderRadius || 'rounded-2xl');
   const [logoUrl, setLogoUrl] = useState<string>(store.logoUrl || '');
+  const [adminGmailId, setAdminGmailId] = useState(store.adminGmailId || '');
 
   // Category Management
   const [customCategories, setCustomCategories] = useState<string[]>(store.customCategories || []);
@@ -105,7 +111,12 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
     setReceiptQrImageUrl(store.receiptQrImageUrl || '');
     setReturnPolicyDays(store.returnPolicyDays || 7);
     setReceiptFormat(store.receiptFormat || 'standard');
+    setReceiptFontFamily(store.receiptFontFamily || 'Courier New');
+    setReceiptFontBold(Boolean(store.receiptFontBold));
+    setReceiptFontItalic(Boolean(store.receiptFontItalic));
+    setReceiptBorderRadius(store.receiptBorderRadius || 'rounded-2xl');
     setLogoUrl(store.logoUrl || '');
+    setAdminGmailId(store.adminGmailId || '');
     setCustomCategories(store.customCategories || []);
     setSoundEffectsEnabled(store.soundEffectsEnabled !== false);
     setLowStockAlertThreshold(store.lowStockAlertThreshold || 5);
@@ -250,6 +261,7 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
         returnPolicyDays: Number(returnPolicyDays) || 7,
         receiptFormat: receiptFormat,
         logoUrl: logoUrl || '',
+        adminGmailId: adminGmailId.trim(),
         customCategories: customCategories,
         soundEffectsEnabled: Boolean(soundEffectsEnabled),
         lowStockAlertThreshold: Number(lowStockAlertThreshold) || 5
@@ -782,6 +794,104 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-xs font-bold focus:outline-none focus:border-orange-500 focus:bg-white transition-all shadow-xs"
               />
               <p className="text-[11px] text-slate-400 mt-1">Closing greeting printed at the bottom of the slip.</p>
+            </div>
+          </div>
+
+          {/* STORE ADMIN GMAIL SENDER SETTING */}
+          <div className="p-5 bg-gradient-to-r from-red-50/60 to-orange-50/60 border border-red-200/80 rounded-2xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-red-600 text-white rounded-xl shadow-xs">
+                <Mail className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-sm font-extrabold text-slate-900">Store Gmail Sender ID Settings</h4>
+                <p className="text-[11px] text-slate-600 font-medium">
+                  Configure the store's Gmail address that cashiers will use when sending E-receipts to customers.
+                </p>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                Store Admin Gmail ID (Sender Email)
+              </label>
+              <input
+                type="email"
+                value={adminGmailId}
+                onChange={(e) => setAdminGmailId(e.target.value)}
+                placeholder="e.g. mystore@gmail.com"
+                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-900 text-xs font-bold focus:outline-none focus:border-red-500 shadow-xs"
+              />
+              <p className="text-[11px] text-slate-500 mt-1">
+                E-receipt emails sent by cashiers will originate from this store Gmail account (requires Google Sign-in authorization).
+              </p>
+            </div>
+          </div>
+
+          {/* RECEIPT FONT & STYLING CUSTOMIZATION */}
+          <div className="p-5 bg-white border border-slate-200 rounded-2xl space-y-4 shadow-sm">
+            <h4 className="text-sm font-extrabold text-slate-900 border-b border-slate-100 pb-2 flex items-center gap-2">
+              <span>✍️</span> Receipt Typography & Box Styling Customization
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  Receipt Font Style
+                </label>
+                <select
+                  value={receiptFontFamily}
+                  onChange={(e) => setReceiptFontFamily(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-xs font-bold focus:outline-none focus:border-orange-500"
+                >
+                  <option value="Courier New">Courier New (Classic Thermal)</option>
+                  <option value="monospace">Monospace</option>
+                  <option value="sans-serif">Sans-Serif (Modern)</option>
+                  <option value="serif">Serif (Formal)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  Box Round Curves
+                </label>
+                <select
+                  value={receiptBorderRadius}
+                  onChange={(e) => setReceiptBorderRadius(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-xs font-bold focus:outline-none focus:border-orange-500"
+                >
+                  <option value="rounded-none">Square / Sharp Corners (0px)</option>
+                  <option value="rounded-md">Subtle Curves (6px)</option>
+                  <option value="rounded-2xl">Standard Rounded (16px)</option>
+                  <option value="rounded-3xl">Extra Round Curves (24px)</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-6 pt-6 sm:pt-4 sm:col-span-2">
+                <label className="relative inline-flex items-center cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={receiptFontBold}
+                    onChange={(e) => setReceiptFontBold(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div>
+                  <span className="ml-3 text-xs font-extrabold text-slate-800">
+                    Bold Text {receiptFontBold ? '(Active)' : ''}
+                  </span>
+                </label>
+
+                <label className="relative inline-flex items-center cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={receiptFontItalic}
+                    onChange={(e) => setReceiptFontItalic(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div>
+                  <span className="ml-3 text-xs font-extrabold text-slate-800">
+                    Italic Text {receiptFontItalic ? '(Active)' : ''}
+                  </span>
+                </label>
+              </div>
             </div>
           </div>
 

@@ -14,8 +14,7 @@ import {
   Truck, 
   LayoutDashboard, 
   ScanLine, 
-  Users,
-  CalendarCheck2
+  Users
 } from 'lucide-react';
 
 export type AppNavView = 'dashboard' | 'pos' | 'inventory' | 'suppliers' | 'staff' | 'price_checker' | 'attendance';
@@ -133,13 +132,6 @@ export const Navbar: React.FC<NavbarProps> = ({
       shortLabel: 'Kiosk',
       icon: ScanLine,
       roles: ['branch_admin', 'customer_price_checker']
-    },
-    {
-      id: 'attendance' as AppNavView,
-      label: 'Staff Attendance',
-      shortLabel: 'Attendance',
-      icon: CalendarCheck2,
-      roles: ['store_admin', 'admin', 'branch_admin', 'cash_counter', 'product_register', 'customer_price_checker']
     }
   ];
 

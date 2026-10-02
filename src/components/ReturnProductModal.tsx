@@ -437,6 +437,7 @@ export const ReturnProductModal: React.FC<ReturnProductModalProps> = ({
       storeName: store.name,
       counterId: currentUser.id,
       counterName: currentUser.name || currentUser.counterNumber || 'Counter',
+      cashierName: currentUser.name || currentUser.username,
       cashierUsername: currentUser.username,
       productId: primaryItem.product.id,
       productName: returnItems.length === 1 ? primaryItem.product.name : `${returnItems.length} Products Batch Return`,

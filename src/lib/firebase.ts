@@ -34,7 +34,7 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 // Safely initialize Firestore with memoryLocalCache and forced HTTP long-polling for resilient connections in iframe sandboxes
 function initDb() {
-  const dbId = firebaseConfig.firestoreDatabaseId || undefined;
+  const dbId = (firebaseConfig as any).firestoreDatabaseId || undefined;
   const firestoreSettings = {
     localCache: memoryLocalCache(),
     experimentalForceLongPolling: true,
@@ -127,7 +127,7 @@ export async function ensureSuperAdminExists(): Promise<void> {
         name: 'Super Admin',
         createdAt: new Date().toISOString()
       };
-      await setDoc(superAdminDocRef, superAdminData);
+      await setDoc(superAdminDocRef, cleanFirestoreData(superAdminData));
       console.log('Super Admin account seeded successfully');
     }
   } catch (error) {

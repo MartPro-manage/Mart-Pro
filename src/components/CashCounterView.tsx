@@ -1060,6 +1060,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
         storeId: store.id,
         counterId: currentUser.counterNumber?.toString() || '1',
         counterName: `Counter #${currentUser.counterNumber || 1}`,
+        cashierName: currentUser.name || currentUser.username,
         cashierUsername: currentUser.username,
         items: [...cart],
         subtotal: cartSubtotal,
@@ -1300,6 +1301,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
         storeName: store.name,
         counterId: currentUser.id,
         counterName: currentUser.name || (currentUser.counterNumber ? `Counter #${currentUser.counterNumber}` : 'Counter #1'),
+        cashierName: currentUser.name || currentUser.username,
         cashierUsername: currentUser.username,
         items: saleItems,
         subtotalAmount: finalCalculatedSubtotal,
@@ -1383,6 +1385,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
               storeName: store.name || '',
               counterId: currentUser.id || '',
               counterName: currentUser.name || (currentUser.counterNumber ? `Counter #${currentUser.counterNumber}` : 'Counter #1'),
+              cashierName: currentUser.name || currentUser.username || '',
               cashierUsername: currentUser.username || '',
               items: saleItems,
               subtotalAmount: finalCalculatedSubtotal,
@@ -2818,56 +2821,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                       ))}
                     </div>
 
-                    {/* Shortcuts Grid Horizontal / Quick Cards */}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
-                      {fullScreenFilteredProducts.map((prod) => {
-                        const isWeight = prod.sellBy === 'weight' || prod.unitType === 'kg' || Boolean(prod.pricePerKg);
-                        const discInfo = getProductDiscountInfo(prod);
-                        const isOutOfStock = prod.stockQuantity <= 0;
 
-                        return (
-                          <button
-                            key={prod.id}
-                            type="button"
-                            disabled={isOutOfStock}
-                            onClick={() => handleAddProductClick(prod)}
-                            className="bg-slate-800/90 hover:bg-orange-950/40 hover:border-orange-500 border border-slate-700/80 rounded-xl p-2.5 text-left transition-all cursor-pointer flex flex-col justify-between group relative disabled:opacity-40 disabled:cursor-not-allowed"
-                            title={`Click to add ${prod.name} (Code: ${prod.shortcutCode || prod.barcode || 'N/A'})`}
-                          >
-                            <div>
-                              <div className="flex items-center justify-between gap-1 mb-1">
-                                {prod.shortcutCode ? (
-                                  <span className="px-1.5 py-0.5 rounded-md bg-orange-500 text-slate-950 font-mono font-black text-xs shadow-xs">
-                                    #{prod.shortcutCode}
-                                  </span>
-                                ) : (
-                                  <span className="text-[10px] text-slate-400 font-mono">
-                                    {prod.barcode || 'SKU'}
-                                  </span>
-                                )}
-                                {isWeight && (
-                                  <span className="text-[9px] bg-amber-400/20 text-amber-300 font-bold px-1 rounded">
-                                    KG
-                                  </span>
-                                )}
-                              </div>
-                              <div className="font-bold text-xs text-white truncate group-hover:text-orange-300 transition-colors">
-                                {prod.name}
-                              </div>
-                            </div>
-
-                            <div className="mt-2 pt-1 border-t border-slate-700/60 flex items-center justify-between text-[11px]">
-                              <span className="font-mono font-black text-emerald-400">
-                                Rs. {discInfo.effectivePrice.toFixed(0)}
-                              </span>
-                              <span className="text-[10px] text-slate-400">
-                                Stock: {prod.stockQuantity}
-                              </span>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
                   </div>
                 </motion.div>
               )}

@@ -4,7 +4,7 @@ import { db, doc, getDoc, collection, query, where, getDocs, updateDoc } from '.
 import { Sale, Store } from '../types';
 import { isSaleExpired, getReceiptRemainingDays } from '../lib/salesCleanup';
 import JsBarcode from 'jsbarcode';
-import html2canvas from 'html2canvas';
+import { captureElementToCanvas } from '../utils/html2canvasSafe';
 import { printReceiptHtmlDirect } from '../utils/printThermalReceipt';
 import { 
   CheckCircle2, 
@@ -442,7 +442,7 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
       return sum;
     }, 0);
     const billDiscount = Number(sale.discountAmount || 0);
-    const totalDiscount = billDiscount > 0 ? billDiscount : itemDiscounts;
+    const totalDiscount = Math.max(billDiscount, itemDiscounts);
     const subtotal = sale.subtotalAmount || ((sale.totalAmount || 0) + totalDiscount);
     return { itemDiscounts, billDiscount, totalDiscount, subtotal };
   };
@@ -465,7 +465,7 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
     txt += `${divider}\n`;
     txt += `RECEIPT NO: #${sale.receiptNumber}\n`;
     txt += `DATE & TIME: ${dateStr}\n`;
-    txt += `COUNTER: ${sale.counterName} | CASHIER: ${sale.cashierUsername}\n`;
+    txt += `COUNTER: ${sale.counterName} | CASHIER: ${sale.cashierName || sale.cashierUsername}\n`;
     txt += `PAYMENT: ${sale.paymentMethod.toUpperCase()}\n`;
     txt += `${divider}\n`;
     txt += `ITEMS:\n`;
@@ -473,16 +473,17 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
     (sale.items || []).forEach((item, idx) => {
       const isWeight = item.sellBy === 'weight' || item.unitType === 'kg' || item.quantity % 1 !== 0;
       const qtyStr = isWeight ? `${item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(3)} kg` : `${item.quantity} pcs`;
-      const hasDiscount = item.originalPrice && item.originalPrice > item.price;
+      const itemDisc = (item.discountAmount && item.discountAmount > 0)
+        ? item.discountAmount
+        : (item.originalPrice && item.originalPrice > item.price ? ((item.originalPrice - item.price) * (item.quantity || 1)) : 0);
+
       txt += `${idx + 1}. ${item.name}\n`;
-      txt += `   ${qtyStr} x ${curr} ${item.price.toFixed(2)} = ${curr} ${item.total.toFixed(2)}\n`;
-      if (hasDiscount) {
-        txt += `   [Reg: ${curr} ${(item.originalPrice || 0).toFixed(2)} | Disc: -${curr} {(((item.originalPrice || 0) - item.price) * item.quantity).toFixed(2)}]\n`;
-      }
+      txt += `   Qty: ${qtyStr} | Price: ${curr} ${item.price.toFixed(2)} | Disc: ${itemDisc > 0 ? `-${curr} ${itemDisc.toFixed(2)}` : `${curr} 0.00`} | Total: ${curr} ${item.total.toFixed(2)}\n`;
     });
 
     txt += `${subDivider}\n`;
     txt += `SUBTOTAL:       ${curr} ${(subtotal || 0).toFixed(2)}\n`;
+    txt += `TOTAL DISCOUNT: ${totalDiscount > 0 ? `-${curr} ${totalDiscount.toFixed(2)}` : `${curr} 0.00`}\n`;
     txt += `GRAND TOTAL:    ${curr} ${sale.totalAmount.toFixed(2)}\n`;
     if (sale.paymentMethod === 'cash' && sale.cashReceived !== undefined) {
       txt += `CASH RECEIVED:  ${curr} ${sale.cashReceived.toFixed(2)}\n`;
@@ -500,17 +501,21 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
     const itemsHtml = (sale.items || []).map(item => {
       const isWeight = item.sellBy === 'weight' || item.unitType === 'kg' || item.quantity % 1 !== 0;
       const qtyStr = isWeight ? `${item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(3)} kg` : `${item.quantity} pcs`;
-      const hasDiscount = item.originalPrice && item.originalPrice > item.price;
+      const itemDisc = (item.discountAmount && item.discountAmount > 0)
+        ? item.discountAmount
+        : (item.originalPrice && item.originalPrice > item.price ? ((item.originalPrice - item.price) * (item.quantity || 1)) : 0);
       return `
         <tr>
           <td style="padding: 4px 0;">
             <strong>${item.name}</strong>
-            ${hasDiscount ? `<br><small style="color:#047857;">Reg: ${curr} ${item.originalPrice?.toFixed(2)} (Admin Disc Applied)</small>` : ''}
             ${item.weightInfo ? `<br><small style="color:#64748b;">${item.weightInfo}</small>` : ''}
           </td>
           <td style="text-align: center; padding: 4px 0;">${qtyStr}</td>
-          <td style="text-align: right; padding: 4px 0;">${curr} ${item.price.toFixed(2)}</td>
-          <td style="text-align: right; padding: 4px 0; font-weight: bold;">${curr} ${item.total.toFixed(2)}</td>
+          <td style="text-align: right; padding: 4px 0;">${item.price.toFixed(2)}</td>
+          <td style="text-align: right; padding: 4px 0; color: ${itemDisc > 0 ? '#047857' : '#64748b'}; font-weight: ${itemDisc > 0 ? 'bold' : 'normal'};">
+            ${itemDisc > 0 ? `-${itemDisc.toFixed(2)}` : '0.00'}
+          </td>
+          <td style="text-align: right; padding: 4px 0; font-weight: bold;">${item.total.toFixed(2)}</td>
         </tr>
       `;
     }).join('');
@@ -522,45 +527,57 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
   <title>Mart Pro E-Receipt #${sale.receiptNumber} - ${storeName}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f8fafc; color: #0f172a; margin: 0; padding: 20px; display: flex; justify-content: center; }
-    .card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; max-width: 420px; width: 100%; padding: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
-    .brand-tag { background: #ea580c; color: white; display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; margin-bottom: 8px; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f8fafc; color: #0f172a; margin: 0; padding: 15px; display: flex; justify-content: center; }
+    .card { background: #ffffff; border: 2px solid #0f172a; border-radius: 16px; max-width: 440px; width: 100%; padding: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.08); }
+    .bordered-box { border: 1px solid #cbd5e1; border-radius: 12px; padding: 10px; margin-bottom: 10px; background: #f8fafc; }
+    .brand-tag { background: #ea580c; color: white; display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 10px; font-weight: 800; margin-bottom: 6px; }
     .text-center { text-align: center; }
-    .divider { border-top: 1px dashed #cbd5e1; margin: 14px 0; }
-    .solid-divider { border-top: 2px solid #0f172a; margin: 14px 0; }
-    table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    th { text-align: left; color: #64748b; font-size: 10px; text-transform: uppercase; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; }
-    .row { display: flex; justify-content: space-between; font-size: 12px; margin: 4px 0; }
-    .total-row { display: flex; justify-content: space-between; font-size: 16px; font-weight: 900; color: #ea580c; margin-top: 8px; }
-    .print-btn { background: #0f172a; color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: bold; width: 100%; margin-top: 16px; cursor: pointer; font-size: 12px; }
+    .meta-table { width: 100%; border-collapse: collapse; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; background: #fff; margin-bottom: 10px; }
+    .meta-table td { border: 1px solid #e2e8f0; padding: 6px 8px; font-size: 11px; }
+    table.items-table { width: 100%; table-layout: fixed; box-sizing: border-box; border-collapse: collapse; border: 1px solid #94a3b8; border-radius: 8px; overflow: hidden; margin: 10px 0; font-size: 10px; }
+    table.items-table th { border: 1px solid #94a3b8; background: #f1f5f9; color: #0f172a; font-weight: 800; text-align: left; padding: 5px 2px; font-size: 9px; text-transform: uppercase; overflow: hidden; white-space: nowrap; }
+    table.items-table td { border: 1px solid #cbd5e1; padding: 5px 2px; vertical-align: middle; background: #fff; overflow: hidden; }
+    table.items-table tr:nth-child(even) td { background: #f8fafc; }
+    .summary-card { border: 2px solid #0f172a; border-radius: 12px; overflow: hidden; margin-top: 10px; background: #fff; }
+    .summary-row { display: flex; justify-content: space-between; padding: 6px 10px; border-bottom: 1px solid #e2e8f0; font-size: 11px; }
+    .summary-row:last-child { border-bottom: none; }
+    .total-row { display: flex; justify-content: space-between; padding: 8px 10px; font-size: 14px; font-weight: 900; background: #0f172a; color: #fff; }
+    .print-btn { background: #0f172a; color: white; border: none; padding: 10px 16px; border-radius: 10px; font-weight: bold; width: 100%; margin-top: 14px; cursor: pointer; font-size: 12px; }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="text-center">
+    <div class="bordered-box text-center">
       <span class="brand-tag">MART PRO DIGITAL PASS</span>
-      <h2 style="margin: 4px 0; font-size: 20px;">${storeName}</h2>
+      <h2 style="margin: 4px 0; font-size: 18px; font-weight: 900;">${storeName}</h2>
       <p style="margin: 0; color: #64748b; font-size: 11px; font-weight: bold;">${receiptSubHeader}</p>
-      ${store?.address ? `<p style="margin: 4px 0 0; color: #64748b; font-size: 11px;">${store.address}</p>` : ''}
-      ${store?.phone ? `<p style="margin: 2px 0 0; color: #64748b; font-size: 11px;">Tel: ${store.phone}</p>` : ''}
+      ${store?.address ? `<p style="margin: 3px 0 0; color: #64748b; font-size: 10.5px;">${store.address}</p>` : ''}
+      ${store?.phone ? `<p style="margin: 2px 0 0; color: #0f172a; font-size: 10.5px; font-weight: bold;">Tel: ${store.phone}</p>` : ''}
     </div>
 
-    <div class="divider"></div>
+    <table class="meta-table">
+      <tr>
+        <td><strong>Receipt #:</strong> #${sale.receiptNumber}</td>
+        <td style="text-align: right;"><strong>Date:</strong> ${dateStr}</td>
+      </tr>
+      <tr>
+        <td><strong>Counter:</strong> ${sale.counterName}</td>
+        <td style="text-align: right;"><strong>Cashier:</strong> ${sale.cashierName || sale.cashierUsername}</td>
+      </tr>
+      <tr>
+        <td><strong>Payment:</strong> <span style="font-weight: bold; text-transform: uppercase; color: #ea580c;">${sale.paymentMethod}</span></td>
+        <td style="text-align: right;"><strong>Account:</strong> <span style="font-family: monospace;">${customerProfile.id}</span></td>
+      </tr>
+    </table>
 
-    <div class="row"><span>Receipt #: <strong>#${sale.receiptNumber}</strong></span><span>${dateStr}</span></div>
-    <div class="row"><span>Counter: ${sale.counterName}</span><span>Cashier: ${sale.cashierUsername}</span></div>
-    <div class="row"><span>Payment Method:</span><span style="font-weight: bold; text-transform: uppercase;">${sale.paymentMethod}</span></div>
-    <div class="row"><span>Customer Account:</span><span style="font-weight: bold; font-family: monospace;">${customerProfile.id}</span></div>
-
-    <div class="divider"></div>
-
-    <table>
+    <table class="items-table">
       <thead>
         <tr>
-          <th>Item</th>
-          <th style="text-align:center;">Qty</th>
-          <th style="text-align:right;">Price</th>
-          <th style="text-align:right;">Total</th>
+          <th style="width: 28%;">Item</th>
+          <th style="text-align:center; width: 11%;">Qty</th>
+          <th style="text-align:right; width: 18%;">Price</th>
+          <th style="text-align:right; width: 19%; color: #047857;">Discount</th>
+          <th style="text-align:right; width: 24%;">Total</th>
         </tr>
       </thead>
       <tbody>
@@ -568,37 +585,35 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
       </tbody>
     </table>
 
-    <div class="solid-divider"></div>
-
-    <div class="row">
-      <span>Subtotal:</span>
-      <span>${curr} ${(subtotal || 0).toFixed(2)}</span>
-    </div>
-
-    <div class="total-row">
-      <span>GRAND TOTAL:</span>
-      <span>${curr} ${sale.totalAmount.toFixed(2)}</span>
-    </div>
-
-    ${sale.paymentMethod === 'cash' && sale.cashReceived !== undefined ? `
-      <div class="row" style="margin-top: 6px;">
-        <span>Cash Tendered:</span>
-        <span>${curr} ${sale.cashReceived.toFixed(2)}</span>
+    <div class="summary-card">
+      <div class="summary-row" style="background: #f8fafc; color: #475569;">
+        <span>Subtotal:</span>
+        <span style="font-weight: bold;">${curr} ${(subtotal || 0).toFixed(2)}</span>
       </div>
-      <div class="row font-bold" style="color: #047857;">
-        <span>Change Returned:</span>
-        <span>${curr} ${(sale.changeReturned || 0).toFixed(2)}</span>
+      <div class="summary-row" style="background: #ecfdf5; color: #047857; font-weight: bold;">
+        <span>Total Discount:</span>
+        <span>${totalDiscount > 0 ? `-${curr} ${totalDiscount.toFixed(2)}` : `${curr} 0.00`}</span>
       </div>
-    ` : ''}
-
-    <div class="divider"></div>
-
-    <div class="text-center" style="margin-top: 16px;">
-      <p style="font-weight: bold; font-size: 11px; margin: 0;">${receiptFooterText}</p>
-      <div style="font-size: 10px; color: #94a3b8; margin-top: 6px;">Mart Pro Verified Customer Receipt &bull; ID: ${customerProfile.id}</div>
+      <div class="total-row">
+        <span>GRAND TOTAL:</span>
+        <span style="color: #fb923c;">${curr} ${sale.totalAmount.toFixed(2)}</span>
+      </div>
+      ${sale.paymentMethod === 'cash' && sale.cashReceived !== undefined ? `
+        <div class="summary-row" style="background: #f8fafc;">
+          <span>Cash Tendered:</span>
+          <span style="font-weight: bold;">${curr} ${sale.cashReceived.toFixed(2)}</span>
+        </div>
+        <div class="summary-row" style="background: #ecfdf5; color: #047857; font-weight: bold;">
+          <span>Change Returned:</span>
+          <span>${curr} ${(sale.changeReturned || 0).toFixed(2)}</span>
+        </div>
+      ` : ''}
     </div>
 
-    <button onclick="window.print()" class="print-btn">🖨️ Save as PDF / Print</button>
+    <div class="bordered-box text-center" style="margin-top: 10px; margin-bottom: 0;">
+      <p style="font-weight: bold; margin: 0; font-size: 11px; color: #0f172a;">${receiptFooterText}</p>
+      <div style="font-size: 10px; color: #64748b; margin-top: 4px;">Mart Pro Verified Customer Receipt &bull; ID: ${customerProfile.id}</div>
+    </div>
   </div>
 </body>
 </html>`;
@@ -617,12 +632,7 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
 
     setIsExportingImage(true);
     try {
-      const canvas = await html2canvas(element, {
-        scale: 2.5,
-        useCORS: true,
-        backgroundColor: '#ffffff',
-        logging: false
-      });
+      const canvas = await captureElementToCanvas(element);
       const dataUrl = canvas.toDataURL('image/png');
       const link = document.createElement('a');
       link.href = dataUrl;
@@ -639,12 +649,22 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
   };
 
   // 2. Print or Save as PDF
-  const handlePrintPdf = async () => {
+  const handlePrintPdf = () => {
     if (!sale) return;
     try {
       const html = getReceiptHtmlContent();
-      await printReceiptHtmlDirect(html);
-      showNotification('Print dialog opened!');
+      let directPrintContainer = document.getElementById('thermal-direct-print-container');
+      if (!directPrintContainer) {
+        directPrintContainer = document.createElement('div');
+        directPrintContainer.id = 'thermal-direct-print-container';
+        document.body.appendChild(directPrintContainer);
+      }
+      directPrintContainer.innerHTML = html;
+
+      setTimeout(() => {
+        window.print();
+        showNotification('Print dialog opened!');
+      }, 50);
     } catch (e) {
       console.error('Print error:', e);
       window.print();
@@ -972,22 +992,22 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
               <div 
                 ref={receiptCardRef}
                 id="printable-public-receipt"
-                className="bg-white rounded-3xl border border-slate-200/90 shadow-2xl p-6 sm:p-8 space-y-5 text-slate-900 relative overflow-hidden"
+                className="bg-white rounded-3xl border-2 border-slate-900 shadow-2xl p-5 sm:p-7 space-y-4 text-slate-900 relative overflow-hidden"
               >
-                {/* Top Verified Seal */}
-                <div className="text-center space-y-1.5 pb-4 border-b border-dashed border-slate-300">
-                  <div className="flex flex-wrap items-center justify-center gap-1.5">
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 text-[11px] font-extrabold border border-emerald-200 uppercase tracking-wider">
+                {/* 1. All-Sides Bordered Store Header Box */}
+                <div className="border border-slate-300 rounded-2xl p-4 bg-slate-50/80 text-center space-y-1.5 shadow-2xs">
+                  <div className="flex flex-wrap items-center justify-center gap-1.5 pb-1">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 text-[10px] font-extrabold border border-emerald-300 uppercase tracking-wider">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Mart Pro Verified E-Receipt</span>
+                      <span>Mart Pro Verified Pass</span>
                     </div>
                     <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-900 text-[10px] font-bold border border-amber-200">
                       <Clock className="w-3 h-3 text-amber-600" />
-                      <span>Online for {getReceiptRemainingDays(sale.timestamp)} more days</span>
+                      <span>Online for {getReceiptRemainingDays(sale.timestamp)} days</span>
                     </div>
                   </div>
 
-                  <h1 className="text-2xl font-black text-slate-900 tracking-tight pt-1">
+                  <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
                     {storeName}
                   </h1>
                   <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
@@ -1013,97 +1033,131 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
                       Tax Reg: {store.taxRegistrationNumber}
                     </p>
                   )}
-
-                  <div className="pt-2 flex items-center justify-between text-xs text-slate-600 font-mono">
-                    <span>Receipt #: <strong className="text-slate-900 font-bold">#{sale.receiptNumber}</strong></span>
-                    <span>{new Date(sale.timestamp).toLocaleString()}</span>
-                  </div>
                 </div>
 
-                {/* Cashier & Terminal Information */}
-                <div className="grid grid-cols-2 text-xs text-slate-600 py-2 border-b border-dashed border-slate-300 gap-y-1 font-medium">
-                  <div>Counter: <span className="font-bold text-slate-900">{sale.counterName}</span></div>
-                  <div className="text-right">Cashier: <span className="font-bold text-slate-900">{sale.cashierUsername}</span></div>
-                  <div>Payment Mode:</div>
-                  <div className="text-right font-black uppercase text-orange-600">{sale.paymentMethod}</div>
-                  <div>Customer Pass:</div>
-                  <div className="text-right font-mono font-bold text-slate-800">{customerProfile.id}</div>
+                {/* 2. All-Sides Bordered Metadata Grid Box */}
+                <div className="border border-slate-300 rounded-xl overflow-hidden bg-white shadow-2xs">
+                  <table className="w-full border-collapse text-xs">
+                    <tbody>
+                      <tr className="border-b border-slate-200">
+                        <td className="p-2.5 border-r border-slate-200 bg-slate-50/60 text-slate-600">
+                          Receipt: <strong className="text-slate-900 font-mono">#{sale.receiptNumber}</strong>
+                        </td>
+                        <td className="p-2.5 text-right text-slate-600 font-medium">
+                          {new Date(sale.timestamp).toLocaleString()}
+                        </td>
+                      </tr>
+                      <tr className="border-b border-slate-200">
+                        <td className="p-2.5 border-r border-slate-200 text-slate-600">
+                          Counter: <strong className="text-slate-800">{sale.counterName}</strong>
+                        </td>
+                        <td className="p-2.5 text-right text-slate-600">
+                          Cashier: <strong className="text-slate-800">{sale.cashierName || sale.cashierUsername}</strong>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="p-2.5 border-r border-slate-200 text-slate-600">
+                          Payment: <strong className="uppercase text-orange-600 font-bold">{sale.paymentMethod}</strong>
+                        </td>
+                        <td className="p-2.5 text-right font-mono font-bold text-slate-800">
+                          Pass: {customerProfile.id}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
 
-                {/* Line Items Table */}
-                <div className="space-y-2 py-1">
-                  <div className="grid grid-cols-12 font-bold text-[11px] text-slate-500 uppercase border-b border-slate-200 pb-1.5">
-                    <span className="col-span-6">Item Description</span>
-                    <span className="col-span-2 text-center">Qty</span>
-                    <span className="col-span-2 text-right">Price</span>
-                    <span className="col-span-2 text-right">Total</span>
-                  </div>
+                {/* 3. All-Sides Bordered Line Items Table */}
+                <div className="border border-slate-400 rounded-xl overflow-hidden shadow-2xs">
+                  <table className="w-full border-collapse text-left text-xs">
+                    <thead>
+                      <tr className="bg-slate-100 text-[10.5px] font-black uppercase text-slate-800">
+                        <th className="p-2.5 border border-slate-300 w-[38%]">Item Description</th>
+                        <th className="p-2.5 border border-slate-300 text-center w-[14%]">Qty</th>
+                        <th className="p-2.5 border border-slate-300 text-right w-[16%]">Price</th>
+                        <th className="p-2.5 border border-slate-300 text-right w-[16%] text-emerald-800">Discount</th>
+                        <th className="p-2.5 border border-slate-300 text-right w-[16%]">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(sale.items || []).map((item, idx) => {
+                        const isWeight = item.sellBy === 'weight' || item.unitType === 'kg' || item.quantity % 1 !== 0;
+                        const qtyDisplay = isWeight ? `${item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(3)}kg` : item.quantity.toString();
+                        const itemDisc = (item.discountAmount && item.discountAmount > 0)
+                          ? item.discountAmount
+                          : (item.originalPrice && item.originalPrice > item.price ? ((item.originalPrice - item.price) * (item.quantity || 1)) : 0);
 
-                  {(sale.items || []).map((item, idx) => {
-                    const isWeight = item.sellBy === 'weight' || item.unitType === 'kg' || item.quantity % 1 !== 0;
-                    const qtyDisplay = isWeight ? `${item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(3)}kg` : item.quantity.toString();
-                    const hasDiscount = item.originalPrice && item.originalPrice > item.price;
-
-                    return (
-                      <div key={idx} className="grid grid-cols-12 text-slate-900 text-xs py-1.5 items-start border-b border-slate-100 last:border-0">
-                        <div className="col-span-6 pr-2">
-                          <div className="font-bold text-slate-900 leading-tight">{item.name}</div>
-                          {hasDiscount && (
-                            <div className="text-[10px] text-emerald-700 font-bold">
-                              Reg: {curr} {item.originalPrice?.toFixed(2)} (Admin Discount Applied)
-                            </div>
-                          )}
-                          {item.weightInfo && (
-                            <div className="text-[10px] text-slate-500 font-medium">{item.weightInfo}</div>
-                          )}
-                        </div>
-                        <span className="col-span-2 text-center font-bold font-mono text-slate-700">{qtyDisplay}</span>
-                        <span className="col-span-2 text-right text-slate-600 font-mono">{curr} {item.price.toFixed(2)}</span>
-                        <span className="col-span-2 text-right font-black text-slate-900 font-mono">{curr} {item.total.toFixed(2)}</span>
-                      </div>
-                    );
-                  })}
+                        return (
+                          <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'}>
+                            <td className="p-2.5 border border-slate-200 font-bold text-slate-900 leading-tight">
+                              <span className="block">{item.name}</span>
+                              {item.weightInfo && (
+                                <span className="block text-[10px] text-slate-500 font-normal mt-0.5">{item.weightInfo}</span>
+                              )}
+                            </td>
+                            <td className="p-2.5 border border-slate-200 text-center font-bold font-mono text-slate-700">{qtyDisplay}</td>
+                            <td className="p-2.5 border border-slate-200 text-right text-slate-600 font-mono">{curr} {item.price.toFixed(2)}</td>
+                            <td className="p-2.5 border border-slate-200 text-right font-mono">
+                              {itemDisc > 0 ? (
+                                <span className="text-emerald-700 font-bold">-{curr} {itemDisc.toFixed(2)}</span>
+                              ) : (
+                                <span className="text-slate-400 font-normal">{curr} 0.00</span>
+                              )}
+                            </td>
+                            <td className="p-2.5 border border-slate-200 text-right font-black text-slate-900 font-mono">{curr} {item.total.toFixed(2)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
 
-                {/* Calculations & Totals */}
+                {/* 4. All-Sides Bordered Calculations & Totals Card */}
                 {(() => {
                   const { totalDiscount, subtotal } = getDiscountMetrics();
                   return (
-                    <div className="pt-3 border-t-2 border-slate-900 space-y-1.5">
-                      <div className="flex justify-between text-xs text-slate-600">
-                        <span>Subtotal Amount:</span>
-                        <span className="font-mono font-semibold">{curr} ${(subtotal || 0).toFixed(2)}</span>
+                    <div className="border-2 border-slate-800 rounded-xl overflow-hidden bg-white shadow-2xs">
+                      <div className="flex justify-between p-2.5 text-xs bg-slate-50/80 border-b border-slate-200 text-slate-700">
+                        <span className="font-semibold">Subtotal Amount:</span>
+                        <span className="font-mono font-bold">{curr} {(subtotal || 0).toFixed(2)}</span>
                       </div>
 
-                      <div className="flex justify-between text-base sm:text-lg font-black text-slate-900 pt-2 border-t border-slate-200">
+                      <div className="flex justify-between p-2.5 text-xs bg-emerald-50/70 border-b border-slate-200 text-emerald-800 font-bold">
+                        <span>Total Discount:</span>
+                        <span className="font-mono">
+                          {totalDiscount > 0 ? `-${curr} ${totalDiscount.toFixed(2)}` : `${curr} 0.00`}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between p-3 text-base sm:text-lg font-black bg-slate-900 text-white">
                         <span>GRAND TOTAL:</span>
-                        <span className="text-orange-600">{curr} {sale.totalAmount.toFixed(2)}</span>
+                        <span className="text-amber-400 font-mono">{curr} {sale.totalAmount.toFixed(2)}</span>
                       </div>
 
-                  {sale.paymentMethod === 'cash' && sale.cashReceived !== undefined && (
-                    <>
-                      <div className="flex justify-between text-xs font-medium text-slate-600 pt-1">
-                        <span>Cash Tendered:</span>
-                        <span className="font-mono">{curr} {sale.cashReceived.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs font-black text-emerald-700">
-                        <span>Change Returned:</span>
-                        <span className="font-mono">{curr} {(sale.changeReturned || 0).toFixed(2)}</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-              );
-            })()}
+                      {sale.paymentMethod === 'cash' && sale.cashReceived !== undefined && (
+                        <div className="grid grid-cols-2 border-t border-slate-200 bg-slate-50 text-xs">
+                          <div className="p-2.5 border-r border-slate-200 flex justify-between text-slate-700">
+                            <span>Cash Tendered:</span>
+                            <span className="font-mono font-bold">{curr} {sale.cashReceived.toFixed(2)}</span>
+                          </div>
+                          <div className="p-2.5 flex justify-between text-emerald-800 font-bold bg-emerald-50/60">
+                            <span>Change:</span>
+                            <span className="font-mono font-black">{curr} {(sale.changeReturned || 0).toFixed(2)}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
-                {/* Barcode Render */}
-                <div className="text-center pt-4 border-t border-dashed border-slate-300">
-                  <div className="inline-block p-1 bg-white">
+                {/* 5. All-Sides Bordered Barcode & Policy Box */}
+                <div className="border border-slate-300 rounded-xl p-3.5 bg-slate-50 text-center space-y-1.5 shadow-2xs">
+                  <div className="inline-block p-1 bg-white border border-slate-200 rounded-lg">
                     <svg ref={barcodeSvgRef} className="mx-auto max-w-full"></svg>
                   </div>
-                  <p className="text-xs font-bold text-slate-800 mt-2">{receiptFooterText}</p>
+                  <p className="text-xs font-bold text-slate-800 mt-1">{receiptFooterText}</p>
                   {store?.returnPolicyDays && (
-                    <p className="text-[11px] text-slate-500 mt-0.5">
+                    <p className="text-[11px] text-slate-500">
                       Returns accepted within {store.returnPolicyDays} days with this original receipt.
                     </p>
                   )}

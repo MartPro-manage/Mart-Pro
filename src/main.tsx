@@ -27,29 +27,34 @@ try {
   // ignore
 }
 
-// Handle global unhandled promise rejections (e.g. IndexedDB leveldb FILE_ERROR_NO_SPACE)
+// Handle global unhandled promise rejections (e.g. IndexedDB, Vite HMR websocket send)
 window.addEventListener('unhandledrejection', (event) => {
+  const msg = event.reason?.message || String(event.reason || '');
   if (
-    event.reason &&
-    (event.reason.message?.includes('indexeddb') ||
-     event.reason.message?.includes('FILE_ERROR_NO_SPACE') ||
-     event.reason.message?.includes('QuotaExceededError') ||
-     event.reason.name === 'QuotaExceededError')
+    msg.includes('send') ||
+    msg.includes('vite') ||
+    msg.includes('WebSocket') ||
+    msg.includes('indexeddb') ||
+    msg.includes('FILE_ERROR_NO_SPACE') ||
+    msg.includes('QuotaExceededError') ||
+    event.reason?.name === 'QuotaExceededError'
   ) {
-    console.warn('Caught local storage / IndexedDB quota error:', event.reason);
-    event.preventDefault(); // Prevent app crash on storage quota error
+    console.warn('Caught non-fatal background / HMR / storage exception:', msg);
+    event.preventDefault(); // Prevent app crash on storage or HMR errors
   }
 });
 
-// Prevent non-fatal DOM / chart layout errors (like clientWidth on null elements during resize/unmount) from crashing the app
+// Prevent non-fatal DOM, Vite HMR send or chart layout errors from crashing the app
 window.addEventListener('error', (event) => {
+  const msg = event.message || '';
   if (
-    event.message &&
-    (event.message.includes('clientWidth') ||
-     event.message.includes('clientHeight') ||
-     event.message.includes('getBoundingClientRect'))
+    msg.includes("reading 'send'") ||
+    msg.includes("properties of undefined (reading 'send')") ||
+    msg.includes('clientWidth') ||
+    msg.includes('clientHeight') ||
+    msg.includes('getBoundingClientRect')
   ) {
-    console.warn('Caught non-fatal layout / chart dimension error:', event.message);
+    console.warn('Caught non-fatal Vite HMR / layout error:', msg);
     event.preventDefault(); // Prevent crash
   }
 });

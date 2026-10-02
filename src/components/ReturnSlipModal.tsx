@@ -46,18 +46,18 @@ export const ReturnSlipModal: React.FC<ReturnSlipModalProps> = ({
 
   const totalUnits = itemsList.reduce((sum, item) => sum + (item.quantity || 0), 0);
 
-  const handlePrint = async () => {
-    setPrintStatus('Preparing return slip printer...');
+  const handlePrint = () => {
+    setPrintStatus('Opening return slip printer...');
     try {
-      await printReturnSlipDirect(returnRecord, store);
-      setPrintStatus('Return slip sent to printer!');
+      printReturnSlipDirect(returnRecord, store);
+      setPrintStatus('Print dialog opened!');
     } catch (err) {
       console.error('Print return slip error:', err);
       try {
         window.print();
-        setPrintStatus('Print dialog opened');
+        setPrintStatus('Print dialog opened!');
       } catch (e) {
-        setPrintStatus('Print error: check printer');
+        setPrintStatus('Press Ctrl+P to print');
       }
     }
     setTimeout(() => setPrintStatus(null), 3000);
@@ -71,7 +71,8 @@ export const ReturnSlipModal: React.FC<ReturnSlipModalProps> = ({
     text += `===================================\n`;
     text += `Return Slip No: #${returnRecord.returnSlipNumber}\n`;
     text += `Date: ${new Date(returnRecord.timestamp).toLocaleString()}\n`;
-    text += `Cashier: ${returnRecord.cashierUsername} (${returnRecord.counterName})\n`;
+    text += `Counter: ${returnRecord.counterName}\n`;
+    text += `Cashier: ${returnRecord.cashierName || returnRecord.cashierUsername}\n`;
     text += `Refund Method: ${returnRecord.refundMethod.toUpperCase()}\n`;
     if (returnRecord.originalReceiptNumber) {
       text += `Original Invoice: #${returnRecord.originalReceiptNumber}\n`;
@@ -159,65 +160,100 @@ export const ReturnSlipModal: React.FC<ReturnSlipModalProps> = ({
         )}
 
         {/* Printable Card */}
-        <div className="bg-slate-50 text-slate-900 p-5 rounded-2xl shadow-inner font-mono text-xs space-y-4 border border-slate-200">
-          <div className="text-center space-y-1 pb-3 border-b border-dashed border-slate-300">
-            <div className="font-extrabold text-base tracking-tight text-slate-900 uppercase">
+        <div 
+          id="printable-return-slip"
+          className="bg-white text-slate-900 p-4 sm:p-5 rounded-2xl shadow-lg font-mono text-xs space-y-3.5 border-2 border-slate-900"
+        >
+          {/* 1. Header Box */}
+          <div className="border border-slate-300 rounded-xl p-3 bg-slate-50 text-center space-y-1">
+            <div className="inline-block px-2.5 py-0.5 rounded-full bg-rose-50 border border-rose-300 text-rose-800 text-[9px] font-black uppercase tracking-wider">
+              Customer Return Voucher
+            </div>
+            <div className="font-black text-base tracking-tight text-slate-900 uppercase pt-0.5">
               {store?.name || returnRecord.storeName || 'SUPERMARKET'}
             </div>
-            <div className="text-[10px] text-rose-700 uppercase tracking-widest font-bold">
-              Official Customer Return Voucher
+            <div className="text-[10px] text-slate-600 uppercase tracking-widest font-bold">
+              Official Stock Restock & Refund Note
             </div>
-            <div className="text-[10px] text-slate-600 pt-1">
-              Slip #: <span className="font-bold text-slate-900">#{returnRecord.returnSlipNumber}</span>
-            </div>
-            <div className="text-[10px] text-slate-500 font-medium">
-              {new Date(returnRecord.timestamp).toLocaleString()}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 text-[10px] text-slate-600 pb-2 border-b border-dashed border-slate-300 gap-y-1">
-            <div>Counter: <span className="font-bold text-slate-800">{returnRecord.counterName}</span></div>
-            <div className="text-right">Cashier: <span className="font-bold text-slate-800">{returnRecord.cashierUsername}</span></div>
-            <div>Refund Method:</div>
-            <div className="text-right font-bold uppercase text-rose-700">{returnRecord.refundMethod} Refund</div>
-            {returnRecord.originalReceiptNumber && (
-              <>
-                <div>Original Invoice:</div>
-                <div className="text-right font-bold text-slate-900">#{returnRecord.originalReceiptNumber}</div>
-              </>
+            {store?.address && (
+              <div className="text-[9.5px] text-slate-500">{store.address}</div>
             )}
           </div>
 
-          <div className="space-y-2 py-1">
-            <div className="grid grid-cols-12 font-bold text-[10px] text-slate-500 uppercase border-b pb-1">
-              <span className="col-span-6">Returned Product</span>
-              <span className="col-span-2 text-center">Qty</span>
-              <span className="col-span-2 text-right">Price</span>
-              <span className="col-span-2 text-right">Refund</span>
-            </div>
-
-            {itemsList.map((item, idx) => (
-              <div key={idx} className="grid grid-cols-12 text-slate-900 text-[11px] py-0.5 items-center">
-                <span className="col-span-6 font-semibold truncate">{item.productName}</span>
-                <span className="col-span-2 text-center font-bold text-rose-600">+{item.quantity}</span>
-                <span className="col-span-2 text-right text-slate-600">Rs. {(item.price || 0).toFixed(2)}</span>
-                <span className="col-span-2 text-right font-extrabold text-rose-700">Rs. {(item.refundAmount || 0).toFixed(2)}</span>
-              </div>
-            ))}
+          {/* 2. Metadata Box */}
+          <div className="border border-slate-300 rounded-xl overflow-hidden bg-white">
+            <table className="w-full border-collapse text-[10.5px]">
+              <tbody>
+                <tr className="border-b border-slate-200">
+                  <td className="p-2 border-r border-slate-200 bg-slate-50/60 text-slate-600">
+                    Slip #: <strong className="text-slate-900 font-mono">#{returnRecord.returnSlipNumber}</strong>
+                  </td>
+                  <td className="p-2 text-right text-slate-600">
+                    {new Date(returnRecord.timestamp).toLocaleString()}
+                  </td>
+                </tr>
+                <tr className="border-b border-slate-200">
+                  <td className="p-2 border-r border-slate-200 text-slate-600">
+                    Counter: <strong className="text-slate-800">{returnRecord.counterName}</strong>
+                  </td>
+                  <td className="p-2 text-right text-slate-600">
+                    Cashier: <strong className="text-slate-800">{returnRecord.cashierName || returnRecord.cashierUsername}</strong>
+                  </td>
+                </tr>
+                <tr>
+                  <td className="p-2 border-r border-slate-200 text-slate-600">
+                    Refund Mode: <strong className="uppercase text-rose-700 font-bold">{returnRecord.refundMethod}</strong>
+                  </td>
+                  <td className="p-2 text-right text-slate-700 font-bold">
+                    {returnRecord.originalReceiptNumber ? `Orig Inv: #${returnRecord.originalReceiptNumber}` : 'DIRECT RETURN'}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
 
-          <div className="pt-3 border-t-2 border-slate-900 space-y-1">
-            <div className="flex justify-between text-sm font-black text-slate-900 pt-1">
+          {/* 3. Items Table */}
+          <div className="border border-slate-400 rounded-xl overflow-hidden shadow-2xs">
+            <table className="w-full border-collapse text-left">
+              <thead>
+                <tr className="bg-slate-100 text-[10px] font-black uppercase text-slate-800">
+                  <th className="p-2 border border-slate-300 w-[45%]">Returned Product</th>
+                  <th className="p-2 border border-slate-300 text-center w-[15%]">Qty</th>
+                  <th className="p-2 border border-slate-300 text-right w-[20%]">Price</th>
+                  <th className="p-2 border border-slate-300 text-right w-[20%] text-rose-700">Refund</th>
+                </tr>
+              </thead>
+              <tbody>
+                {itemsList.map((item, idx) => (
+                  <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'}>
+                    <td className="p-2 border border-slate-200 font-semibold text-slate-900 text-[11px]">
+                      <span className="block truncate">{item.productName}</span>
+                      {item.barcode && (
+                        <span className="block text-[9px] text-slate-400 font-mono">Code: {item.barcode}</span>
+                      )}
+                    </td>
+                    <td className="p-2 border border-slate-200 text-center font-bold text-rose-600 font-mono text-[11px]">+{item.quantity}</td>
+                    <td className="p-2 border border-slate-200 text-right text-slate-700 font-mono text-[11px]">Rs. {(item.price || 0).toFixed(2)}</td>
+                    <td className="p-2 border border-slate-200 text-right font-black text-rose-700 font-mono text-[11px]">Rs. {(item.refundAmount || 0).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* 4. Totals & Notes Card */}
+          <div className="border-2 border-slate-800 rounded-xl overflow-hidden bg-white">
+            <div className="flex justify-between p-2.5 text-sm sm:text-base font-black bg-slate-900 text-white">
               <span>TOTAL REFUNDED:</span>
-              <span className="text-rose-700">Rs. {(returnRecord.refundAmount ?? 0).toFixed(2)}</span>
+              <span className="text-rose-400 font-mono">Rs. {(returnRecord.refundAmount ?? 0).toFixed(2)}</span>
             </div>
             {returnRecord.reason && (
-              <div className="text-[10px] text-slate-600 pt-1">
-                <strong>Reason:</strong> {returnRecord.reason}
+              <div className="p-2 bg-slate-50 border-b border-slate-200 text-[11px] text-slate-700">
+                <strong>Return Reason:</strong> {returnRecord.reason}
               </div>
             )}
-            <div className="text-[10px] text-emerald-700 font-bold pt-1">
-              ✔ Stock status: {returnRecord.quantity} units successfully replenished to inventory.
+            <div className="p-2 bg-emerald-50 text-[10.5px] text-emerald-800 font-bold">
+              ✔ Restock Verified: {totalUnits} unit(s) replenished to inventory.
             </div>
           </div>
         </div>

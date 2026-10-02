@@ -13,7 +13,8 @@ import {
   where,
   getDocs,
   handleFirestoreError,
-  OperationType
+  OperationType,
+  cleanFirestoreData
 } from '../lib/firebase';
 import { Store, UserAccount } from '../types';
 import { cleanupExpiredReceipts } from '../lib/salesCleanup';
@@ -215,7 +216,8 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
 
   // Helper to check username uniqueness
   const isUsernameTaken = (uname: string) => {
-    return users.some(u => u.username.toLowerCase() === uname.trim().toLowerCase());
+    if (!uname) return false;
+    return users.some(u => (u?.username || '').toLowerCase() === uname.trim().toLowerCase());
   };
 
   // Handle Create Store or Regional Branch (Super Admin Exclusive)
@@ -275,7 +277,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
           voiceAnnouncementEnabled: newStoreVoiceAnnouncementEnabled,
           createdAt: new Date().toISOString()
         };
-        await setDoc(storeDocRef, newBranchData);
+        await setDoc(storeDocRef, cleanFirestoreData(newBranchData));
 
         const userDocRef = doc(collection(db, 'users'));
         const newBranchAdminUser: UserAccount = {
@@ -291,7 +293,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
           salaryFrequency: 'monthly',
           createdAt: new Date().toISOString()
         };
-        await setDoc(userDocRef, newBranchAdminUser);
+        await setDoc(userDocRef, cleanFirestoreData(newBranchAdminUser));
 
         showNotification('success', `Regional Branch "${storeName}" (${bCode}) created under "${parentStore?.name || 'Main Store'}" with Branch Admin @${adminUsername}!`);
       } else {
@@ -306,7 +308,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
           voiceAnnouncementEnabled: newStoreVoiceAnnouncementEnabled,
           createdAt: new Date().toISOString()
         };
-        await setDoc(storeDocRef, newStoreData);
+        await setDoc(storeDocRef, cleanFirestoreData(newStoreData));
 
         const userDocRef = doc(collection(db, 'users'));
         const newStoreAdminUser: UserAccount = {
@@ -319,7 +321,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
           name: `${storeName} Store Admin`,
           createdAt: new Date().toISOString()
         };
-        await setDoc(userDocRef, newStoreAdminUser);
+        await setDoc(userDocRef, cleanFirestoreData(newStoreAdminUser));
 
         showNotification('success', `Supermarket Store "${storeName}" and Store Admin Account created successfully!`);
       }
@@ -518,7 +520,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
         receiptFooter: createBranchModalStore.receiptFooter || 'Thank you for shopping with us!',
         createdAt: new Date().toISOString()
       };
-      await setDoc(branchRef, newBranchStore);
+      await setDoc(branchRef, cleanFirestoreData(newBranchStore));
 
       // Create branch admin user account
       const userRef = doc(collection(db, 'users'));
@@ -535,7 +537,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
         salaryFrequency: 'monthly',
         createdAt: new Date().toISOString()
       };
-      await setDoc(userRef, branchAdminAccount);
+      await setDoc(userRef, cleanFirestoreData(branchAdminAccount));
 
       showNotification('success', `Branch "${bName}" & Branch Admin @${username} created under ${createBranchModalStore.name}!`);
       // Auto expand parent store and newly created branch
@@ -601,7 +603,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
         createdAt: new Date().toISOString()
       };
 
-      await setDoc(userDocRef, newAccount);
+      await setDoc(userDocRef, cleanFirestoreData(newAccount));
 
       showNotification('success', `${assignedRole.replace('_', ' ').toUpperCase()} account @${username} created for branch "${branch.name}"!`);
       setCreateBranchAccountModal(null);
@@ -660,7 +662,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
         createdAt: new Date().toISOString()
       };
 
-      await setDoc(userDocRef, cashCounterAccount);
+      await setDoc(userDocRef, cleanFirestoreData(cashCounterAccount));
       showNotification('success', `Cash Counter #${cNum} ("${cName}") account added successfully!`);
       setCounterNumber('');
       setCounterName('');
@@ -714,7 +716,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
         createdAt: new Date().toISOString()
       };
 
-      await setDoc(userDocRef, registrarAccount);
+      await setDoc(userDocRef, cleanFirestoreData(registrarAccount));
       showNotification('success', `Product Register user "${rName}" created successfully!`);
       setRegistrarName('');
       setRegistrarUsername('');
@@ -767,7 +769,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
         createdAt: new Date().toISOString()
       };
 
-      await setDoc(userDocRef, priceCheckerAccount);
+      await setDoc(userDocRef, cleanFirestoreData(priceCheckerAccount));
       showNotification('success', `Customer Price Checker Terminal "${tName}" created successfully!`);
       setPriceCheckerName('');
       setPriceCheckerUsername('');

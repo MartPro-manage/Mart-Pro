@@ -284,7 +284,7 @@ export const PaymentMethodsView: React.FC<PaymentMethodsViewProps> = ({
 
     filteredSalesByDate.forEach(sale => {
       const key = sale.cashierName || sale.cashierUsername || 'Counter Staff';
-      const counter = sale.counterName ? sale.counterName : (sale.counterNumber ? `Counter #${sale.counterNumber}` : 'Main Counter');
+      const counter = sale.counterName ? sale.counterName : ((sale as any).counterNumber ? `Counter #${(sale as any).counterNumber}` : 'Main Counter');
       const amt = Number(sale.totalAmount) || 0;
 
       if (!map.has(key)) {
@@ -381,8 +381,8 @@ export const PaymentMethodsView: React.FC<PaymentMethodsViewProps> = ({
         const term = searchTerm.toLowerCase();
         const matchesReceipt = sale.receiptNumber?.toLowerCase().includes(term);
         const matchesCashier = sale.cashierName?.toLowerCase().includes(term) || sale.cashierUsername?.toLowerCase().includes(term);
-        const matchesCounter = sale.counterName?.toLowerCase().includes(term) || String(sale.counterNumber || '').includes(term);
-        const matchesCustomer = sale.customerPhone?.toLowerCase().includes(term) || sale.customerName?.toLowerCase().includes(term);
+        const matchesCounter = sale.counterName?.toLowerCase().includes(term) || String((sale as any).counterNumber || '').includes(term);
+        const matchesCustomer = (sale as any).customerPhone?.toLowerCase().includes(term) || (sale as any).customerName?.toLowerCase().includes(term);
         const matchesProvider = sale.onlinePaymentProvider?.toLowerCase().includes(term);
         const matchesTxId = sale.onlineTransactionId?.toLowerCase().includes(term);
         const matchesAmount = String(sale.totalAmount || '').includes(term);
@@ -516,7 +516,7 @@ export const PaymentMethodsView: React.FC<PaymentMethodsViewProps> = ({
         !isOnline && s.cashReceived !== undefined ? Number(s.cashReceived).toFixed(2) : '""',
         !isOnline && s.changeReturned !== undefined ? Number(s.changeReturned).toFixed(2) : '""',
         `"${s.cashierName || s.cashierUsername || 'Staff'}"`,
-        `"${s.counterName || s.counterNumber || 'Main'}"`
+        `"${s.counterName || (s as any).counterNumber || 'Main'}"`
       ];
     });
 
@@ -1373,7 +1373,7 @@ export const PaymentMethodsView: React.FC<PaymentMethodsViewProps> = ({
                       <td className="py-3.5 px-4">
                         <div className="font-medium text-slate-900">{sale.cashierName || sale.cashierUsername || 'Counter Staff'}</div>
                         <div className="text-[10px] text-slate-400">
-                          {sale.counterName || (sale.counterNumber ? `Counter #${sale.counterNumber}` : 'Main Counter')}
+                          {sale.counterName || ((sale as any).counterNumber ? `Counter #${(sale as any).counterNumber}` : 'Main Counter')}
                         </div>
                       </td>
                       <td className="py-3.5 px-4">

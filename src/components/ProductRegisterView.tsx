@@ -54,6 +54,7 @@ import {
   DollarSign,
   ArrowUpRight,
   Image as ImageIcon,
+  Link as LinkIcon,
   Upload,
   X,
   FileImage,
@@ -65,7 +66,12 @@ import {
   ChevronUp,
   SlidersHorizontal,
   Calendar,
-  Clock
+  Clock,
+  LayoutGrid,
+  List,
+  ShoppingBag,
+  Hash,
+  CheckCircle2
 } from 'lucide-react';
 
 interface ProductRegisterViewProps {
@@ -156,6 +162,9 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   const [existingProduct, setExistingProduct] = useState<Product | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [catalogFilter, setCatalogFilter] = useState<'all' | 'weight' | 'unit'>('all');
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  const [activeTab, setActiveTab] = useState<'catalog' | 'form'>('catalog');
 
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -429,6 +438,8 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     setCostPrice('');
     setMarginPercent('');
     setPrice('');
+    setSellBy('unit');
+    setUnitType('piece');
     setDiscountActive(false);
     setDiscountType('percentage');
     setDiscountValue('');
@@ -890,129 +901,153 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     if (catalogFilter === 'weight' && !(p.sellBy === 'weight' || p.unitType === 'kg' || p.pricePerKg)) return false;
     if (catalogFilter === 'unit' && (p.sellBy === 'weight' || p.unitType === 'kg' || p.pricePerKg)) return false;
 
+    if (selectedCategoryFilter !== 'all') {
+      if (selectedCategoryFilter === 'weight' && !(p.sellBy === 'weight' || p.unitType === 'kg' || p.pricePerKg)) return false;
+      else if (selectedCategoryFilter === 'unit' && (p.sellBy === 'weight' || p.unitType === 'kg' || p.pricePerKg)) return false;
+      else if (selectedCategoryFilter !== 'weight' && selectedCategoryFilter !== 'unit') {
+        if ((p.category || 'General').toLowerCase() !== selectedCategoryFilter.toLowerCase()) return false;
+      }
+    }
+
     if (!searchTerm.trim()) return true;
     const term = searchTerm.toLowerCase();
     return (
       p.name.toLowerCase().includes(term) ||
       p.barcode.toLowerCase().includes(term) ||
       (p.serialNumber && p.serialNumber.toLowerCase().includes(term)) ||
+      (p.shortcutCode && p.shortcutCode.toLowerCase().includes(term)) ||
       (p.weight && p.weight.toLowerCase().includes(term)) ||
       p.category.toLowerCase().includes(term)
     );
   });
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 p-4 sm:p-6 lg:p-8">
-      <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6">
+    <div className="min-h-screen bg-slate-50 text-slate-900 p-3.5 sm:p-5 md:p-6 lg:p-8 xl:p-10">
+      <div className="max-w-7xl 2xl:max-w-[1600px] w-full mx-auto space-y-5 sm:space-y-6">
 
-        {/* Top Control Banner */}
+        {/* Top Control Banner (Compact Height, Wide Length, Dark Blue Theme) */}
         <motion.div 
-          initial={{ opacity: 0, y: 10 }}
+          initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.25 }}
-          className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-5 relative overflow-hidden"
+          className="bg-gradient-to-r from-slate-950 via-blue-950 to-indigo-950 text-white p-3.5 sm:px-5 sm:py-3 rounded-2xl border border-blue-900/70 shadow-lg shadow-slate-950/20 relative overflow-hidden flex flex-col gap-2.5"
         >
-          <div className="space-y-1.5 z-10">
-            {onBack && (
-              <div className="mb-2">
-                <UniversalBackButton onBack={onBack} label="Back to Dashboard" />
-              </div>
-            )}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-orange-50 text-orange-700 border border-orange-200 flex items-center gap-1.5 shadow-2xs">
-                <PackagePlus className="w-3.5 h-3.5 text-orange-600" /> Product Register & Stock
-              </span>
-              <span className="text-xs text-slate-500 font-medium">Store: <strong className="text-slate-800">{store.name}</strong></span>
-              <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold">
-                PKR (Rs.)
-              </span>
-            </div>
-            <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-              <span>Product Register &</span>
-              <span className="text-orange-600">Inventory Stock</span>
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-600 max-w-2xl font-medium">
-              Add products, adjust stock quantities, and generate barcode stickers. Scanners work automatically.
-            </p>
-          </div>
+          {/* Subtle Ambient Glow */}
+          <div className="absolute top-0 right-0 w-80 h-32 bg-blue-600/15 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
 
-          <div className="flex flex-wrap items-center gap-2.5 z-10 shrink-0">
-            {/* Discounts & Promotions Manager Button */}
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => setIsDiscountModalOpen(true)}
-              className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs uppercase tracking-wider shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer relative"
-              title="Add discount to all or selected products (% or Rs.)"
-            >
-              <Tag className="w-4 h-4 text-rose-200" />
-              <span>Discounts & Sales</span>
-              {products.filter(p => p.discountActive && p.discountValue).length > 0 && (
-                <span className="ml-1 px-1.5 py-0.2 bg-white text-rose-700 text-[10px] font-black rounded-full">
-                  {products.filter(p => p.discountActive && p.discountValue).length}
-                </span>
+          {/* Top Row: Navigation and Action Buttons */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5 z-10">
+            <div className="flex items-center gap-2">
+              {onBack && (
+                <UniversalBackButton onBack={onBack} label="Back" />
               )}
-            </motion.button>
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-blue-900/50 backdrop-blur-xs border border-blue-700/50 text-blue-100 text-xs font-black tracking-wide shadow-2xs">
+                <PackagePlus className="w-3.5 h-3.5 text-blue-400" />
+                <span>Product Register</span>
+              </div>
+            </div>
 
-            {/* Multi-Product Batch Entry & Excel Import */}
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => setIsExcelModalOpen(true)}
-              className="px-4 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-extrabold text-xs uppercase tracking-wider shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-              title="Upload Excel from device or create spreadsheet in-app"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-orange-200" /> Excel / Spreadsheet
-            </motion.button>
-
-            {/* AI Assistant Button */}
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => setIsAiAssistantOpen(true)}
-              className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-extrabold text-xs uppercase tracking-wider shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-              title="Store AI Copilot: Query cheapest/most selling items or ask questions"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-200" /> AI Assistant
-            </motion.button>
-
-            {/* Generate Barcode Button */}
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => handleOpenGeneratorForProduct()}
-              className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs uppercase tracking-wider shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <BarcodeIcon className="w-4 h-4 text-amber-400" /> Barcode Sticker
-            </motion.button>
-
-            {/* Camera Scanner Trigger (respects store setting) */}
-            {store.cameraScannerEnabled !== false && (
+            {/* All Action Buttons Row */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Discounts & Promotions Manager Button */}
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                onClick={() => setIsScannerOpen(true)}
-                className="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-extrabold text-xs uppercase tracking-wider shadow-2xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                onClick={() => setIsDiscountModalOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs uppercase tracking-wider shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer relative border border-rose-400/40"
+                title="Add discount to all or selected products (% or Rs.)"
               >
-                <Camera className="w-3.5 h-3.5 text-orange-600" /> Scanner
+                <Tag className="w-3.5 h-3.5 text-rose-200" />
+                <span>Discounts & Sales</span>
+                {products.filter(p => p.discountActive && p.discountValue).length > 0 && (
+                  <span className="ml-0.5 px-1.5 py-0.2 bg-white text-rose-700 text-[10px] font-black rounded-full">
+                    {products.filter(p => p.discountActive && p.discountValue).length}
+                  </span>
+                )}
               </motion.button>
-            )}
 
-            {/* Collapsible Device & Hardware Controls Toggle */}
-            <button
-              type="button"
-              onClick={() => setShowHardwareBar(!showHardwareBar)}
-              className={`px-3 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border cursor-pointer ${
-                showHardwareBar 
-                  ? 'bg-slate-800 text-white border-slate-700 shadow-xs' 
-                  : 'bg-white text-slate-700 hover:bg-slate-100 border-slate-300 shadow-2xs'
-              }`}
-              title="Show or hide camera, audio, and device permissions bar"
-            >
-              <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
-              <span className="hidden sm:inline">Hardware</span>
-              {showHardwareBar ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-            </button>
+              {/* Multi-Product Batch Entry & Excel Import */}
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setIsExcelModalOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-blue-900/60 hover:bg-blue-800/80 text-white font-bold text-xs uppercase tracking-wider shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-blue-700/60 backdrop-blur-xs"
+                title="Upload Excel from device or create spreadsheet in-app"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-blue-300" />
+                <span>Excel / Spreadsheet</span>
+              </motion.button>
+
+              {/* AI Assistant Button */}
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setIsAiAssistantOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                title="Store AI Copilot: Query cheapest/most selling items or ask questions"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-slate-950" />
+                <span>AI Assistant</span>
+              </motion.button>
+
+              {/* Generate Barcode Button */}
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => handleOpenGeneratorForProduct()}
+                className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs uppercase tracking-wider shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-slate-700"
+                title="Generate and print printable barcode sticker labels"
+              >
+                <BarcodeIcon className="w-3.5 h-3.5 text-amber-300" />
+                <span>Barcode Sticker</span>
+              </motion.button>
+
+              {/* Camera Scanner Trigger (respects store setting) */}
+              {store.cameraScannerEnabled !== false && (
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setIsScannerOpen(true)}
+                  className="px-3 py-1.5 rounded-xl bg-blue-950/80 hover:bg-blue-900 text-blue-200 border border-blue-700/60 font-bold text-xs uppercase tracking-wider shadow-2xs transition-all flex items-center justify-center gap-1.5 cursor-pointer backdrop-blur-xs"
+                >
+                  <Camera className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Scanner</span>
+                </motion.button>
+              )}
+
+              {/* Collapsible Device & Hardware Controls Toggle */}
+              <button
+                type="button"
+                onClick={() => setShowHardwareBar(!showHardwareBar)}
+                className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border cursor-pointer ${
+                  showHardwareBar 
+                    ? 'bg-blue-600 text-white border-blue-500 shadow-xs' 
+                    : 'bg-blue-900/40 hover:bg-blue-800/60 text-blue-200 border-blue-800/60 shadow-2xs'
+                }`}
+                title="Show or hide camera, audio, and device permissions bar"
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5 text-blue-300" />
+                <span className="hidden sm:inline">Hardware</span>
+                {showHardwareBar ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Bottom Row: Text present at below of all buttons */}
+          <div className="pt-2 border-t border-blue-900/60 flex flex-col md:flex-row md:items-center justify-between gap-1.5 text-xs text-blue-200 z-10">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-extrabold text-white text-sm tracking-tight">
+                Product Register & Inventory Stock
+              </span>
+              <span className="text-blue-400/60">&bull;</span>
+              <span className="text-blue-200">Store: <strong className="text-white">{store.name}</strong></span>
+              <span className="bg-blue-900/60 border border-blue-700/50 px-2 py-0.2 rounded-md font-bold text-[11px] text-blue-200">
+                PKR (Rs.)
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-300 font-medium">
+              Add products, adjust stock quantities, and generate barcode stickers. Scanners work automatically.
+            </p>
           </div>
         </motion.div>
 
@@ -1046,49 +1081,716 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          
-          {/* Left Form Column: Stock In & Product Registration Form */}
-          <div className="lg:col-span-5 bg-white rounded-3xl border border-slate-200 p-6 sm:p-7 shadow-sm space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div>
-                <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                  <PackagePlus className="w-5 h-5 text-orange-600" /> 
-                  {existingProduct ? 'Update Product & Price' : 'Register Product Stock'}
-                </h2>
-                <p className="text-xs text-slate-500 font-medium mt-0.5">
-                  {existingProduct ? `Modifying "${existingProduct.name}"` : 'Enter product details or scan barcode to add stock'}
-                </p>
-              </div>
+        {/* Universal View Switcher (Visible on Every Screen Size with Smooth Animation) */}
+        <div className="flex bg-slate-200/90 p-1.5 rounded-2xl border border-slate-300/90 gap-1.5 shadow-inner relative z-0">
+          {[
+            {
+              id: 'catalog' as const,
+              label: `Product Catalog (${products.length})`,
+              shortLabel: `Catalog (${products.length})`,
+              icon: <Layers className="w-4 h-4" />,
+              activeColor: 'text-blue-300'
+            },
+            {
+              id: 'form' as const,
+              label: existingProduct ? `Edit: ${existingProduct.name}` : 'Register Stock & Price',
+              shortLabel: existingProduct ? 'Edit Product' : 'Register Stock',
+              icon: <PackagePlus className="w-4 h-4" />,
+              activeColor: 'text-amber-300'
+            }
+          ].map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`relative flex-1 py-2.5 px-3 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer select-none ${
+                  isActive ? 'text-white' : 'text-slate-600 hover:text-slate-950 font-bold'
+                }`}
+              >
+                {/* Smooth Animated Sliding Indicator Pill */}
+                {isActive && (
+                  <motion.div
+                    layoutId="activeMainTabPill"
+                    className="absolute inset-0 bg-gradient-to-r from-slate-950 via-blue-950 to-indigo-950 rounded-xl shadow-md border border-blue-800/60 z-0"
+                    transition={{ type: "spring", stiffness: 450, damping: 35 }}
+                  />
+                )}
+                
+                <span className={`relative z-10 flex items-center gap-1.5 truncate ${isActive ? tab.activeColor : ''}`}>
+                  {tab.icon}
+                  <span className="hidden sm:inline">{tab.label}</span>
+                  <span className="inline sm:hidden">{tab.shortLabel}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
 
-              {existingProduct ? (
-                <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                    Editing Item
-                  </span>
+        {/* Animated View Container with Changing Transition Animation */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, y: 10, scale: 0.995 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10, scale: 0.995 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+            className="w-full space-y-6"
+          >
+            
+            {/* Catalog Section (Visible in 'catalog' mode) */}
+            {activeTab === 'catalog' && (
+              <div className="w-full bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 lg:p-8 xl:p-9 shadow-sm space-y-5 sm:space-y-6">
+                
+                {/* Top Bar: Title, Stats & View Switcher (Scales with Screen Size) */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4 sm:pb-5 lg:pb-6">
+                  <div>
+                    <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
+                      <h2 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-black text-slate-900 flex items-center gap-2.5 sm:gap-3 tracking-tight">
+                        <Layers className="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 text-blue-600 shrink-0" /> 
+                        <span>Store Catalog & Inventory</span>
+                      </h2>
+                      <span className="px-3 sm:px-3.5 py-1 rounded-full text-xs sm:text-sm font-black bg-blue-100 text-blue-800 border border-blue-200 shadow-2xs">
+                        {products.length} Items
+                      </span>
+                    </div>
+                    <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
+                      Click any product card to quickly edit prices, stock, or generate barcode labels.
+                    </p>
+                  </div>
+
+                  {/* View Switcher: Grid vs Table & Bulk Delete */}
+                  <div className="flex items-center gap-2.5 sm:gap-3">
+                    {selectedProductIds.length > 0 && (
+                      <button
+                        onClick={handleBulkDelete}
+                        className="px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl bg-red-600 hover:bg-red-700 text-white font-black text-xs sm:text-sm flex items-center gap-2 transition-all shadow-sm cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4 sm:w-4.5 sm:h-4.5" /> 
+                        <span>Delete ({selectedProductIds.length})</span>
+                      </button>
+                    )}
+
+                    <div className="flex items-center bg-slate-100/90 p-1 sm:p-1.5 rounded-xl sm:rounded-2xl border border-slate-200 text-xs sm:text-sm font-bold">
+                      <button
+                        type="button"
+                        onClick={() => setViewMode('grid')}
+                        className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl flex items-center gap-1.5 transition-all cursor-pointer ${
+                          viewMode === 'grid'
+                            ? 'bg-white text-blue-700 shadow-xs border border-slate-200 font-black'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                        title="POS Card Grid View"
+                      >
+                        <LayoutGrid className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
+                        <span className="font-extrabold text-xs sm:text-sm">Grid</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setViewMode('table')}
+                        className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl flex items-center gap-1.5 transition-all cursor-pointer ${
+                          viewMode === 'table'
+                            ? 'bg-white text-blue-700 shadow-xs border border-slate-200 font-black'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                        title="Detailed Inventory Table View"
+                      >
+                        <List className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
+                        <span className="font-extrabold text-xs sm:text-sm">Table</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quick Live Search Bar */}
+                <div className="relative">
+                  <Search className="w-4 h-4 sm:w-5 sm:h-5 absolute left-3.5 sm:left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search by Barcode, S/N (e.g. 1001), Product Name, or Category & press Enter..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleCodeEnterLookup(searchTerm, 'search');
+                      }
+                    }}
+                    className="w-full pl-10 sm:pl-12 pr-10 py-3 sm:py-3.5 bg-slate-50 border border-slate-300 rounded-xl sm:rounded-2xl text-slate-900 text-xs sm:text-sm md:text-base focus:outline-none focus:border-blue-500 focus:bg-white font-medium transition-all shadow-inner"
+                  />
+                  {searchTerm && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchTerm('')}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1 rounded-full cursor-pointer"
+                    >
+                      <X className="w-4 h-4 sm:w-5 sm:h-5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Category Filter Horizontal Scroll Tabs (POS Counter Style) */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 pt-0.5 custom-scrollbar">
                   <button
                     type="button"
-                    onClick={handleResetForm}
-                    className="text-xs font-bold text-slate-500 hover:text-slate-900 px-2 py-1 rounded-lg hover:bg-slate-100 transition-all cursor-pointer"
-                    title="Cancel edit and register a new item"
+                    onClick={() => {
+                      setSelectedCategoryFilter('all');
+                      setCatalogFilter('all');
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer border ${
+                      selectedCategoryFilter === 'all' && catalogFilter === 'all'
+                        ? 'bg-slate-900 text-white border-slate-900 shadow-xs font-black'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                    }`}
                   >
-                    ✕ New Item
+                    All Items ({products.length})
                   </button>
-                </div>
-              ) : (
-                <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                  New Item
-                </span>
-              )}
-            </div>
 
-            {/* Helpful Notice about Serial Number and Barcode */}
-            <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-600 flex items-start gap-2">
-              <Info className="w-4 h-4 text-orange-600 shrink-0 mt-0.5" />
-              <span>
-                <strong>Note:</strong> You can edit product price at any time without entering quantity. Barcode or Serial Number can also be customized.
-              </span>
-            </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategoryFilter('weight');
+                      setCatalogFilter('weight');
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1 border ${
+                      catalogFilter === 'weight'
+                        ? 'bg-orange-600 text-white border-orange-600 shadow-xs font-black'
+                        : 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100'
+                    }`}
+                  >
+                    <Scale className="w-3 h-3" /> By Weight ({products.filter(p => p.sellBy === 'weight' || p.unitType === 'kg' || p.pricePerKg).length})
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategoryFilter('unit');
+                      setCatalogFilter('unit');
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1 border ${
+                      catalogFilter === 'unit'
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-xs font-black'
+                        : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                    }`}
+                  >
+                    <Package className="w-3 h-3" /> By Unit ({products.filter(p => p.sellBy !== 'weight' && p.unitType !== 'kg' && !p.pricePerKg).length})
+                  </button>
+
+                  {availableCategories.map((cat) => {
+                    const count = products.filter(p => (p.category || 'General').toLowerCase() === cat.toLowerCase()).length;
+                    const isSelected = selectedCategoryFilter.toLowerCase() === cat.toLowerCase();
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => {
+                          setSelectedCategoryFilter(cat);
+                          setCatalogFilter('all');
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer border flex items-center gap-1 ${
+                          isSelected
+                            ? 'bg-blue-700 text-white border-blue-700 shadow-xs font-black'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        <span>{cat}</span>
+                        <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                          isSelected ? 'bg-blue-900 text-blue-100' : 'bg-slate-100 text-slate-500'
+                        }`}>
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Catalog Content: Grid View or Table View */}
+                {filteredCatalog.length === 0 ? (
+                  <div className="text-sm text-slate-500 p-12 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50 space-y-2">
+                    <PackagePlus className="w-10 h-10 text-slate-400 mx-auto" />
+                    <p className="font-bold text-slate-700">No products found</p>
+                    <p className="text-xs text-slate-500">Try adjusting your search or category filter, or register a new product using the terminal on the right.</p>
+                  </div>
+                ) : viewMode === 'grid' ? (
+                  /* POS Counter Card Grid */
+                  <div className={`grid grid-cols-1 sm:grid-cols-2 ${activeTab === 'catalog' ? 'lg:grid-cols-3 xl:grid-cols-4' : 'xl:grid-cols-3'} gap-3.5 max-h-[750px] overflow-y-auto overscroll-contain custom-scrollbar p-1`}>
+                    {filteredCatalog.map((p) => {
+                      const isWeighted = p.sellBy === 'weight' || p.unitType === 'kg' || !!p.pricePerKg;
+                      const isEditingThis = existingProduct?.id === p.id;
+                      const discInfo = getProductDiscountInfo(p);
+                      const isLowStock = (p.stockQuantity || 0) <= (store.lowStockAlertThreshold ?? 5);
+                      const isOutOfStock = (p.stockQuantity || 0) <= 0;
+
+                      return (
+                        <motion.div
+                          key={p.id}
+                          whileHover={{ y: -3, scale: 1.01 }}
+                          transition={{ duration: 0.18 }}
+                          className={`relative bg-gradient-to-b from-white via-white to-slate-50/80 rounded-2xl border transition-all flex flex-col justify-between overflow-hidden shadow-xs hover:shadow-xl ${
+                            isEditingThis
+                              ? 'border-amber-500 ring-2 ring-amber-400/50 bg-amber-50/30'
+                              : isOutOfStock
+                              ? 'border-red-300 hover:border-red-400'
+                              : 'border-slate-200 hover:border-indigo-400'
+                          }`}
+                        >
+                          {/* Top Header Strip: S/N Badge & Stock Status (Vibrant Gradient Theme) */}
+                          <div className="p-3 pb-2 flex items-start justify-between gap-2 border-b border-indigo-100/70 bg-gradient-to-r from-blue-950 via-indigo-950 to-slate-900 text-white">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-mono font-black text-xs bg-amber-400 text-slate-950 border border-amber-300 px-2 py-0.5 rounded-lg shadow-2xs">
+                                #{p.serialNumber || p.shortcutCode || '1001'}
+                              </span>
+                              {isWeighted ? (
+                                <span className="px-1.5 py-0.5 rounded-md text-[10px] font-black bg-orange-500 text-white border border-orange-400 flex items-center gap-0.5">
+                                  <Scale className="w-2.5 h-2.5" /> Weight
+                                </span>
+                              ) : (
+                                <span className="px-1.5 py-0.5 rounded-md text-[10px] font-black bg-blue-600 text-white border border-blue-500">
+                                  Unit
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Stock Status Badge */}
+                            <span className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-black border flex items-center gap-1 shadow-2xs ${
+                              isOutOfStock
+                                ? 'bg-red-500 text-white border-red-600'
+                                : isLowStock
+                                ? 'bg-amber-400 text-slate-950 border-amber-500'
+                                : 'bg-emerald-500 text-white border-emerald-600'
+                            }`}>
+                              <Boxes className="w-3 h-3" />
+                              <span>{(p.stockQuantity || 0) % 1 === 0 ? (p.stockQuantity || 0) : (p.stockQuantity || 0).toFixed(2)} {isWeighted ? 'kg' : 'pcs'}</span>
+                            </span>
+                          </div>
+
+                          {/* Main Card Body */}
+                          <div className="p-3.5 space-y-3 flex-1">
+                            <div className="flex items-start gap-3">
+                              {/* Product Image / Icon with Glowing Border */}
+                              <div className="w-14 h-14 rounded-2xl overflow-hidden bg-slate-100 border-2 border-indigo-100 shrink-0 flex items-center justify-center relative shadow-xs">
+                                {p.imageUrl ? (
+                                  <img
+                                    src={p.imageUrl}
+                                    alt={p.name}
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      (e.target as any).style.display = 'none';
+                                    }}
+                                  />
+                                ) : (
+                                  <ImageIcon className="w-6 h-6 text-indigo-400" />
+                                )}
+                                {p.category && (
+                                  <div className="absolute bottom-0 inset-x-0 bg-indigo-950/85 backdrop-blur-2xs text-[9px] font-black text-amber-300 text-center py-0.5 truncate px-1">
+                                    {p.category}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Product Info */}
+                              <div className="flex-1 min-w-0">
+                                <h3 className="font-black text-slate-900 text-sm leading-snug truncate" title={p.name}>
+                                  {p.name}
+                                </h3>
+                                <p className="text-[11px] font-mono text-slate-500 font-medium truncate mt-0.5">
+                                  BC: <strong className="text-indigo-900 font-bold">{p.barcode || 'N/A'}</strong>
+                                </p>
+                                {p.weight && (
+                                  <p className="text-[11px] text-slate-600 font-bold mt-0.5">
+                                    Net: <span className="text-blue-700">{p.weight}</span> {p.weightPerUnit ? `(${p.weightPerUnit} kg/pack)` : ''}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Price & Discount Display (Attractive Financial Tag Style) */}
+                            <div className="bg-gradient-to-r from-emerald-50/90 via-teal-50/70 to-blue-50/80 p-2.5 rounded-xl border border-emerald-200/90 flex items-center justify-between shadow-2xs">
+                              <div>
+                                <span className="text-[10px] font-black text-emerald-900 uppercase tracking-tight block">
+                                  Selling Price
+                                </span>
+                                {discInfo.hasDiscount ? (
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-black text-rose-600 text-sm sm:text-base font-mono">
+                                      Rs. {discInfo.discountedPrice.toFixed(2)}
+                                    </span>
+                                    <span className="text-[10px] text-slate-400 line-through font-mono">
+                                      Rs. {(p.price ?? 0).toFixed(2)}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="font-black text-emerald-950 text-sm sm:text-base font-mono">
+                                    Rs. {(p.price ?? 0).toFixed(2)}
+                                  </span>
+                                )}
+                              </div>
+
+                              {discInfo.hasDiscount && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-600 text-white uppercase shadow-xs">
+                                  {discInfo.discountLabel}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Card Bottom Quick Actions Strip */}
+                          <div className="p-2.5 pt-0 bg-white grid grid-cols-4 gap-1 border-t border-slate-100">
+                            {/* Edit Action */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleSelectProductToEdit(p);
+                                if (activeTab === 'catalog') setActiveTab('form');
+                              }}
+                              className={`py-1.5 px-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-all cursor-pointer border ${
+                                isEditingThis
+                                  ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                                  : 'bg-orange-50 hover:bg-orange-600 text-orange-700 hover:text-white border-orange-200'
+                              }`}
+                              title="Load product to editor terminal"
+                            >
+                              <Edit3 className="w-3 h-3" />
+                              <span className="hidden sm:inline">Edit</span>
+                            </button>
+
+                            {/* Quick Discount Action */}
+                            <button
+                              type="button"
+                              onClick={() => setQuickDiscountProduct(p)}
+                              className={`py-1.5 px-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-all cursor-pointer border ${
+                                p.discountActive && (p.discountValue || 0) > 0
+                                  ? 'bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-600 hover:text-white'
+                                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-rose-50 hover:text-rose-700'
+                              }`}
+                              title="Set Discount for this product"
+                            >
+                              <Percent className="w-3 h-3 text-rose-600" />
+                              <span className="hidden sm:inline">Sale</span>
+                            </button>
+
+                            {/* Print Barcode Action */}
+                            <button
+                              type="button"
+                              onClick={() => handleOpenGeneratorForProduct(p)}
+                              className="py-1.5 px-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-1 transition-all cursor-pointer shadow-2xs"
+                              title="Print Barcode sticker"
+                            >
+                              <Printer className="w-3 h-3 text-amber-300" />
+                              <span className="hidden sm:inline">Print</span>
+                            </button>
+
+                            {/* Direct PNG Download */}
+                            <button
+                              type="button"
+                              onClick={() => handleDirectDownloadBarcode(p)}
+                              className="py-1.5 px-2 rounded-xl bg-sky-50 hover:bg-sky-600 text-sky-700 hover:text-white border border-sky-200 text-xs font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                              title="Download Barcode PNG"
+                            >
+                              <Download className="w-3 h-3" />
+                              <span className="hidden sm:inline">PNG</span>
+                            </button>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  /* POS Counter Table View */
+                  <div className="overflow-x-auto overflow-y-auto max-h-[720px] overscroll-contain custom-scrollbar border border-slate-200 rounded-2xl">
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-slate-50 text-xs text-slate-600 uppercase tracking-wider border-b border-slate-200 sticky top-0 z-10">
+                        <tr>
+                          <th className="p-3.5 w-8">
+                            <input
+                              type="checkbox"
+                              checked={selectedProductIds.length === filteredCatalog.length && filteredCatalog.length > 0}
+                              onChange={handleToggleSelectAll}
+                              className="w-4 h-4 text-orange-600 border-slate-300 rounded focus:ring-orange-500 cursor-pointer"
+                              title="Select / Deselect all"
+                            />
+                          </th>
+                          <th className="p-3.5">Product & Method</th>
+                          <th className="p-3.5">S/N & Barcode</th>
+                          <th className="p-3.5 text-center">Cost & Price</th>
+                          <th className="p-3.5 text-center">Profit / Unit</th>
+                          <th className="p-3.5 text-center">Available Stock</th>
+                          <th className="p-3.5 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 bg-white">
+                        {filteredCatalog.map((p) => {
+                          const isSelected = selectedProductIds.includes(p.id);
+                          const isWeighted = p.sellBy === 'weight' || p.unitType === 'kg' || !!p.pricePerKg;
+                          const cost = p.costPrice || 0;
+                          const sell = p.price;
+                          const itemProfit = sell - cost;
+                          const itemMargin = sell > 0 ? (itemProfit / sell) * 100 : 0;
+                          return (
+                            <tr key={p.id} className={`${isSelected ? 'bg-orange-50/60' : 'hover:bg-slate-50'} transition-colors`}>
+                              <td className="p-3.5">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => handleToggleSelectProduct(p.id)}
+                                  className="w-4 h-4 text-orange-600 border-slate-300 rounded focus:ring-orange-500 cursor-pointer"
+                                />
+                              </td>
+                              <td className="p-3.5">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 rounded-lg overflow-hidden bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center">
+                                    {p.imageUrl ? (
+                                      <img
+                                        src={p.imageUrl}
+                                        alt={p.name}
+                                        className="w-full h-full object-cover"
+                                        onError={(e) => {
+                                          (e.target as any).style.display = 'none';
+                                        }}
+                                      />
+                                    ) : (
+                                      <ImageIcon className="w-5 h-5 text-slate-300" />
+                                    )}
+                                  </div>
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-bold text-slate-900">{p.name}</span>
+                                      {isWeighted ? (
+                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-orange-100 text-orange-800 border border-orange-200 flex items-center gap-0.5">
+                                          <Scale className="w-2.5 h-2.5" /> By Weight
+                                        </span>
+                                      ) : (
+                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-slate-100 text-slate-700 border border-slate-200">
+                                          By Unit
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium mt-0.5">
+                                      {p.weight && (
+                                        <span className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-mono font-bold">
+                                          {p.weight}
+                                        </span>
+                                      )}
+                                      {p.weightPerUnit && (
+                                        <span className="text-orange-700 font-semibold">
+                                          ({p.weightPerUnit} kg/pack)
+                                        </span>
+                                      )}
+                                      <span>{p.category || 'General'}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="p-3.5 text-xs space-y-1 font-mono">
+                                <div className="font-bold text-amber-900 flex items-center gap-1">
+                                  <span className="text-[10px] bg-amber-100 text-amber-950 border border-amber-300 px-1.5 py-0.5 rounded font-black shadow-2xs">
+                                    S/N: #{p.serialNumber || p.shortcutCode || '1001'}
+                                  </span>
+                                </div>
+                                <div className="text-[11px] text-slate-600 font-medium">
+                                  BC: <strong className="text-slate-800">{p.barcode || 'N/A'}</strong>
+                                </div>
+                              </td>
+                              <td className="p-3.5 text-center font-mono">
+                                {(() => {
+                                  const discInfo = getProductDiscountInfo(p);
+                                  if (discInfo.hasDiscount) {
+                                    return (
+                                      <div className="space-y-0.5">
+                                        <div className="font-black text-rose-600 flex items-center justify-center gap-1">
+                                          <span>Rs. {discInfo.discountedPrice.toFixed(2)}{isWeighted ? '/kg' : ''}</span>
+                                          <span className="text-[10px] font-extrabold bg-rose-100 text-rose-800 px-1.5 py-0.2 rounded-full border border-rose-200">
+                                            {discInfo.discountLabel}
+                                          </span>
+                                        </div>
+                                        <div className="text-[11px] text-slate-400 line-through">
+                                          Was Rs. {(p.price ?? 0).toFixed(2)}
+                                        </div>
+                                        {p.discountEndDate && (
+                                          <div className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-flex items-center gap-1">
+                                            <Clock className="w-2.5 h-2.5" />
+                                            <span>{discInfo.dateStatusMessage}</span>
+                                          </div>
+                                        )}
+                                        <div className="text-[10px] text-slate-500 font-semibold">
+                                          Cost: Rs. {(cost || 0).toFixed(2)}
+                                        </div>
+                                      </div>
+                                    );
+                                  } else if (p.discountActive && (discInfo.isExpired || discInfo.isUpcoming)) {
+                                    return (
+                                      <div className="space-y-0.5">
+                                        <div className="font-black text-orange-600">
+                                          Rs. {(p.price ?? 0).toFixed(2)}{isWeighted ? '/kg' : ''}
+                                        </div>
+                                        <div className={`text-[9px] font-bold px-1.5 py-0.5 rounded border inline-flex items-center gap-1 ${
+                                          discInfo.isExpired ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-amber-50 text-amber-800 border-amber-200'
+                                        }`}>
+                                          <Clock className="w-2.5 h-2.5" />
+                                          <span>{discInfo.dateStatusMessage}</span>
+                                        </div>
+                                        <div className="text-[10px] text-slate-500 font-semibold">
+                                          Cost: Rs. {(cost || 0).toFixed(2)}
+                                        </div>
+                                      </div>
+                                    );
+                                  }
+                                  return (
+                                    <div>
+                                      <div className="font-black text-orange-600">
+                                        Rs. {(p.price ?? 0).toFixed(2)}{isWeighted ? '/kg' : ''}
+                                      </div>
+                                      <div className="text-[11px] text-slate-500 font-semibold">
+                                        Cost: Rs. {(cost || 0).toFixed(2)}
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+                              </td>
+                              <td className="p-3.5 text-center font-mono">
+                                <div className={`text-xs font-bold ${itemProfit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                                  +Rs. {(itemProfit || 0).toFixed(2)}
+                                </div>
+                                <div className="text-[10px] text-slate-400 font-medium">
+                                  ({(itemMargin || 0).toFixed(0)}% margin)
+                                </div>
+                              </td>
+                              <td className="p-3.5 text-center font-black text-sm">
+                                <span className={(p.stockQuantity || 0) <= 0 ? 'text-red-600 font-black' : (p.stockQuantity || 0) <= 5 ? 'text-amber-600 font-bold' : 'text-emerald-600 font-black'}>
+                                  {(p.stockQuantity || 0) % 1 === 0 ? (p.stockQuantity || 0) : (p.stockQuantity || 0).toFixed(3)} {isWeighted ? 'kg' : 'units'}
+                                </span>
+                              </td>
+                              <td className="p-3.5 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  {/* Quick Discount Setting Action */}
+                                  <button
+                                    onClick={() => setQuickDiscountProduct(p)}
+                                    className={`px-2 py-1.5 rounded-lg border transition-all text-xs font-bold flex items-center gap-1 cursor-pointer shadow-xs ${
+                                      p.discountActive && (p.discountValue || 0) > 0
+                                        ? 'bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-600 hover:text-white'
+                                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-rose-50 hover:text-rose-700'
+                                    }`}
+                                    title={p.discountActive ? `Active Discount: ${p.discountValue}${p.discountType === 'percentage' ? '%' : ' Rs.'} off. Click to edit.` : 'Set item discount'}
+                                  >
+                                    <Percent className="w-3 h-3 text-rose-600" />
+                                    {p.discountActive && (p.discountValue || 0) > 0 ? (
+                                      <span>{p.discountValue}{p.discountType === 'percentage' ? '%' : ' Rs.'}</span>
+                                    ) : (
+                                      <span>Discount</span>
+                                    )}
+                                  </button>
+
+                                  {/* Print Barcode / Sticker Action */}
+                                  <button
+                                    onClick={() => handleOpenGeneratorForProduct(p)}
+                                    className="px-2 py-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-800 transition-all text-xs font-bold flex items-center gap-1 cursor-pointer shadow-sm"
+                                    title="Open Barcode & Label Station"
+                                  >
+                                    <Printer className="w-3 h-3 text-amber-300" /> Print
+                                  </button>
+
+                                  {/* Direct Download Barcode Image */}
+                                  <button
+                                    onClick={() => handleDirectDownloadBarcode(p)}
+                                    className="px-2 py-1.5 rounded-lg bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-600 hover:text-white transition-all text-xs font-bold flex items-center gap-1 cursor-pointer shadow-sm"
+                                    title="Download Barcode Sticker PNG"
+                                  >
+                                    <Download className="w-3 h-3 text-sky-600 group-hover:text-white" /> Download
+                                  </button>
+
+                                  <button
+                                    onClick={() => {
+                                      handleSelectProductToEdit(p);
+                                      if (activeTab === 'catalog') setActiveTab('form');
+                                    }}
+                                    className="px-2.5 py-1.5 rounded-lg bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-600 hover:text-white transition-all text-xs font-bold flex items-center gap-1 cursor-pointer shadow-sm"
+                                    title="Update stock or price manually in the form"
+                                  >
+                                    <Edit3 className="w-3 h-3" /> Edit
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setAiEditTargetProduct(p);
+                                      setIsAiAssistantOpen(true);
+                                    }}
+                                    className="px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-50 to-orange-50 text-orange-900 border border-orange-300 hover:from-orange-600 hover:to-amber-600 hover:text-white transition-all text-xs font-bold flex items-center gap-1 cursor-pointer shadow-xs"
+                                    title="Ask AI Copilot to edit price, cost, stock, or details"
+                                  >
+                                    <Sparkles className="w-3 h-3 text-amber-500" /> AI Edit
+                                  </button>
+
+                                  <button
+                                    onClick={() => handleDeleteProduct(p)}
+                                    className="px-2 py-1.5 rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-600 hover:text-white transition-all text-xs font-bold flex items-center gap-1 cursor-pointer shadow-sm"
+                                    title="Delete stock item"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Product Registration & Stock Terminal (Visible in 'form' mode) */}
+            {activeTab === 'form' && (
+              <div className="max-w-4xl lg:max-w-5xl xl:max-w-6xl 2xl:max-w-7xl mx-auto w-full bg-white rounded-3xl border border-slate-200 shadow-md overflow-hidden transition-all">
+                {/* Terminal Dark Header (Responsive Scaling with Screen Size) */}
+                <div className="bg-gradient-to-r from-slate-950 via-blue-950 to-indigo-950 text-white p-4 sm:p-6 lg:p-7 xl:p-8 border-b border-blue-900/60 relative overflow-hidden">
+                  {/* Ambient Glow */}
+                  <div className="absolute top-0 right-0 w-80 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
+
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
+                    <div>
+                      <h2 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-black text-white flex items-center gap-2.5 sm:gap-3 tracking-tight">
+                        <PackagePlus className="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 text-amber-400 shrink-0" /> 
+                        <span>{existingProduct ? 'Product Editor & Pricing Station' : 'Register New Product & Stock'}</span>
+                      </h2>
+                      <p className="text-xs sm:text-sm lg:text-base text-blue-200 font-medium mt-1">
+                        {existingProduct ? `Active Editing: "${existingProduct.name}"` : 'Scan barcode or enter details to record stock and generate barcode sticker labels'}
+                      </p>
+                    </div>
+
+                    {existingProduct ? (
+                      <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+                        <span className="px-3 sm:px-3.5 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-black bg-amber-400 text-slate-950 shadow-xs">
+                          Editing Mode
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleResetForm}
+                          className="text-xs sm:text-sm font-bold text-blue-200 hover:text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-blue-900/70 hover:bg-blue-800 transition-all cursor-pointer border border-blue-700/60 shadow-sm"
+                          title="Clear and register a new item"
+                        >
+                          ✕ New Item
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="px-3 sm:px-3.5 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-black bg-blue-500/30 text-blue-200 border border-blue-400/40 shrink-0">
+                        New Product Entry
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Form Body */}
+                <div className="p-4 sm:p-6 lg:p-8 xl:p-10 space-y-6 sm:space-y-7">
+                  {/* Helpful Notice */}
+                  <div className="p-3.5 sm:p-4 bg-blue-50/80 rounded-2xl border border-blue-100 text-xs sm:text-sm text-blue-950 flex items-start gap-2.5">
+                    <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>POS Terminal Tip:</strong> Scan barcode with a USB scanner or device camera. You can modify prices anytime without altering existing stock balances.
+                    </span>
+                  </div>
 
             <form onSubmit={handleSubmitProductStock} className="space-y-4">
               
@@ -1231,207 +1933,154 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                 />
               </div>
 
-              {/* Product Picture / Image Attachment */}
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+              {/* Product Category Selection */}
+              <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                    <ImageIcon className="w-4 h-4 text-orange-600" />
-                    <span>Product Picture</span>
-                    <span className="text-[10px] text-slate-400 font-normal lowercase">(optional)</span>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Category *
                   </label>
-                  <div className="flex items-center gap-1 bg-slate-200/80 p-0.5 rounded-lg text-[10px] font-bold">
-                    <button
-                      type="button"
-                      onClick={() => setImageInputMode('upload')}
-                      className={`px-2 py-0.5 rounded-md cursor-pointer transition-all ${
-                        imageInputMode === 'upload' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
-                      }`}
-                    >
-                      File Upload
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setImageInputMode('url')}
-                      className={`px-2 py-0.5 rounded-md cursor-pointer transition-all ${
-                        imageInputMode === 'url' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
-                      }`}
-                    >
-                      Image URL
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewCategoryName('');
+                      setIsAddCategoryModalOpen(true);
+                    }}
+                    className="text-[11px] font-black text-orange-600 hover:text-orange-700 flex items-center gap-1 cursor-pointer transition-colors"
+                    title="Create a new store category"
+                  >
+                    <PlusCircle className="w-3.5 h-3.5" />
+                    <span>+ Add New Category</span>
+                  </button>
                 </div>
 
-                {imageUrl ? (
-                  <div className="flex items-center gap-4 p-2.5 bg-white rounded-xl border border-slate-200 shadow-xs">
-                    <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={availableCategories.includes(category) ? category : 'custom'}
+                      onChange={(e) => {
+                        if (e.target.value === '__add_new__') {
+                          setNewCategoryName('');
+                          setIsAddCategoryModalOpen(true);
+                        } else if (e.target.value !== 'custom') {
+                          setCategory(e.target.value);
+                        }
+                      }}
+                      className="w-1/2 px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs sm:text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-medium transition-all cursor-pointer"
+                    >
+                      <option value="">Select Category...</option>
+                      {availableCategories.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                      <option value="custom">Other / Custom...</option>
+                      <option value="__add_new__">➕ + Add New Category</option>
+                    </select>
+
+                    <input
+                      type="text"
+                      placeholder="Or type custom category..."
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                      className="w-1/2 px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs sm:text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-medium transition-all"
+                    />
+                  </div>
+
+                  {/* Quick Category Presets */}
+                  <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mr-1">Presets:</span>
+                    {['Grain', 'Biscuit', 'Oil', 'Ghee', 'Tea', 'Toys', 'Detergent', 'Soap', 'Laundry', 'Beverages', 'Snacks'].map((preset) => {
+                      const isSelected = category.toLowerCase() === preset.toLowerCase();
+                      return (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setCategory(preset)}
+                          className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
+                            isSelected
+                              ? 'bg-orange-600 text-white border-orange-600 shadow-2xs'
+                              : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                          }`}
+                        >
+                          {preset}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Product Picture / Image Attachment (Small Compact Design) */}
+              <div className="p-2.5 bg-slate-50/90 rounded-xl border border-slate-200 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  <div className="w-10 h-10 rounded-lg bg-white border border-slate-200 shrink-0 flex items-center justify-center overflow-hidden shadow-2xs relative">
+                    {imageUrl ? (
                       <img
                         src={imageUrl}
                         alt="Product preview"
                         className="w-full h-full object-cover"
                         onError={(e) => {
-                          (e.target as any).src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="%2394a3b8" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
+                          (e.target as any).src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%2394a3b8" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
                         }}
                       />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-slate-800 truncate">Photo Attached</p>
-                      <p className="text-[10px] text-emerald-600 font-medium">Visible on Customer Price Checker & POS</p>
-                    </div>
+                    ) : (
+                      <ImageIcon className="w-5 h-5 text-slate-300" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <label className="text-[11px] font-extrabold text-slate-800 uppercase tracking-wider block truncate">
+                      Product Picture <span className="text-slate-400 font-normal lowercase">(optional)</span>
+                    </label>
+                    <p className="text-[10px] text-slate-500 truncate">
+                      {imageUrl ? 'Picture attached for Price Checker & POS' : 'Upload photo or paste URL'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {imageUrl ? (
                     <button
                       type="button"
                       onClick={() => setImageUrl('')}
-                      className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border border-red-200 transition-colors cursor-pointer"
-                      title="Remove product picture"
+                      className="px-2 py-1 rounded-lg bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border border-red-200 text-xs font-bold transition-colors cursor-pointer"
+                      title="Remove picture"
                     >
-                      <X className="w-4 h-4" />
+                      <X className="w-3.5 h-3.5" />
                     </button>
-                  </div>
-                ) : (
-                  <div>
-                    {imageInputMode === 'upload' ? (
-                      <div>
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          accept="image/*"
-                          onChange={handleImageFileUpload}
-                          className="hidden"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="w-full py-4 border-2 border-dashed border-slate-300 hover:border-orange-500 rounded-xl bg-white hover:bg-orange-50/40 text-slate-600 hover:text-orange-600 transition-all flex flex-col items-center justify-center gap-1.5 cursor-pointer text-xs font-bold"
-                        >
-                          <Upload className="w-5 h-5 text-orange-600" />
-                          <span>Click to Upload Product Picture</span>
-                          <span className="text-[10px] text-slate-400 font-normal">Supports JPG, PNG, WEBP (auto-compressed)</span>
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="space-y-1.5">
-                        <div className="relative">
-                          <input
-                            type="url"
-                            placeholder="https://example.com/product-image.jpg"
-                            value={imageUrl}
-                            onChange={(e) => setImageUrl(e.target.value)}
-                            className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-orange-500 font-medium"
-                          />
-                        </div>
-                        <p className="text-[10px] text-slate-400">Paste direct image URL from web or catalog</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Weight & Category Grid */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    {sellBy === 'weight' ? 'Unit Type' : 'Weight / Volume'}
-                  </label>
-                  {sellBy === 'weight' ? (
-                    <select
-                      value={unitType}
-                      onChange={(e) => setUnitType(e.target.value as any)}
-                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-orange-500 focus:bg-white transition-all cursor-pointer"
-                    >
-                      <option value="kg">kg (Kilogram)</option>
-                      <option value="g">g (Grams)</option>
-                      <option value="liter">liter (Liters)</option>
-                    </select>
                   ) : (
-                    <div className="relative">
-                      <Scale className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <>
                       <input
-                        type="text"
-                        placeholder="e.g. 500g, 1kg, 250ml"
-                        value={weight}
-                        onChange={(e) => setWeight(e.target.value)}
-                        className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-medium transition-all"
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageFileUpload}
+                        className="hidden"
                       />
-                    </div>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="px-2.5 py-1 rounded-lg bg-white hover:bg-orange-50 text-slate-700 hover:text-orange-600 border border-slate-200 text-xs font-bold flex items-center gap-1 cursor-pointer transition-all shadow-2xs"
+                      >
+                        <Upload className="w-3.5 h-3.5 text-orange-600" />
+                        <span>Upload</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const url = prompt('Paste direct product image URL:');
+                          if (url && url.trim()) setImageUrl(url.trim());
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-xs font-bold flex items-center gap-1 cursor-pointer transition-all"
+                      >
+                        <LinkIcon className="w-3.5 h-3.5 text-slate-500" />
+                        <span>URL</span>
+                      </button>
+                    </>
                   )}
                 </div>
-
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                      Category
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setNewCategoryName('');
-                        setIsAddCategoryModalOpen(true);
-                      }}
-                      className="text-[11px] font-black text-orange-600 hover:text-orange-700 flex items-center gap-1 cursor-pointer transition-colors"
-                      title="Create a new store category"
-                    >
-                      <PlusCircle className="w-3.5 h-3.5" />
-                      <span>+ Add New Category</span>
-                    </button>
-                  </div>
-
-                  {/* Category Selection Combobox & Text Input */}
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={availableCategories.includes(category) ? category : 'custom'}
-                        onChange={(e) => {
-                          if (e.target.value === '__add_new__') {
-                            setNewCategoryName('');
-                            setIsAddCategoryModalOpen(true);
-                          } else if (e.target.value !== 'custom') {
-                            setCategory(e.target.value);
-                          }
-                        }}
-                        className="w-1/2 px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs sm:text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-medium transition-all"
-                      >
-                        <option value="">Select Category...</option>
-                        {availableCategories.map((cat) => (
-                          <option key={cat} value={cat}>
-                            {cat}
-                          </option>
-                        ))}
-                        <option value="custom">Other / Custom...</option>
-                        <option value="__add_new__">➕ + Add New Category</option>
-                      </select>
-
-                      <input
-                        type="text"
-                        placeholder="Or type custom category..."
-                        value={category}
-                        onChange={(e) => setCategory(e.target.value)}
-                        className="w-1/2 px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs sm:text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-medium transition-all"
-                      />
-                    </div>
-
-                    {/* Quick Category Presets as requested: Grain, Biscuit, Oil, Ghee, Tea, Toys, Detergent, Soap, Laundry */}
-                    <div className="flex items-center gap-1 flex-wrap pt-0.5">
-                      <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mr-1">Presets:</span>
-                      {['Grain', 'Biscuit', 'Oil', 'Ghee', 'Tea', 'Toys', 'Detergent', 'Soap', 'Laundry'].map((preset) => {
-                        const isSelected = category.toLowerCase() === preset.toLowerCase();
-                        return (
-                          <button
-                            key={preset}
-                            type="button"
-                            onClick={() => setCategory(preset)}
-                            className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
-                              isSelected
-                                ? 'bg-orange-600 text-white border-orange-600 shadow-2xs'
-                                : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
-                            }`}
-                          >
-                            {preset}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
               </div>
+
+
 
               {/* Optional Pre-packaged pack weight when selling by weight */}
               {sellBy === 'weight' && (
@@ -1529,7 +2178,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                           type="number"
                           step="any"
                           min="0"
-                          required={stockAdjustmentMode !== 'keep'}
+                          required={true}
                           placeholder={
                             stockAdjustmentMode === 'add'
                               ? (sellBy === 'weight' ? 'e.g. 10.5' : 'e.g. 10 or 40')
@@ -1568,119 +2217,137 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                   </div>
                 )}
 
-                {/* Pricing & Cost Grid */}
-                <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1">
-                      <Coins className="w-4 h-4 text-orange-600" />
-                      <span>Pricing & Profit Margin</span>
-                    </label>
-                    <span className="text-[10px] text-rose-600 font-extrabold bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
-                      Cost & Sell Price Mandatory
+                {/* Pricing & Cost Grid (High-Attraction Financial Theme) - Appears after entering compulsory details */}
+                {(!name.trim() || !category.trim()) && !existingProduct ? (
+                  <div className="p-4 bg-amber-50/90 rounded-2xl border border-amber-200/90 text-amber-950 flex items-center justify-between gap-3 text-xs font-bold shadow-2xs">
+                    <div className="flex items-center gap-2.5">
+                      <Info className="w-5 h-5 text-amber-600 shrink-0" />
+                      <span>Enter compulsory details above (<strong>Product Name</strong> & <strong>Category</strong>) to unlock Pricing & Profit Margin calculations.</span>
+                    </div>
+                    <span className="text-[10px] bg-amber-200 text-amber-950 px-2.5 py-1 rounded-full font-black uppercase tracking-wide shrink-0">
+                      Fill Details First
                     </span>
                   </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {/* 1. Cost / Purchase Price (Rs.) */}
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
-                        Cost Price *
+                ) : (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="p-4 sm:p-5 bg-gradient-to-br from-indigo-50/85 via-blue-50/60 to-emerald-50/75 rounded-2xl border border-indigo-200/90 shadow-sm space-y-3.5"
+                  >
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-black text-indigo-950 uppercase tracking-wider flex items-center gap-1.5">
+                        <Coins className="w-4 h-4 text-indigo-600" />
+                        <span>Pricing & Profit Margin</span>
                       </label>
-                      <div className="relative">
-                        <span className="text-xs font-black text-slate-400 absolute left-3 top-1/2 -translate-y-1/2">
-                          Rs.
-                        </span>
-                        <input
-                          type="number"
-                          step="any"
-                          min="0"
-                          required
-                          placeholder="e.g. 100.00"
-                          value={costPrice}
-                          onChange={(e) => {
-                            const val = e.target.value === '' ? '' : parseFloat(e.target.value);
-                            setCostPrice(val);
-                            if (typeof val === 'number' && val > 0 && typeof marginPercent === 'number') {
-                              const calcSell = Math.round(val * (1 + marginPercent / 100) * 100) / 100;
-                              setPrice(calcSell);
-                            } else if (typeof val === 'number' && val > 0 && typeof price === 'number' && price > 0) {
-                              setMarginPercent(Math.round(((price - val) / val) * 100 * 10) / 10);
-                            }
-                          }}
-                          className="w-full pl-9 pr-2.5 py-2 bg-white border border-slate-300 rounded-xl text-slate-900 text-xs sm:text-sm focus:outline-none focus:border-rose-500 font-bold font-mono transition-all"
-                        />
-                      </div>
-                    </div>
-
-                    {/* 2. Margin Percentage (% Margin) */}
-                    <div>
-                      <label className="block text-[11px] font-bold text-amber-800 uppercase tracking-wider mb-1 flex items-center justify-between">
-                        <span>Margin %</span>
-                        <span className="text-[9px] text-amber-600">Auto-sets Sell</span>
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          step="any"
-                          placeholder="e.g. 20"
-                          value={marginPercent}
-                          onChange={(e) => {
-                            const mVal = e.target.value === '' ? '' : parseFloat(e.target.value);
-                            setMarginPercent(mVal);
-                            if (typeof mVal === 'number' && typeof costPrice === 'number' && costPrice > 0) {
-                              const calcSell = Math.round(costPrice * (1 + mVal / 100) * 100) / 100;
-                              setPrice(calcSell);
-                            }
-                          }}
-                          className="w-full pl-3 pr-7 py-2 bg-amber-50/60 border border-amber-300 rounded-xl text-amber-950 text-xs sm:text-sm focus:outline-none focus:border-amber-500 font-mono font-black transition-all"
-                        />
-                        <span className="text-xs font-black text-amber-600 absolute right-2.5 top-1/2 -translate-y-1/2">
-                          %
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* 3. Selling Price (Rs.) */}
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
-                        Selling Price *
-                      </label>
-                      <div className="relative">
-                        <span className="text-xs font-black text-slate-400 absolute left-3 top-1/2 -translate-y-1/2">
-                          Rs.
-                        </span>
-                        <input
-                          ref={priceInputRef}
-                          type="number"
-                          step="any"
-                          min="0"
-                          required
-                          placeholder="e.g. 120.00"
-                          value={price}
-                          onChange={(e) => {
-                            const pVal = e.target.value === '' ? '' : parseFloat(e.target.value);
-                            setPrice(pVal);
-                            if (typeof pVal === 'number' && pVal > 0 && typeof costPrice === 'number' && costPrice > 0) {
-                              setMarginPercent(Math.round(((pVal - costPrice) / costPrice) * 100 * 10) / 10);
-                            }
-                          }}
-                          className="w-full pl-9 pr-2.5 py-2 bg-white border border-slate-300 rounded-xl text-slate-900 text-xs sm:text-sm focus:outline-none focus:border-emerald-500 font-black text-emerald-700 font-mono transition-all"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {typeof costPrice === 'number' && typeof price === 'number' && costPrice > 0 && price > 0 && (
-                    <div className="p-2.5 bg-white rounded-xl border border-slate-200 text-xs flex items-center justify-between font-medium">
-                      <span className="text-slate-500">
-                        Profit / Unit: <strong className="text-emerald-700 font-mono">Rs. {(price - costPrice).toFixed(2)}</strong>
-                      </span>
-                      <span className="text-amber-800 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200 text-[11px]">
-                        Profit Margin: {(((price - costPrice) / costPrice) * 100).toFixed(1)}%
+                      <span className="text-[10px] text-emerald-800 font-extrabold bg-emerald-100/90 px-2.5 py-0.5 rounded-full border border-emerald-300 shadow-2xs">
+                        ✨ Auto-Calculates Profit
                       </span>
                     </div>
-                  )}
-                </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {/* 1. Cost / Purchase Price (Rs.) */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                          Cost Price *
+                        </label>
+                        <div className="relative">
+                          <span className="text-xs font-black text-slate-400 absolute left-3 top-1/2 -translate-y-1/2">
+                            Rs.
+                          </span>
+                          <input
+                            type="number"
+                            step="any"
+                            min="0"
+                            required
+                            placeholder="e.g. 100.00"
+                            value={costPrice}
+                            onChange={(e) => {
+                              const val = e.target.value === '' ? '' : parseFloat(e.target.value);
+                              setCostPrice(val);
+                              if (typeof val === 'number' && val > 0 && typeof marginPercent === 'number') {
+                                const calcSell = Math.round(val * (1 + marginPercent / 100) * 100) / 100;
+                                setPrice(calcSell);
+                              } else if (typeof val === 'number' && val > 0 && typeof price === 'number' && price > 0) {
+                                setMarginPercent(Math.round(((price - val) / val) * 100 * 10) / 10);
+                              }
+                            }}
+                            className="w-full pl-9 pr-2.5 py-2.5 bg-white border border-indigo-200 rounded-xl text-slate-900 text-xs sm:text-sm focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/20 font-bold font-mono transition-all shadow-inner"
+                          />
+                        </div>
+                      </div>
+
+                      {/* 2. Margin Percentage (% Margin) */}
+                      <div>
+                        <label className="block text-[11px] font-black text-indigo-900 uppercase tracking-wider mb-1 flex items-center justify-between">
+                          <span>Margin %</span>
+                          <span className="text-[9px] text-indigo-600 font-extrabold">Auto-sets Sell</span>
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            step="any"
+                            placeholder="e.g. 25"
+                            value={marginPercent}
+                            onChange={(e) => {
+                              const mVal = e.target.value === '' ? '' : parseFloat(e.target.value);
+                              setMarginPercent(mVal);
+                              if (typeof mVal === 'number' && typeof costPrice === 'number' && costPrice > 0) {
+                                const calcSell = Math.round(costPrice * (1 + mVal / 100) * 100) / 100;
+                                setPrice(calcSell);
+                              }
+                            }}
+                            className="w-full pl-3 pr-7 py-2.5 bg-amber-50/90 border border-amber-300 rounded-xl text-amber-950 text-xs sm:text-sm focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 font-mono font-black transition-all shadow-inner"
+                          />
+                          <span className="text-xs font-black text-amber-700 absolute right-2.5 top-1/2 -translate-y-1/2">
+                            %
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* 3. Selling Price (Rs.) */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-emerald-900 uppercase tracking-wider mb-1">
+                          Selling Price *
+                        </label>
+                        <div className="relative">
+                          <span className="text-xs font-black text-emerald-600 absolute left-3 top-1/2 -translate-y-1/2">
+                            Rs.
+                          </span>
+                          <input
+                            ref={priceInputRef}
+                            type="number"
+                            step="any"
+                            min="0"
+                            required
+                            placeholder="e.g. 125.00"
+                            value={price}
+                            onChange={(e) => {
+                              const pVal = e.target.value === '' ? '' : parseFloat(e.target.value);
+                              setPrice(pVal);
+                              if (typeof pVal === 'number' && pVal > 0 && typeof costPrice === 'number' && costPrice > 0) {
+                                setMarginPercent(Math.round(((pVal - costPrice) / costPrice) * 100 * 10) / 10);
+                              }
+                            }}
+                            className="w-full pl-9 pr-2.5 py-2.5 bg-white border border-emerald-300 rounded-xl text-emerald-950 text-xs sm:text-sm focus:outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/20 font-black text-emerald-700 font-mono transition-all shadow-inner"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {typeof costPrice === 'number' && typeof price === 'number' && costPrice > 0 && price > 0 && (
+                      <div className="p-3 bg-gradient-to-r from-emerald-600 to-teal-600 rounded-xl text-white text-xs flex items-center justify-between font-bold shadow-sm border border-emerald-500">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-amber-300 animate-pulse" />
+                          <span>Profit / Unit: <strong className="font-mono text-amber-200 text-sm">Rs. {(price - costPrice).toFixed(2)}</strong></span>
+                        </span>
+                        <span className="text-emerald-950 font-black bg-amber-300 px-2.5 py-1 rounded-lg text-xs shadow-xs tracking-tight">
+                          Margin: {(((price - costPrice) / costPrice) * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                    )}
+                  </motion.div>
+                )}
 
                 {/* Product Discount Configuration */}
                 <div className="p-3.5 bg-rose-50/60 rounded-2xl border border-rose-200/80 space-y-3">
@@ -1937,339 +2604,12 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
               </div>
 
             </form>
-          </div>
-
-          {/* Right Column: Registered Inventory Catalog */}
-          <div className="lg:col-span-7 bg-white rounded-3xl border border-slate-200 p-6 sm:p-7 shadow-sm space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
-              <div>
-                <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                  <Layers className="w-5 h-5 text-blue-600" /> Current Store Inventory ({products.length})
-                </h2>
-                <p className="text-xs text-slate-500 font-medium">
-                  Manage inventory, print barcode stickers, or edit prices (Pakistani Rupees)
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {selectedProductIds.length > 0 && (
-                  <button
-                    onClick={handleBulkDelete}
-                    className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> Delete ({selectedProductIds.length})
-                  </button>
-                )}
-
-                <div className="relative min-w-[190px]">
-                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Search Barcode, S/N, Short Code or Name & press Enter..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleCodeEnterLookup(searchTerm, 'search');
-                      }
-                    }}
-                    className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs focus:outline-none focus:border-orange-500 font-medium"
-                  />
-                </div>
-              </div>
             </div>
-
-            {/* Filter Tabs: All, By Weight, By Unit */}
-            <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-200">
-              <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
-                <button
-                  type="button"
-                  onClick={() => setCatalogFilter('all')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                    catalogFilter === 'all'
-                      ? 'bg-slate-900 text-white shadow-sm'
-                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
-                  }`}
-                >
-                  All Products ({products.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCatalogFilter('weight')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                    catalogFilter === 'weight'
-                      ? 'bg-orange-600 text-white shadow-sm'
-                      : 'bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-100'
-                  }`}
-                >
-                  <Scale className="w-3 h-3" /> Sold by Weight ({products.filter(p => p.sellBy === 'weight' || p.unitType === 'kg' || p.pricePerKg).length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCatalogFilter('unit')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                    catalogFilter === 'unit'
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100'
-                  }`}
-                >
-                  <Package className="w-3 h-3" /> Sold by Unit ({products.filter(p => p.sellBy !== 'weight' && p.unitType !== 'kg' && !p.pricePerKg).length})
-                </button>
-              </div>
-
-              <div className="text-[11px] text-slate-500 font-medium">
-                Showing {filteredCatalog.length} of {products.length} products
-              </div>
-            </div>
-
-            {filteredCatalog.length === 0 ? (
-              <div className="text-sm text-slate-500 p-12 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50 space-y-2">
-                <PackagePlus className="w-8 h-8 text-slate-400 mx-auto" />
-                <p className="font-bold text-slate-700">No products found in catalog</p>
-                <p className="text-xs text-slate-500">Use the form on the left or click "Generate & Print Barcode" to add items.</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto overflow-y-auto max-h-[620px] overscroll-contain custom-scrollbar border border-slate-200 rounded-2xl">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-slate-50 text-xs text-slate-600 uppercase tracking-wider border-b border-slate-200 sticky top-0 z-10">
-                    <tr>
-                      <th className="p-3.5 w-8">
-                        <input
-                          type="checkbox"
-                          checked={selectedProductIds.length === filteredCatalog.length && filteredCatalog.length > 0}
-                          onChange={handleToggleSelectAll}
-                          className="w-4 h-4 text-orange-600 border-slate-300 rounded focus:ring-orange-500 cursor-pointer"
-                          title="Select / Deselect all"
-                        />
-                      </th>
-                      <th className="p-3.5">Product & Method</th>
-                      <th className="p-3.5">S/N & Barcode</th>
-                      <th className="p-3.5 text-center">Cost & Price</th>
-                      <th className="p-3.5 text-center">Profit / Unit</th>
-                      <th className="p-3.5 text-center">Available Stock</th>
-                      <th className="p-3.5 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white">
-                    {filteredCatalog.map((p) => {
-                      const isSelected = selectedProductIds.includes(p.id);
-                      const isWeighted = p.sellBy === 'weight' || p.unitType === 'kg' || !!p.pricePerKg;
-                      const cost = p.costPrice || 0;
-                      const sell = p.price;
-                      const itemProfit = sell - cost;
-                      const itemMargin = sell > 0 ? (itemProfit / sell) * 100 : 0;
-                      return (
-                        <tr key={p.id} className={`${isSelected ? 'bg-orange-50/60' : 'hover:bg-slate-50'} transition-colors`}>
-                          <td className="p-3.5">
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => handleToggleSelectProduct(p.id)}
-                              className="w-4 h-4 text-orange-600 border-slate-300 rounded focus:ring-orange-500 cursor-pointer"
-                            />
-                          </td>
-                          <td className="p-3.5">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-lg overflow-hidden bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center">
-                                {p.imageUrl ? (
-                                  <img
-                                    src={p.imageUrl}
-                                    alt={p.name}
-                                    className="w-full h-full object-cover"
-                                    onError={(e) => {
-                                      (e.target as any).style.display = 'none';
-                                    }}
-                                  />
-                                ) : (
-                                  <ImageIcon className="w-5 h-5 text-slate-300" />
-                                )}
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <span className="font-bold text-slate-900">{p.name}</span>
-                                  {isWeighted ? (
-                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-orange-100 text-orange-800 border border-orange-200 flex items-center gap-0.5">
-                                      <Scale className="w-2.5 h-2.5" /> By Weight
-                                    </span>
-                                  ) : (
-                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-slate-100 text-slate-700 border border-slate-200">
-                                      By Unit
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium mt-0.5">
-                                  {p.weight && (
-                                    <span className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-mono font-bold">
-                                      {p.weight}
-                                    </span>
-                                  )}
-                                  {p.weightPerUnit && (
-                                    <span className="text-orange-700 font-semibold">
-                                      ({p.weightPerUnit} kg/pack)
-                                    </span>
-                                  )}
-                                  <span>{p.category || 'General'}</span>
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="p-3.5 text-xs space-y-1 font-mono">
-                            <div className="font-bold text-amber-900 flex items-center gap-1">
-                              <span className="text-[10px] bg-amber-100 text-amber-950 border border-amber-300 px-1.5 py-0.5 rounded font-black shadow-2xs">
-                                S/N: #{p.serialNumber || p.shortcutCode || '1001'}
-                              </span>
-                            </div>
-                            <div className="text-[11px] text-slate-600 font-medium">
-                              BC: <strong className="text-slate-800">{p.barcode || 'N/A'}</strong>
-                            </div>
-                          </td>
-                          <td className="p-3.5 text-center font-mono">
-                            {(() => {
-                              const discInfo = getProductDiscountInfo(p);
-                              if (discInfo.hasDiscount) {
-                                return (
-                                  <div className="space-y-0.5">
-                                    <div className="font-black text-rose-600 flex items-center justify-center gap-1">
-                                      <span>Rs. {discInfo.discountedPrice.toFixed(2)}{isWeighted ? '/kg' : ''}</span>
-                                      <span className="text-[10px] font-extrabold bg-rose-100 text-rose-800 px-1.5 py-0.2 rounded-full border border-rose-200">
-                                        {discInfo.discountLabel}
-                                      </span>
-                                    </div>
-                                    <div className="text-[11px] text-slate-400 line-through">
-                                      Was Rs. {(p.price ?? 0).toFixed(2)}
-                                    </div>
-                                    {p.discountEndDate && (
-                                      <div className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-flex items-center gap-1">
-                                        <Clock className="w-2.5 h-2.5" />
-                                        <span>{discInfo.dateStatusMessage}</span>
-                                      </div>
-                                    )}
-                                    <div className="text-[10px] text-slate-500 font-semibold">
-                                      Cost: Rs. {(cost || 0).toFixed(2)}
-                                    </div>
-                                  </div>
-                                );
-                              } else if (p.discountActive && (discInfo.isExpired || discInfo.isUpcoming)) {
-                                return (
-                                  <div className="space-y-0.5">
-                                    <div className="font-black text-orange-600">
-                                      Rs. {(p.price ?? 0).toFixed(2)}{isWeighted ? '/kg' : ''}
-                                    </div>
-                                    <div className={`text-[9px] font-bold px-1.5 py-0.5 rounded border inline-flex items-center gap-1 ${
-                                      discInfo.isExpired ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-amber-50 text-amber-800 border-amber-200'
-                                    }`}>
-                                      <Clock className="w-2.5 h-2.5" />
-                                      <span>{discInfo.dateStatusMessage}</span>
-                                    </div>
-                                    <div className="text-[10px] text-slate-500 font-semibold">
-                                      Cost: Rs. {(cost || 0).toFixed(2)}
-                                    </div>
-                                  </div>
-                                );
-                              }
-                              return (
-                                <div>
-                                  <div className="font-black text-orange-600">
-                                    Rs. {(p.price ?? 0).toFixed(2)}{isWeighted ? '/kg' : ''}
-                                  </div>
-                                  <div className="text-[11px] text-slate-500 font-semibold">
-                                    Cost: Rs. {(cost || 0).toFixed(2)}
-                                  </div>
-                                </div>
-                              );
-                            })()}
-                          </td>
-                          <td className="p-3.5 text-center font-mono">
-                            <div className={`text-xs font-bold ${itemProfit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
-                              +Rs. {(itemProfit || 0).toFixed(2)}
-                            </div>
-                            <div className="text-[10px] text-slate-400 font-medium">
-                              ({(itemMargin || 0).toFixed(0)}% margin)
-                            </div>
-                          </td>
-                          <td className="p-3.5 text-center font-black text-sm">
-                            <span className={(p.stockQuantity || 0) <= 0 ? 'text-red-600 font-black' : (p.stockQuantity || 0) <= 5 ? 'text-amber-600 font-bold' : 'text-emerald-600 font-black'}>
-                              {(p.stockQuantity || 0) % 1 === 0 ? (p.stockQuantity || 0) : (p.stockQuantity || 0).toFixed(3)} {isWeighted ? 'kg' : 'units'}
-                            </span>
-                          </td>
-                          <td className="p-3.5 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
-                              {/* Quick Discount Setting Action */}
-                              <button
-                                onClick={() => setQuickDiscountProduct(p)}
-                                className={`px-2 py-1.5 rounded-lg border transition-all text-xs font-bold flex items-center gap-1 cursor-pointer shadow-xs ${
-                                  p.discountActive && (p.discountValue || 0) > 0
-                                    ? 'bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-600 hover:text-white'
-                                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-rose-50 hover:text-rose-700'
-                                }`}
-                                title={p.discountActive ? `Active Discount: ${p.discountValue}${p.discountType === 'percentage' ? '%' : ' Rs.'} off. Click to edit.` : 'Set item discount'}
-                              >
-                                <Percent className="w-3 h-3 text-rose-600" />
-                                {p.discountActive && (p.discountValue || 0) > 0 ? (
-                                  <span>{p.discountValue}{p.discountType === 'percentage' ? '%' : ' Rs.'}</span>
-                                ) : (
-                                  <span>Discount</span>
-                                )}
-                              </button>
-
-                              {/* Print Barcode / Sticker Action */}
-                              <button
-                                onClick={() => handleOpenGeneratorForProduct(p)}
-                                className="px-2 py-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-800 transition-all text-xs font-bold flex items-center gap-1 cursor-pointer shadow-sm"
-                                title="Open Barcode & Label Station"
-                              >
-                                <Printer className="w-3 h-3 text-amber-300" /> Print
-                              </button>
-
-                              {/* Direct Download Barcode Image */}
-                              <button
-                                onClick={() => handleDirectDownloadBarcode(p)}
-                                className="px-2 py-1.5 rounded-lg bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-600 hover:text-white transition-all text-xs font-bold flex items-center gap-1 cursor-pointer shadow-sm"
-                                title="Download Barcode Sticker PNG"
-                              >
-                                <Download className="w-3 h-3 text-sky-600 group-hover:text-white" /> Download
-                              </button>
-
-                              <button
-                                onClick={() => handleSelectProductToEdit(p)}
-                                className="px-2.5 py-1.5 rounded-lg bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-600 hover:text-white transition-all text-xs font-bold flex items-center gap-1 cursor-pointer shadow-sm"
-                                title="Update stock or price manually in the form"
-                              >
-                                <Edit3 className="w-3 h-3" /> Edit
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setAiEditTargetProduct(p);
-                                  setIsAiAssistantOpen(true);
-                                }}
-                                className="px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-50 to-orange-50 text-orange-900 border border-orange-300 hover:from-orange-600 hover:to-amber-600 hover:text-white transition-all text-xs font-bold flex items-center gap-1 cursor-pointer shadow-xs"
-                                title="Ask AI Copilot to edit price, cost, stock, or details"
-                              >
-                                <Sparkles className="w-3 h-3 text-amber-500" /> AI Edit
-                              </button>
-
-                              <button
-                                onClick={() => handleDeleteProduct(p)}
-                                className="px-2 py-1.5 rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-600 hover:text-white transition-all text-xs font-bold flex items-center gap-1 cursor-pointer shadow-sm"
-                                title="Delete stock item"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
           </div>
+        )}
 
-        </div>
+      </motion.div>
+    </AnimatePresence>
 
         {/* Dedicated Barcode Generator & Print Station Modal */}
         <BarcodeGeneratorModal
@@ -2410,8 +2750,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
           isOpen={isBatchModalOpen}
           onClose={() => setIsBatchModalOpen(false)}
           store={store}
-          currentUser={currentUser}
-          onProductsImported={(count) => {
+          onSuccess={(count) => {
             showNotification('success', `Successfully registered ${count} products into catalog!`);
           }}
         />

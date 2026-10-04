@@ -88,7 +88,8 @@ import {
   Boxes,
   PackagePlus,
   CheckCircle2,
-  Trash2
+  Trash2,
+  Mail
 } from 'lucide-react';
 
 interface StoreAdminDashboardProps {
@@ -514,7 +515,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
     // Compute Net Profit, Net Units, and Margins for every day
     Object.values(dateMap).forEach((d) => {
       const dayOrderCost = (expenses || [])
-        .filter(e => (e.date || getLocalDateString(e.timestamp)) === d.date && (e.category === 'Transport & Logistics' || e.title?.toLowerCase().includes('supply') || e.title?.toLowerCase().includes('order') || e.title?.toLowerCase().includes('balance')))
+        .filter(e => (e.date || getLocalDateString(e.timestamp)) === d.date && (e.category === 'Transport & Logistics' || (e as any).description?.toLowerCase().includes('supply') || (e as any).title?.toLowerCase().includes('order') || (e as any).reason?.toLowerCase().includes('balance')))
         .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
       d.netRevenue = Math.max(0, d.grossRevenue - d.totalRefunds - dayOrderCost);
@@ -575,7 +576,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
 
   const filteredSupplierOrdersCost = useMemo(() => {
     return filteredExpensesByDate
-      .filter(e => e.category === 'Transport & Logistics' || e.title?.toLowerCase().includes('supply') || e.title?.toLowerCase().includes('order') || e.title?.toLowerCase().includes('balance'))
+      .filter(e => e.category === 'Transport & Logistics' || (e as any).description?.toLowerCase().includes('supply') || (e as any).title?.toLowerCase().includes('order') || (e as any).reason?.toLowerCase().includes('balance'))
       .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
   }, [filteredExpensesByDate]);
 
@@ -1139,6 +1140,11 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       title: 'Staff & Operations (Online / Offline Status)',
       subtitle: 'Realtime view of online active staff members vs offline accounts across roles',
       icon: Activity
+    },
+    omnimail: {
+      title: 'OmniMail Z-Sender Email Broadcast',
+      subtitle: 'Dispatch automated e-receipts and promotional email broadcasts to store customers',
+      icon: Mail
     }
   };
 
@@ -2980,7 +2986,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
               setViewingReturnSlip(null);
             }}
             returnRecord={viewingReturnSlip}
-            storeName={store.name}
+            store={store}
           />
         )}
 

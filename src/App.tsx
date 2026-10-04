@@ -55,9 +55,12 @@ export default function App() {
     const storeIdToWatch = inspectedStore?.id || auth.store?.id;
     if (!storeIdToWatch) return;
 
+    const rawIds = [storeIdToWatch, 'all', auth.store?.parentStoreId].filter(Boolean) as string[];
+    const uniqueIds = Array.from(new Set(rawIds));
+
     const q = query(
       collection(db, 'users'),
-      where('storeId', 'in', [storeIdToWatch, 'all', auth.store?.parentStoreId || storeIdToWatch])
+      where('storeId', 'in', uniqueIds)
     );
 
     const unsub = onSnapshot(q, (snapshot) => {

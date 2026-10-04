@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Sale, Store } from '../types';
 import QRCode from 'qrcode';
-import { db, doc, updateDoc } from '../lib/firebase';
-import { captureElementToCanvas } from '../utils/html2canvasSafe';
+import html2canvas from 'html2canvas';
 import { isSlipExpired, getReceiptRemainingDays } from '../lib/salesCleanup';
+import { SendEReceiptModal } from './SendEReceiptModal';
 import { 
   Printer, 
   Share2, 
@@ -25,8 +25,7 @@ import {
   Link,
   Clock,
   Coins,
-  Mail,
-  Send
+  Mail
 } from 'lucide-react';
 import { speakMessage, formatAmountWords, isSaleAnnounced, markSaleAsAnnounced } from '../lib/speech';
 import { printThermalReceiptDirect } from '../utils/printThermalReceipt';
@@ -54,12 +53,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
   const [isExportingImage, setIsExportingImage] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
-  const [showEmailArea, setShowEmailArea] = useState(false);
-  const [customerEmail, setCustomerEmail] = useState('');
-  const [sendingEmail, setSendingEmail] = useState(false);
-  const [emailSentStatus, setEmailSentStatus] = useState<string | null>(null);
+  const [isSendMailModalOpen, setIsSendMailModalOpen] = useState(false);
   const receiptCardRef = useRef<HTMLDivElement | null>(null);
-  const emailInputRef = useRef<HTMLInputElement | null>(null);
 
   const curr = store?.currencySymbol || 'Rs.';
   const receiptSubHeader = store?.receiptHeader || 'OFFICIAL SALES INVOICE';
@@ -73,11 +68,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     if (initialTab) {
       setActiveReceiptMode(initialTab);
     }
-    if (sale?.customerEmail) {
-      setCustomerEmail(sale.customerEmail);
-      setShowEmailArea(true);
-    }
-  }, [initialTab, isOpen, sale?.customerEmail]);
+  }, [initialTab, isOpen]);
 
   const announcedSaleIdRef = useRef<string | null>(null);
 
@@ -291,11 +282,11 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                         ${item.weightInfo ? `<br/><small style="color:#64748b">${item.weightInfo}</small>` : ''}
                       </td>
                       <td class="text-center font-bold">${qtyText}</td>
-                      <td class="text-right">${(item.price || 0).toFixed(2)}${isWeight ? '/kg' : ''}</td>
+                      <td class="text-right">${curr} ${(item.price || 0).toFixed(2)}${isWeight ? '/kg' : ''}</td>
                       <td class="text-right" style="color: ${itemDisc > 0 ? '#047857' : '#64748b'}; font-weight: ${itemDisc > 0 ? 'bold' : 'normal'};">
-                        ${itemDisc > 0 ? `-${itemDisc.toFixed(2)}` : '0.00'}
+                        ${itemDisc > 0 ? `-${curr} ${itemDisc.toFixed(2)}` : `${curr} 0.00`}
                       </td>
-                      <td class="text-right font-bold">${(item.total || 0).toFixed(2)}</td>
+                      <td class="text-right font-bold">${curr} ${(item.total || 0).toFixed(2)}</td>
                     </tr>
                   `;
                 }).join('')}
@@ -410,23 +401,20 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     };
   }, [sale, store, receiptUrl]);
 
-  // Keydown listener for quick print and close
+  // Keydown listener for modal escape close
   useEffect(() => {
     if (!isOpen || !sale) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'p' || e.key === 'P') {
-        e.preventDefault();
-        handlePrint();
-      } else if (e.key === 'Escape') {
+      if (e.key === 'Escape') {
         e.preventDefault();
         onClose();
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, sale, qrCodeDataUrl]);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [isOpen, sale, onClose]);
 
   if (!isOpen || !sale) return null;
 
@@ -484,12 +472,17 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   };
 
   const handleDownloadImage = async () => {
-    const element = receiptCardRef.current || document.getElementById('printable-receipt') || document.getElementById('thermal-receipt-preview');
+    const element = receiptCardRef.current || document.getElementById('thermal-receipt-preview');
     if (!element) return;
 
     setIsExportingImage(true);
     try {
-      const canvas = await captureElementToCanvas(element);
+      const canvas = await html2canvas(element, {
+        scale: 2.5,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        logging: false
+      });
       const dataUrl = canvas.toDataURL('image/png');
       const link = document.createElement('a');
       link.href = dataUrl;
@@ -526,97 +519,19 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     document.body.removeChild(element);
   };
 
-  const handleShare = () => {
-    setShowEmailArea(prev => {
-      const nextState = !prev;
-      if (nextState) {
-        setTimeout(() => emailInputRef.current?.focus(), 100);
-      }
-      return nextState;
-    });
-    setEmailSentStatus(null);
-  };
-
-  const handleSendEmailReceipt = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanEmail = customerEmail.trim();
-    if (!cleanEmail || !sale) return;
-
-    setSendingEmail(true);
-    setEmailSentStatus(null);
-
-    try {
-      // 1. Save customer email permanently to sale record in Firestore
+  const handleShare = async () => {
+    const text = getFormattedReceiptText();
+    if (navigator.share) {
       try {
-        await updateDoc(doc(db, 'sales', sale.id), {
-          customerEmail: cleanEmail
+        await navigator.share({
+          title: `Receipt #${sale.receiptNumber}`,
+          text: text
         });
-      } catch (dbErr) {
-        console.warn('Could not update customer email in Firestore:', dbErr);
+      } catch (err) {
+        console.log('Share canceled or error:', err);
       }
-
-      // 2. Capture receipt as PNG image
-      const element = receiptCardRef.current || document.getElementById('printable-receipt');
-      let imageBlob: Blob | null = null;
-      let dataUrl = '';
-
-      if (element) {
-        const canvas = await captureElementToCanvas(element);
-        dataUrl = canvas.toDataURL('image/png');
-        imageBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
-      }
-
-      const storeName = store?.name || sale?.storeName || 'Supermarket';
-      const subject = `Official Sales E-Receipt #${sale.receiptNumber} - ${storeName}`;
-      const body = `Dear Customer,\n\nThank you for shopping at ${storeName}!\n\nHere is your official E-Receipt:\nReceipt Number: #${sale.receiptNumber}\nDate: ${new Date(sale.timestamp).toLocaleString()}\nTotal Paid: ${curr} ${(sale.totalAmount || 0).toFixed(2)}\n\nView online digital receipt: ${receiptUrl}\n\nYour receipt PNG image has been generated and prepared for you.`;
-
-      let sharedViaFile = false;
-
-      // 3. Try Native Web Share API with attached PNG file if supported on mobile/tablet
-      if (imageBlob && navigator.canShare) {
-        const file = new File([imageBlob], `Receipt-${sale.receiptNumber}.png`, { type: 'image/png' });
-        if (navigator.canShare({ files: [file] })) {
-          try {
-            await navigator.share({
-              title: subject,
-              text: body,
-              files: [file]
-            });
-            sharedViaFile = true;
-          } catch (shareErr) {
-            console.log('Native file share dismissed/failed:', shareErr);
-          }
-        }
-      }
-
-      // 4. Open Direct Gmail Compose window directly for seamless 1-click email sending
-      if (!sharedViaFile) {
-        const isGmail = cleanEmail.toLowerCase().includes('gmail');
-        if (isGmail) {
-          const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(cleanEmail)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-          window.open(gmailUrl, '_blank');
-        } else {
-          const mailtoUrl = `mailto:${encodeURIComponent(cleanEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-          window.open(mailtoUrl, '_blank');
-        }
-
-        // Auto-download receipt PNG so cashier/customer has the image ready
-        if (dataUrl) {
-          const downloadLink = document.createElement('a');
-          downloadLink.href = dataUrl;
-          downloadLink.download = `Receipt-${sale.receiptNumber}.png`;
-          document.body.appendChild(downloadLink);
-          downloadLink.click();
-          document.body.removeChild(downloadLink);
-        }
-      }
-
-      setEmailSentStatus(`Direct E-Receipt sent to ${cleanEmail}! Saved to order & Gmail compose opened with PNG.`);
-    } catch (err) {
-      console.error('Error sending email receipt PNG:', err);
-      setEmailSentStatus(`E-Receipt sent to ${cleanEmail}!`);
-    } finally {
-      setSendingEmail(false);
+    } else {
+      handleCopyText();
     }
   };
 
@@ -677,88 +592,6 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
           <div className="px-4 py-2 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center gap-2 no-print animate-fade-in shrink-0">
             <Printer className="w-4 h-4 text-emerald-600 animate-pulse" />
             <span>{printStatus}</span>
-          </div>
-        )}
-
-        {/* CUSTOMER GMAIL / EMAIL E-RECEIPT AREA (Toggled via Share E-Receipt button) */}
-        {showEmailArea && (
-          <div className="bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50 border-2 border-orange-300 rounded-2xl p-4 space-y-3 no-print animate-fade-in shadow-md shrink-0">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 bg-orange-600 text-white rounded-lg shadow-2xs">
-                  <Mail className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-black text-slate-900 uppercase tracking-wide">
-                    Send E-Receipt PNG to Customer Gmail
-                  </h4>
-                  <p className="text-[10px] text-slate-600 font-medium">
-                    Enter customer email address to send invoice PNG directly
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowEmailArea(false)}
-                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-orange-100/60 cursor-pointer"
-                title="Close email form"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSendEmailReceipt} className="space-y-2.5">
-              <div className="relative">
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  ref={emailInputRef}
-                  type="email"
-                  required
-                  placeholder="Enter customer gmail (e.g. customer@gmail.com)"
-                  value={customerEmail}
-                  onChange={(e) => setCustomerEmail(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-white border border-orange-200 rounded-xl text-xs font-bold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-2xs"
-                />
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="submit"
-                  disabled={sendingEmail || !customerEmail.trim()}
-                  className="flex-1 py-2.5 px-4 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
-                >
-                  {sendingEmail ? (
-                    <>
-                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Generating Receipt PNG...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-3.5 h-3.5" />
-                      <span>Send PNG E-Receipt</span>
-                    </>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleDownloadImage}
-                  disabled={isExportingImage}
-                  className="px-3 py-2.5 bg-white hover:bg-slate-100 text-slate-700 font-bold border border-slate-300 rounded-xl text-xs flex items-center gap-1.5 shadow-2xs cursor-pointer shrink-0"
-                  title="Save receipt PNG to device"
-                >
-                  <ImageIcon className="w-3.5 h-3.5 text-orange-600" />
-                  <span>{isExportingImage ? 'Saving...' : 'Save PNG'}</span>
-                </button>
-              </div>
-
-              {emailSentStatus && (
-                <div className="p-2.5 bg-emerald-100 text-emerald-950 border border-emerald-300 rounded-xl text-[11px] font-bold flex items-center gap-2 animate-fade-in shadow-2xs">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>{emailSentStatus}</span>
-                </div>
-              )}
-            </form>
           </div>
         )}
 
@@ -1009,25 +842,20 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             </div>
 
             {/* Action Controls for Printing & Downloading */}
-            <div className="grid grid-cols-2 gap-3 no-print pt-2 border-t border-slate-200 shrink-0">
+            <div className="grid grid-cols-2 gap-2 no-print pt-2 border-t border-slate-200 shrink-0">
               <button
                 onClick={handlePrint}
-                className="py-3 px-4 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 active:scale-[0.98] text-white font-black rounded-xl shadow-md hover:shadow-lg transition-all text-xs flex items-center justify-center gap-2 cursor-pointer"
-                title="Print thermal receipt (or press 'P')"
+                className="py-3 px-2.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 active:scale-[0.98] text-white font-black rounded-xl shadow-md hover:shadow-lg transition-all text-xs flex items-center justify-center gap-1 cursor-pointer"
+                title="Print thermal receipt"
               >
-                <Printer className="w-4 h-4" /> Print Receipt (P)
+                <Printer className="w-3.5 h-3.5 shrink-0" /> Print
               </button>
 
               <button
                 onClick={handleShare}
-                className={`py-3 px-4 active:scale-[0.98] font-bold border rounded-xl transition-all text-xs flex items-center justify-center gap-2 cursor-pointer shadow-2xs ${
-                  showEmailArea 
-                    ? 'bg-orange-600 text-white border-orange-600 shadow-md ring-2 ring-orange-500/20' 
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200'
-                }`}
+                className="py-3 px-2.5 bg-slate-100 hover:bg-slate-200 active:scale-[0.98] text-slate-800 font-bold border border-slate-200 rounded-xl transition-all text-xs flex items-center justify-center gap-1 cursor-pointer shadow-2xs"
               >
-                <Share2 className={`w-4 h-4 ${showEmailArea ? 'text-white' : 'text-orange-600'}`} /> 
-                <span>{showEmailArea ? 'Close Email Panel' : 'Share E-Receipt'}</span>
+                <Share2 className="w-3.5 h-3.5 shrink-0 text-orange-600" /> Share
               </button>
             </div>
 

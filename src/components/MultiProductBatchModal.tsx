@@ -31,7 +31,9 @@ interface MultiProductBatchModalProps {
   store: Store;
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (count: number) => void;
+  onSuccess?: (count: number) => void;
+  onProductsImported?: (count: number) => void;
+  currentUser?: any;
   existingProducts?: Product[];
 }
 
@@ -40,6 +42,8 @@ export const MultiProductBatchModal: React.FC<MultiProductBatchModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
+  onProductsImported,
+  currentUser,
   existingProducts = []
 }) => {
   const [rows, setRows] = useState<BatchProductRow[]>([
@@ -256,7 +260,8 @@ export const MultiProductBatchModal: React.FC<MultiProductBatchModalProps> = ({
 
       setSuccessMsg(`Success! Saved ${savedCount} products into ${store.name} inventory with automated 4-digit shortcuts.`);
       setTimeout(() => {
-        onSuccess(savedCount);
+        if (onSuccess) onSuccess(savedCount);
+        if (onProductsImported) onProductsImported(savedCount);
         onClose();
       }, 1200);
 

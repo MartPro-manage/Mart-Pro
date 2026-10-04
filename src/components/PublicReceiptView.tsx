@@ -6,6 +6,7 @@ import { isSaleExpired, getReceiptRemainingDays } from '../lib/salesCleanup';
 import JsBarcode from 'jsbarcode';
 import { captureElementToCanvas } from '../utils/html2canvasSafe';
 import { printReceiptHtmlDirect } from '../utils/printThermalReceipt';
+import { safeStorage } from '../utils/safeStorage';
 import { 
   CheckCircle2, 
   Printer, 
@@ -87,7 +88,7 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
   // Customer Mart Pro Account state
   const [customerProfile, setCustomerProfile] = useState<CustomerAccountProfile>(() => {
     try {
-      const saved = localStorage.getItem(PROFILE_STORAGE_KEY);
+      const saved = safeStorage.getItem(PROFILE_STORAGE_KEY);
       if (saved) {
         return JSON.parse(saved);
       }
@@ -102,7 +103,7 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
       createdAt: new Date().toISOString()
     };
     try {
-      localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(newProfile));
+      safeStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(newProfile));
     } catch (e) {
       console.warn(e);
     }
@@ -111,7 +112,7 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
 
   const [savedReceipts, setSavedReceipts] = useState<SavedWalletReceipt[]>(() => {
     try {
-      const saved = localStorage.getItem(WALLET_STORAGE_KEY);
+      const saved = safeStorage.getItem(WALLET_STORAGE_KEY);
       if (saved) {
         return JSON.parse(saved);
       }
@@ -151,7 +152,7 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
         const filtered = prev.filter(r => r.receiptNumber !== currentSale.receiptNumber && r.id !== currentSale.id);
         const updated = [newEntry, ...filtered];
         try {
-          localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify(updated.slice(0, 50)));
+          safeStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify(updated.slice(0, 50)));
         } catch (err) {
           console.warn('Wallet save error:', err);
         }
@@ -390,7 +391,7 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
     };
     setCustomerProfile(updated);
     try {
-      localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(updated));
+      safeStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(updated));
     } catch (e) {
       console.warn(e);
     }
@@ -418,7 +419,7 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
     const updated = savedReceipts.filter(r => r.id !== id);
     setSavedReceipts(updated);
     try {
-      localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify(updated));
+      safeStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify(updated));
     } catch (e) {
       console.warn(e);
     }

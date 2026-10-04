@@ -28,14 +28,15 @@ import {
   CreditCard,
   Banknote,
   Smartphone,
-  Download
+  Download,
+  Mail
 } from 'lucide-react';
 
 export type StoreAdminTab = 
   | 'sales_by_date' 
   | 'volume_chart' 
   | 'revenue_trends' 
-  | 'net_profit_revenue'
+  | 'net_profit_revenue' 
   | 'product_valuation'
   | 'returns' 
   | 'sold_products' 
@@ -49,6 +50,7 @@ export type StoreAdminTab =
   | 'staff' 
   | 'attendance'
   | 'staff_operations'
+  | 'omnimail'
   | 'settings';
 
 export type ExpenseFilterMode = 'all' | 'date' | 'month' | 'year';

@@ -77,7 +77,6 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
   const [receiptFontItalic, setReceiptFontItalic] = useState<boolean>(Boolean(store.receiptFontItalic));
   const [receiptBorderRadius, setReceiptBorderRadius] = useState(store.receiptBorderRadius || 'rounded-2xl');
   const [logoUrl, setLogoUrl] = useState<string>(store.logoUrl || '');
-  const [adminGmailId, setAdminGmailId] = useState(store.adminGmailId || '');
 
   // Category Management
   const [customCategories, setCustomCategories] = useState<string[]>(store.customCategories || []);
@@ -86,6 +85,7 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
   // Audio & Hardware Settings
   const [soundEffectsEnabled, setSoundEffectsEnabled] = useState<boolean>(store.soundEffectsEnabled !== false);
   const [lowStockAlertThreshold, setLowStockAlertThreshold] = useState<number>(store.lowStockAlertThreshold || 5);
+  const [zSenderUserId, setZSenderUserId] = useState<string>(store.zSenderUserId || 'supermarketmanage@gmail.com');
 
   // Password Change State
   const [newAdminPassword, setNewAdminPassword] = useState('');
@@ -116,10 +116,10 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
     setReceiptFontItalic(Boolean(store.receiptFontItalic));
     setReceiptBorderRadius(store.receiptBorderRadius || 'rounded-2xl');
     setLogoUrl(store.logoUrl || '');
-    setAdminGmailId(store.adminGmailId || '');
     setCustomCategories(store.customCategories || []);
     setSoundEffectsEnabled(store.soundEffectsEnabled !== false);
     setLowStockAlertThreshold(store.lowStockAlertThreshold || 5);
+    setZSenderUserId(store.zSenderUserId || 'supermarketmanage@gmail.com');
   }, [store]);
 
   const showNotification = (type: 'success' | 'error', text: string) => {
@@ -261,7 +261,6 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
         returnPolicyDays: Number(returnPolicyDays) || 7,
         receiptFormat: receiptFormat,
         logoUrl: logoUrl || '',
-        adminGmailId: adminGmailId.trim(),
         customCategories: customCategories,
         soundEffectsEnabled: Boolean(soundEffectsEnabled),
         lowStockAlertThreshold: Number(lowStockAlertThreshold) || 5
@@ -794,36 +793,6 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-xs font-bold focus:outline-none focus:border-orange-500 focus:bg-white transition-all shadow-xs"
               />
               <p className="text-[11px] text-slate-400 mt-1">Closing greeting printed at the bottom of the slip.</p>
-            </div>
-          </div>
-
-          {/* STORE ADMIN GMAIL SENDER SETTING */}
-          <div className="p-5 bg-gradient-to-r from-red-50/60 to-orange-50/60 border border-red-200/80 rounded-2xl space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-red-600 text-white rounded-xl shadow-xs">
-                <Mail className="w-5 h-5" />
-              </div>
-              <div>
-                <h4 className="text-sm font-extrabold text-slate-900">Store Gmail Sender ID Settings</h4>
-                <p className="text-[11px] text-slate-600 font-medium">
-                  Configure the store's Gmail address that cashiers will use when sending E-receipts to customers.
-                </p>
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                Store Admin Gmail ID (Sender Email)
-              </label>
-              <input
-                type="email"
-                value={adminGmailId}
-                onChange={(e) => setAdminGmailId(e.target.value)}
-                placeholder="e.g. mystore@gmail.com"
-                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-900 text-xs font-bold focus:outline-none focus:border-red-500 shadow-xs"
-              />
-              <p className="text-[11px] text-slate-500 mt-1">
-                E-receipt emails sent by cashiers will originate from this store Gmail account (requires Google Sign-in authorization).
-              </p>
             </div>
           </div>
 

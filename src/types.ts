@@ -14,7 +14,6 @@ export interface Store {
   specialStoreId?: string; // Special assigned Store ID
   isLinked?: boolean; // Interconnected status
   adminUsername: string;
-  adminGmailId?: string;
   adminPassword?: string;
   status?: 'active' | 'disabled';
   parentStoreId?: string; // If this is a branch of a parent chain/store
@@ -49,6 +48,7 @@ export interface Store {
   returnPolicyDays?: number;
   soundEffectsEnabled?: boolean;
   customCategories?: string[];
+  zSenderUserId?: string; // SwiftSend / Z-Sender user ID for automated E-Receipt email dispatch
   digitalPaymentMethods?: DigitalPaymentMethodConfig[];
   bankAccount?: StoreBankAccount; // Store bank account entered by admin in payment method option
   bankAccounts?: StoreBankAccount[]; // All configured store bank accounts
@@ -302,7 +302,6 @@ export interface Sale {
   cashReceived?: number;
   changeReturned?: number;
   receiptNumber: string;
-  customerEmail?: string;
   timestamp: string;
   expiresAt?: string;
   isSlipDeleted?: boolean;

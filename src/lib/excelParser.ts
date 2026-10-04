@@ -13,6 +13,7 @@ export interface BatchProductRow {
   quantity: number;
   costPrice: number;
   price: number; // Retail selling price (per piece or per kg/liter)
+  imageUrl?: string;
   status?: 'valid' | 'warning' | 'error';
   errorMessage?: string;
 }
@@ -22,6 +23,41 @@ export interface BatchProductRow {
  */
 export function generateRandomBarcode(): string {
   return '890' + Math.floor(100000000 + Math.random() * 900000000).toString();
+}
+
+function parseQuantityAndUnit(qtyVal: any, unitVal: any, nameStr: string): { quantity: number; sellBy: 'unit' | 'weight'; unitType: 'piece' | 'kg' | 'g' | 'liter' | 'dozen' } {
+  let qtyStr = String(qtyVal || '').toLowerCase().trim();
+  let unitStr = String(unitVal || '').toLowerCase().trim();
+
+  let quantity = 1;
+  let sellBy: 'unit' | 'weight' = 'unit';
+  let unitType: 'piece' | 'kg' | 'g' | 'liter' | 'dozen' = 'piece';
+
+  const qtyAndUnitText = `${qtyStr} ${unitStr}`;
+
+  if (qtyAndUnitText.includes('kg') || qtyAndUnitText.includes('kilo')) {
+    sellBy = 'weight';
+    unitType = 'kg';
+  } else if (qtyAndUnitText.includes('liter') || qtyAndUnitText.includes('litre') || qtyAndUnitText.includes('ml') || /\b(l|ltr|liters|litres)\b/.test(qtyAndUnitText)) {
+    sellBy = 'weight';
+    unitType = 'liter';
+  } else if (qtyAndUnitText.includes('gram') || /\b(g|grams)\b/.test(qtyAndUnitText)) {
+    sellBy = 'weight';
+    unitType = 'g';
+  } else if (qtyAndUnitText.includes('doz') || qtyAndUnitText.includes('dozen')) {
+    sellBy = 'unit';
+    unitType = 'dozen';
+  } else {
+    sellBy = 'unit';
+    unitType = 'piece';
+  }
+
+  const numParsed = parseFloat(qtyStr.replace(/[^0-9.]/g, ''));
+  if (!isNaN(numParsed) && numParsed >= 0) {
+    quantity = numParsed;
+  }
+
+  return { quantity, sellBy, unitType };
 }
 
 /**
@@ -145,6 +181,7 @@ export async function parseExcelProductFile(file: File): Promise<BatchProductRow
   let qtyColIdx = -1;
   let categoryColIdx = -1;
   let unitColIdx = -1;
+  let imageUrlColIdx = -1;
 
   if (headerRow.length > 0) {
     headerRow.forEach((cell, idx) => {
@@ -184,7 +221,7 @@ export async function parseExcelProductFile(file: File): Promise<BatchProductRow
           c.includes('desc') || 
           c.includes('title') || 
           c.includes('particular')
-        ) && !c.includes('code') && !c.includes('price') && !c.includes('cost') && !c.includes('qty')
+        ) && !c.includes('code') && !c.includes('price') && !c.includes('cost') && !c.includes('qty') && !c.includes('image')
       ) {
         nameColIdx = idx;
       }
@@ -258,6 +295,21 @@ export async function parseExcelProductFile(file: File): Promise<BatchProductRow
         ) && !c.includes('price') && !c.includes('cost')
       ) {
         unitColIdx = idx;
+      }
+
+      // Image URL identification
+      if (
+        imageUrlColIdx === -1 && (
+          c.includes('image') || 
+          c.includes('img') || 
+          c.includes('picture') || 
+          c.includes('photo') || 
+          c.includes('imageurl') || 
+          c.includes('photourl') ||
+          c.includes('thumbnail')
+        )
+      ) {
+        imageUrlColIdx = idx;
       }
     });
   }
@@ -345,13 +397,6 @@ export async function parseExcelProductFile(file: File): Promise<BatchProductRow
       if (!isNaN(numPrice) && numPrice >= 0) price = numPrice;
     }
 
-    // Extract Quantity
-    let quantity = 1;
-    if (qtyColIdx >= 0 && row[qtyColIdx] !== undefined) {
-      const numQty = parseFloat(String(row[qtyColIdx]).replace(/[^0-9.]/g, ''));
-      if (!isNaN(numQty) && numQty >= 0) quantity = numQty;
-    }
-
     // Extract Category
     let category = 'General';
     if (categoryColIdx >= 0 && row[categoryColIdx] !== undefined) {
@@ -359,38 +404,16 @@ export async function parseExcelProductFile(file: File): Promise<BatchProductRow
       if (catStr) category = catStr;
     }
 
-    // Extract Unit Type & Sell By
-    let unitType: 'piece' | 'kg' | 'g' | 'liter' | 'dozen' = 'piece';
-    let sellBy: 'unit' | 'weight' = 'unit';
-
-    if (unitColIdx >= 0 && row[unitColIdx] !== undefined) {
-      const unitStr = String(row[unitColIdx] || '').toLowerCase().trim();
-      if (unitStr.includes('kg') || unitStr.includes('kilo') || unitStr.includes('weight')) {
-        sellBy = 'weight';
-        unitType = 'kg';
-      } else if (unitStr.includes('l') || unitStr.includes('liter') || unitStr.includes('litre') || unitStr.includes('ml')) {
-        sellBy = 'weight';
-        unitType = 'liter';
-      } else if (unitStr.includes('g') || unitStr.includes('gram')) {
-        sellBy = 'weight';
-        unitType = 'g';
-      } else if (unitStr.includes('doz') || unitStr.includes('dozen')) {
-        sellBy = 'unit';
-        unitType = 'dozen';
-      }
+    // Extract Image URL
+    let imageUrl = '';
+    if (imageUrlColIdx >= 0 && row[imageUrlColIdx] !== undefined) {
+      imageUrl = String(row[imageUrlColIdx] || '').trim();
     }
 
-    // Fallback: check if product name indicates kg/liter
-    if (sellBy === 'unit') {
-      const lowerName = name.toLowerCase();
-      if (lowerName.includes('/kg') || lowerName.includes('per kg') || lowerName.includes('per-kg')) {
-        sellBy = 'weight';
-        unitType = 'kg';
-      } else if (lowerName.includes('/liter') || lowerName.includes('per liter')) {
-        sellBy = 'weight';
-        unitType = 'liter';
-      }
-    }
+    // Smart Quantity & Unit Identification (kg, liter, g, ml, etc.)
+    const qtyRaw = qtyColIdx >= 0 ? row[qtyColIdx] : 1;
+    const unitRaw = unitColIdx >= 0 ? row[unitColIdx] : '';
+    const { quantity, sellBy, unitType } = parseQuantityAndUnit(qtyRaw, unitRaw, name);
 
     products.push({
       id: `row-${Date.now()}-${r}-${Math.random().toString(36).slice(2, 6)}`,
@@ -402,6 +425,7 @@ export async function parseExcelProductFile(file: File): Promise<BatchProductRow
       quantity,
       costPrice,
       price,
+      imageUrl,
       status: price > 0 ? 'valid' : 'warning',
       errorMessage: price === 0 ? 'Selling price is 0' : undefined
     });

@@ -140,7 +140,7 @@ export const RealTimeDatabaseUsage: React.FC<RealTimeDatabaseUsageProps> = ({ st
     const totalEstimatedKB = (totalEstimatedBytes / 1024).toFixed(2);
     const totalEstimatedMB = (totalEstimatedBytes / (1024 * 1024)).toFixed(3);
 
-    const totalSalesVolume = sales.reduce((sum, s) => sum + (s.finalTotal || s.total || 0), 0);
+    const totalSalesVolume = sales.reduce((sum, s) => sum + ((s as any).finalTotal || (s as any).total || s.totalAmount || 0), 0);
     const totalStockUnits = products.reduce((sum, p) => sum + (Number(p.stockQuantity) || 0), 0);
     const lowStockCount = products.filter(p => (Number(p.stockQuantity) || 0) <= (p.minStockLevel || 5)).length;
     const discountedProductsCount = products.filter(p => Boolean(p.discountActive)).length;
@@ -213,7 +213,7 @@ export const RealTimeDatabaseUsage: React.FC<RealTimeDatabaseUsageProps> = ({ st
           adminUsername: s.adminUsername,
           productsCount: storeProds.length,
           salesCount: storeSales.length,
-          salesRevenueRs: storeSales.reduce((sum, item) => sum + (item.finalTotal || item.total || 0), 0),
+          salesRevenueRs: storeSales.reduce((sum, item) => sum + ((item as any).finalTotal || (item as any).total || item.totalAmount || 0), 0),
           accountsCount: storeUsers.length
         };
       })
@@ -589,7 +589,7 @@ export const RealTimeDatabaseUsage: React.FC<RealTimeDatabaseUsageProps> = ({ st
                 const sUsers = users.filter(u => u.storeId === s.id);
                 const sHeld = heldBills.filter(h => h.storeId === s.id);
                 const sReturns = returns.filter(r => r.storeId === s.id);
-                const sRevenue = sSales.reduce((sum, item) => sum + (item.finalTotal || item.total || 0), 0);
+                const sRevenue = sSales.reduce((sum, item) => sum + ((item as any).finalTotal || (item as any).total || item.totalAmount || 0), 0);
                 const sDocCount = sProds.length + sSales.length + sUsers.length + sHeld.length + sReturns.length + 1;
                 const sStorageKB = ((sProds.length * 850 + sSales.length * 1600 + sUsers.length * 450 + sHeld.length * 1200 + sReturns.length * 950 + 750) / 1024).toFixed(1);
 

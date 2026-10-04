@@ -39,6 +39,9 @@ export interface SpreadsheetRowItem {
   quantity: number | '';
   category: string;
   barcode: string;
+  imageUrl: string;
+  sellBy: 'unit' | 'weight';
+  unitType: 'piece' | 'kg' | 'liter' | 'g' | 'dozen';
 }
 
 interface ExcelManagerModalProps {
@@ -75,11 +78,11 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
 
   // Rows for In-App Spreadsheet Creator - costPrice, margin %, price, quantity are supported
   const [rows, setRows] = useState<SpreadsheetRowItem[]>([
-    { id: 'row-1', name: '', costPrice: '', margin: '', price: '', quantity: '', category: 'Grain', barcode: '' },
-    { id: 'row-2', name: '', costPrice: '', margin: '', price: '', quantity: '', category: 'Oil', barcode: '' },
-    { id: 'row-3', name: '', costPrice: '', margin: '', price: '', quantity: '', category: 'Biscuit', barcode: '' },
-    { id: 'row-4', name: '', costPrice: '', margin: '', price: '', quantity: '', category: 'Ghee', barcode: '' },
-    { id: 'row-5', name: '', costPrice: '', margin: '', price: '', quantity: '', category: 'Tea', barcode: '' },
+    { id: 'row-1', name: '', costPrice: '', margin: '', price: '', quantity: '', category: 'Grain', barcode: '', imageUrl: '', sellBy: 'unit', unitType: 'piece' },
+    { id: 'row-2', name: '', costPrice: '', margin: '', price: '', quantity: '', category: 'Oil', barcode: '', imageUrl: '', sellBy: 'weight', unitType: 'liter' },
+    { id: 'row-3', name: '', costPrice: '', margin: '', price: '', quantity: '', category: 'Biscuit', barcode: '', imageUrl: '', sellBy: 'unit', unitType: 'piece' },
+    { id: 'row-4', name: '', costPrice: '', margin: '', price: '', quantity: '', category: 'Ghee', barcode: '', imageUrl: '', sellBy: 'weight', unitType: 'kg' },
+    { id: 'row-5', name: '', costPrice: '', margin: '', price: '', quantity: '', category: 'Tea', barcode: '', imageUrl: '', sellBy: 'unit', unitType: 'piece' },
   ]);
 
   // Uploading status
@@ -131,7 +134,31 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
         const barcodeTrimmed = r.barcode ? r.barcode.trim() : '';
         const pCost = typeof r.costPrice === 'number' ? r.costPrice : parseFloat(String(r.costPrice)) || 0;
         const pPrice = typeof r.price === 'number' ? r.price : parseFloat(String(r.price)) || 0;
-        const pQty = typeof r.quantity === 'number' ? r.quantity : parseFloat(String(r.quantity)) || 0;
+        
+        const qtyValStr = String(r.quantity || '').toLowerCase();
+        let sellBy: 'unit' | 'weight' = 'unit';
+        let unitType: 'piece' | 'kg' | 'g' | 'liter' | 'dozen' = 'piece';
+        let pQty = 1;
+
+        if (qtyValStr.includes('kg') || qtyValStr.includes('kilo')) {
+          sellBy = 'weight';
+          unitType = 'kg';
+        } else if (qtyValStr.includes('liter') || qtyValStr.includes('litre') || qtyValStr.includes(' l') || qtyValStr.includes('ml')) {
+          sellBy = 'weight';
+          unitType = 'liter';
+        } else if (qtyValStr.includes('g') || qtyValStr.includes('gram')) {
+          sellBy = 'weight';
+          unitType = 'g';
+        } else if (qtyValStr.includes('doz') || qtyValStr.includes('dozen')) {
+          sellBy = 'unit';
+          unitType = 'dozen';
+        }
+
+        const numParsedQty = parseFloat(qtyValStr.replace(/[^0-9.]/g, ''));
+        if (!isNaN(numParsedQty) && numParsedQty >= 0) {
+          pQty = numParsedQty;
+        }
+
         const rowCategory = r.category.trim() || 'General';
 
         // Match existing product in store database by barcode
@@ -156,11 +183,12 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
           shortcutCode: shortcutCode,
           name: r.name.trim() || existing?.name || 'Unnamed Product',
           category: rowCategory || existing?.category || 'General',
-          sellBy: 'unit',
-          unitType: 'piece',
+          sellBy: sellBy || existing?.sellBy || 'unit',
+          unitType: unitType || existing?.unitType || 'piece',
           price: pPrice,
           costPrice: pCost,
           stockQuantity: updatedQty,
+          imageUrl: r.imageUrl?.trim() || existing?.imageUrl || '',
           minStockLevel: existing?.minStockLevel || 5,
           createdAt: existing?.createdAt || new Date().toISOString(),
           updatedAt: new Date().toISOString()
@@ -205,7 +233,7 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
     const defaultCat = categoriesList[0] || 'General';
     setRows(prev => [
       ...prev,
-      { id: newId, name: '', costPrice: '', margin: '', price: '', quantity: '', category: defaultCat, barcode: '' }
+      { id: newId, name: '', costPrice: '', margin: '', price: '', quantity: '', category: defaultCat, barcode: '', imageUrl: '', sellBy: 'unit', unitType: 'piece' }
     ]);
   };
 
@@ -222,7 +250,10 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
         price: '',
         quantity: '',
         category: defaultCat,
-        barcode: ''
+        barcode: '',
+        imageUrl: '',
+        sellBy: 'unit',
+        unitType: 'piece'
       });
     }
     setRows(prev => [...prev, ...newRows]);
@@ -231,7 +262,7 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
   // Delete row
   const handleDeleteRow = (id: string) => {
     if (rows.length <= 1) {
-      setRows([{ id: 'row-1', name: '', costPrice: '', margin: '', price: '', quantity: '', category: 'General', barcode: '' }]);
+      setRows([{ id: 'row-1', name: '', costPrice: '', margin: '', price: '', quantity: '', category: 'General', barcode: '', imageUrl: '', sellBy: 'unit', unitType: 'piece' }]);
       return;
     }
     setRows(prev => prev.filter(r => r.id !== id));
@@ -278,14 +309,14 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
   };
 
   // 4-Way Arrow Key & Enter Navigation for Excel spreadsheet cells
-  const columnOrder: Array<'name' | 'costPrice' | 'margin' | 'price' | 'quantity' | 'category' | 'barcode'> = [
-    'name', 'costPrice', 'margin', 'price', 'quantity', 'category', 'barcode'
+  const columnOrder: Array<'name' | 'costPrice' | 'margin' | 'price' | 'quantity' | 'sellBy' | 'category' | 'barcode' | 'imageUrl'> = [
+    'name', 'costPrice', 'margin', 'price', 'quantity', 'sellBy', 'category', 'barcode', 'imageUrl'
   ];
 
   const handleCellKeyDown = (
     e: React.KeyboardEvent<HTMLInputElement | HTMLSelectElement>,
     rowIndex: number,
-    fieldName: 'name' | 'costPrice' | 'margin' | 'price' | 'quantity' | 'category' | 'barcode'
+    fieldName: 'name' | 'costPrice' | 'margin' | 'price' | 'quantity' | 'sellBy' | 'category' | 'barcode' | 'imageUrl'
   ) => {
     const target = e.currentTarget;
     const isInput = target.tagName === 'INPUT';
@@ -408,7 +439,10 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
           price: pSell,
           quantity: p.quantity ?? 10,
           category: p.category || 'General',
-          barcode: p.barcode ? p.barcode.trim() : ''
+          barcode: p.barcode ? p.barcode.trim() : '',
+          imageUrl: p.imageUrl || '',
+          sellBy: p.sellBy || 'unit',
+          unitType: p.unitType || 'piece'
         };
       });
 
@@ -461,7 +495,30 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
     const batchProducts: BatchProductRow[] = rowsWithData.map((r, idx) => {
       const pCost = typeof r.costPrice === 'number' ? r.costPrice : parseFloat(String(r.costPrice)) || 0;
       const pPrice = typeof r.price === 'number' ? r.price : parseFloat(String(r.price)) || 0;
-      const pQty = typeof r.quantity === 'number' ? r.quantity : parseFloat(String(r.quantity)) || 0;
+      
+      const qtyValStr = String(r.quantity || '').toLowerCase();
+      let sellBy: 'unit' | 'weight' = 'unit';
+      let unitType: 'piece' | 'kg' | 'g' | 'liter' | 'dozen' = 'piece';
+      let pQty = 1;
+
+      if (qtyValStr.includes('kg') || qtyValStr.includes('kilo')) {
+        sellBy = 'weight';
+        unitType = 'kg';
+      } else if (qtyValStr.includes('liter') || qtyValStr.includes('litre') || qtyValStr.includes(' l') || qtyValStr.includes('ml')) {
+        sellBy = 'weight';
+        unitType = 'liter';
+      } else if (qtyValStr.includes('g') || qtyValStr.includes('gram')) {
+        sellBy = 'weight';
+        unitType = 'g';
+      } else if (qtyValStr.includes('doz') || qtyValStr.includes('dozen')) {
+        sellBy = 'unit';
+        unitType = 'dozen';
+      }
+
+      const numParsedQty = parseFloat(qtyValStr.replace(/[^0-9.]/g, ''));
+      if (!isNaN(numParsedQty) && numParsedQty >= 0) {
+        pQty = numParsedQty;
+      }
 
       const rowCategory = r.category.trim() || 'General';
 
@@ -477,9 +534,10 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
         price: pPrice,
         category: rowCategory,
         barcode: r.barcode.trim(),
-        sellBy: 'unit',
-        unitType: 'piece',
-        quantity: pQty
+        sellBy,
+        unitType,
+        quantity: pQty,
+        imageUrl: r.imageUrl?.trim() || ''
       };
     });
 
@@ -681,8 +739,10 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
                       <th className="py-3 px-2.5 w-24 text-amber-300">Margin (%)</th>
                       <th className="py-3 px-2.5 w-28 text-emerald-300">Selling Price (Rs.) *</th>
                       <th className="py-3 px-2.5 w-24">Qty *</th>
+                      <th className="py-3 px-2.5 w-36 text-orange-300">Sell Type</th>
                       <th className="py-3 px-2.5 w-36">Category</th>
                       <th className="py-3 px-3 min-w-[150px]">Barcode</th>
+                      <th className="py-3 px-3 min-w-[150px]">Image URL</th>
                       <th className="py-3 px-2 text-center w-10"></th>
                     </tr>
                   </thead>
@@ -709,7 +769,7 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
                         {/* 1. Name of Product */}
                         <td className="py-2 px-2.5">
                           <input
-                            ref={el => cellRefs.current[`${index}-name`] = el}
+                            ref={el => { if (el) cellRefs.current[`${index}-name`] = el; }}
                             type="text"
                             value={row.name}
                             onChange={(e) => handleUpdateCell(index, 'name', e.target.value)}
@@ -728,7 +788,7 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
                               Rs.
                             </span>
                             <input
-                              ref={el => cellRefs.current[`${index}-costPrice`] = el}
+                              ref={el => { if (el) cellRefs.current[`${index}-costPrice`] = el; }}
                               type="number"
                               step="any"
                               min="0"
@@ -747,7 +807,7 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
                         <td className="py-2 px-2.5">
                           <div className="relative">
                             <input
-                              ref={el => cellRefs.current[`${index}-margin`] = el}
+                              ref={el => { if (el) cellRefs.current[`${index}-margin`] = el; }}
                               type="number"
                               step="any"
                               value={row.margin}
@@ -769,7 +829,7 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
                               Rs.
                             </span>
                             <input
-                              ref={el => cellRefs.current[`${index}-price`] = el}
+                              ref={el => { if (el) cellRefs.current[`${index}-price`] = el; }}
                               type="number"
                               step="any"
                               min="0"
@@ -787,7 +847,7 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
                         {/* 5. Quantity */}
                         <td className="py-2 px-2.5">
                           <input
-                            ref={el => cellRefs.current[`${index}-quantity`] = el}
+                            ref={el => { if (el) cellRefs.current[`${index}-quantity`] = el; }}
                             type="number"
                             step="any"
                             min="0"
@@ -801,10 +861,34 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
                           />
                         </td>
 
+                        {/* 5.5. Sell Type (Unit vs Weight) */}
+                        <td className="py-2 px-2.5">
+                          <select
+                            ref={el => { if (el) cellRefs.current[`${index}-sellBy`] = el; }}
+                            value={`${row.sellBy}:${row.unitType}`}
+                            onChange={(e) => {
+                              const [sBy, uType] = e.target.value.split(':') as [any, any];
+                              setRows(prev => {
+                                const updated = [...prev];
+                                updated[index] = { ...updated[index], sellBy: sBy, unitType: uType };
+                                return updated;
+                              });
+                            }}
+                            onKeyDown={(e) => handleCellKeyDown(e, index, 'sellBy')}
+                            className="w-full px-2 py-1.5 bg-slate-50 focus:bg-white border border-slate-200 focus:border-orange-500 rounded-lg text-xs font-bold text-slate-800 focus:outline-none transition-all cursor-pointer"
+                          >
+                            <option value="unit:piece">📦 By Unit (Piece)</option>
+                            <option value="weight:kg">⚖️ By Weight (kg)</option>
+                            <option value="weight:liter">⚖️ By Liter (L)</option>
+                            <option value="weight:g">⚖️ By Gram (g)</option>
+                            <option value="unit:dozen">📦 By Dozen</option>
+                          </select>
+                        </td>
+
                         {/* 6. Category */}
                         <td className="py-2 px-2.5">
                           <select
-                            ref={el => cellRefs.current[`${index}-category`] = el}
+                            ref={el => { if (el) cellRefs.current[`${index}-category`] = el; }}
                             value={row.category}
                             onChange={(e) => {
                               if (e.target.value === '__add_new__') {
@@ -832,7 +916,7 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
                         <td className="py-2 px-2.5 min-w-[150px]">
                           <div className="flex items-center gap-1">
                             <input
-                              ref={el => cellRefs.current[`${index}-barcode`] = el}
+                              ref={el => { if (el) cellRefs.current[`${index}-barcode`] = el; }}
                               type="text"
                               value={row.barcode}
                               onChange={(e) => handleUpdateCell(index, 'barcode', e.target.value)}
@@ -849,6 +933,19 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
                               <RefreshCw className="w-3.5 h-3.5" />
                             </button>
                           </div>
+                        </td>
+
+                        {/* 8. Image URL */}
+                        <td className="py-2 px-2.5 min-w-[150px]">
+                          <input
+                            ref={el => { if (el) cellRefs.current[`${index}-imageUrl`] = el; }}
+                            type="url"
+                            value={row.imageUrl}
+                            onChange={(e) => handleUpdateCell(index, 'imageUrl', e.target.value)}
+                            onKeyDown={(e) => handleCellKeyDown(e, index, 'imageUrl')}
+                            placeholder="https://.../image.jpg"
+                            className="w-full px-2.5 py-1.5 bg-slate-50 focus:bg-white border border-slate-200 focus:border-orange-500 rounded-lg text-xs font-mono text-slate-800 focus:outline-none transition-all"
+                          />
                         </td>
 
                         {/* Delete Row */}

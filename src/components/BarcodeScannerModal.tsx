@@ -393,7 +393,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
       const track = mediaStreamRef.current.getVideoTracks()[0];
       // @ts-ignore
       await track.applyConstraints({
-        advanced: [{ torch: !torchOn }]
+        advanced: [{ torch: !torchOn } as any]
       });
       setTorchOn(!torchOn);
     } catch (e) {

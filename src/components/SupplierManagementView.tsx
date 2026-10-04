@@ -598,7 +598,7 @@ export const SupplierManagementView: React.FC<SupplierManagementViewProps> = ({
 
             <button
               type="button"
-              onClick={handleExportOrders}
+              onClick={() => handleExportOrders()}
               id="export-supplier-orders-btn"
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-colors cursor-pointer shadow-xs"
               title="Download full supplier orders list as CSV"

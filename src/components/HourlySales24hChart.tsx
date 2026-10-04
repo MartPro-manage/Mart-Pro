@@ -143,7 +143,7 @@ export const HourlySales24hChart: React.FC<HourlySales24hChartProps> = ({
         hObj.unitsSold += qty;
 
         const prodName = item.name || 'Unnamed Product';
-        const itemTotal = item.totalPrice || (item.price * qty) || 0;
+        const itemTotal = (item as any).totalPrice || (item.price * qty) || 0;
 
         const existing = hObj.productsSoldMap.get(prodName);
         if (existing) {

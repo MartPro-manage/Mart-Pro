@@ -16,14 +16,16 @@ import {
 
 interface ReturnSlipModalProps {
   returnRecord: ProductReturn | null;
-  store: Store | null;
+  store?: Store | null;
+  storeName?: string;
   isOpen: boolean;
   onClose: () => void;
 }
 
 export const ReturnSlipModal: React.FC<ReturnSlipModalProps> = ({
   returnRecord,
-  store,
+  store = null,
+  storeName,
   isOpen,
   onClose
 }) => {

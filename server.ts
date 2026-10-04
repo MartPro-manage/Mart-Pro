@@ -21,7 +21,7 @@ const ai = new GoogleGenAI({
 async function startServer() {
   const app = express();
   const PORT = parseInt(process.env.PORT || '3000', 10);
-  const isDev = process.env.NODE_ENV !== 'production' && !process.env.PORT;
+  const isDev = process.env.NODE_ENV !== 'production';
 
   app.use(express.json({ limit: '15mb' }));
 
@@ -63,7 +63,6 @@ You have two superpowers:
      - \`S + K\` (or SK rapidly): Open 4-Digit Product Shortcuts directory.
      - \`R + N\` (or RN rapidly): Open Product Return & Refund Voucher modal.
      - \`Shift + P\`: Open Quick Payment & Bill Settlement Summary.
-     - \`P\` or \`Ctrl + P\`: Instant Thermal Receipt Print.
      - \`Escape (ESC)\`: Universally close any active modal or return to Store Admin.
    • WEIGHT & LIQUID PRODUCTS (Kg / Liters):
      - When a product is marked as "Sell By Weight" or has unit type kg/liter, scanning it opens the Weight Prompt Modal.
@@ -232,10 +231,28 @@ You have two superpowers:
       appType: 'spa'
     });
     app.use(vite.middlewares);
+
+    // Serve transformed index.html for all SPA routes in dev
+    app.use('*', async (req: Request, res: Response, next) => {
+      // Skip API requests so API 404s stay JSON
+      if (req.originalUrl.startsWith('/api/')) {
+        return next();
+      }
+      try {
+        let template = fs.readFileSync(path.resolve(__dirname, 'index.html'), 'utf-8');
+        template = await vite.transformIndexHtml(req.originalUrl, template);
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+      } catch (e) {
+        vite.ssrFixStacktrace(e as Error);
+        next(e);
+      }
+    });
   } else {
     // Production static serving
-    const distPath = path.resolve(__dirname, 'dist');
-    if (fs.existsSync(distPath)) {
+    const distPath = fs.existsSync(path.resolve(__dirname, 'index.html'))
+      ? __dirname
+      : (fs.existsSync(path.resolve(__dirname, 'dist')) ? path.resolve(__dirname, 'dist') : __dirname);
+    if (fs.existsSync(path.resolve(distPath, 'index.html'))) {
       app.use(express.static(distPath, {
         maxAge: '1h',
         etag: true

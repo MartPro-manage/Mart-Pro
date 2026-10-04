@@ -32,22 +32,13 @@ try {
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Safely initialize Firestore with memoryLocalCache and forced HTTP long-polling for resilient connections in iframe sandboxes
 function initDb() {
-  const dbId = (firebaseConfig as any).firestoreDatabaseId || undefined;
-  const firestoreSettings = {
-    localCache: memoryLocalCache(),
-    experimentalForceLongPolling: true,
-    ignoreUndefinedProperties: true
-  };
   try {
-    if (dbId) {
-      return initializeFirestore(app, firestoreSettings, dbId);
-    }
-    return initializeFirestore(app, firestoreSettings);
-  } catch (err) {
-    console.warn('initializeFirestore fallback to getFirestore:', err);
+    const dbId = (firebaseConfig as any)?.firestoreDatabaseId;
     return dbId ? getFirestore(app, dbId) : getFirestore(app);
+  } catch (err) {
+    console.warn('getFirestore error fallback:', err);
+    return getFirestore(app);
   }
 }
 

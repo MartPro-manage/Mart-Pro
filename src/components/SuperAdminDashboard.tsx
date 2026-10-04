@@ -19,6 +19,7 @@ import {
 import { Store, UserAccount } from '../types';
 import { cleanupExpiredReceipts } from '../lib/salesCleanup';
 import { RealTimeDatabaseUsage } from './RealTimeDatabaseUsage';
+import { safeStorage } from '../utils/safeStorage';
 import { 
   Store as StoreIcon, 
   Plus, 
@@ -72,7 +73,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
 
   // 8-Digit Safety PIN verification after login
   const [isPinVerified, setIsPinVerified] = useState(() => {
-    return sessionStorage.getItem('super_admin_pin_verified') === 'true';
+    return safeStorage.getSessionItem('super_admin_pin_verified') === 'true';
   });
   const [safetyPinInput, setSafetyPinInput] = useState('');
   const [pinError, setPinError] = useState<string | null>(null);
@@ -80,7 +81,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
   const handleVerifySafetyPin = (e: React.FormEvent) => {
     e.preventDefault();
     if (safetyPinInput.trim() === '10092010') {
-      sessionStorage.setItem('super_admin_pin_verified', 'true');
+      safeStorage.setSessionItem('super_admin_pin_verified', 'true');
       setIsPinVerified(true);
       setPinError(null);
     } else {

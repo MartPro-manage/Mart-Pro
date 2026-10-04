@@ -89,12 +89,9 @@ export const CustomerChangeModal: React.FC<CustomerChangeModalProps> = ({
         }
       }
 
-      // Keyboard listener: Enter or Space advances to receipt, P prints directly
+      // Keyboard listener: Enter or Space advances to receipt
       const handleKeyDown = (e: KeyboardEvent) => {
-        if (e.key === 'p' || e.key === 'P') {
-          e.preventDefault();
-          handleDirectPrint();
-        } else if (e.key === 'v' || e.key === 'V') {
+        if (e.key === 'v' || e.key === 'V') {
           e.preventDefault();
           handleReplayVoice();
         } else if (e.key === 'Enter' || e.key === ' ') {

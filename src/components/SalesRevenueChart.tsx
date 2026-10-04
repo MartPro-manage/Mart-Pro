@@ -820,7 +820,7 @@ export const SalesRevenueChart: React.FC<SalesRevenueChartProps> = ({
         ) : (
           <ResponsiveContainer width="100%" height="100%">
             {chartStyle === 'area' ? (
-              <AreaChart data={activeData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+              <AreaChart data={activeData as any[]} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                 <defs>
                   {/* Revenue Gradient */}
                   <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
@@ -887,7 +887,7 @@ export const SalesRevenueChart: React.FC<SalesRevenueChartProps> = ({
                 )}
               </AreaChart>
             ) : (
-              <BarChart data={activeData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+              <BarChart data={activeData as any[]} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                 
                 <XAxis 

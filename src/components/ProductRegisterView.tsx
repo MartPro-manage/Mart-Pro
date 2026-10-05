@@ -56,6 +56,8 @@ import {
   Image as ImageIcon,
   Link as LinkIcon,
   Upload,
+  Plus,
+  ArrowLeft,
   X,
   FileImage,
   ListPlus,
@@ -163,7 +165,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   const [searchTerm, setSearchTerm] = useState('');
   const [catalogFilter, setCatalogFilter] = useState<'all' | 'weight' | 'unit'>('all');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
-  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
   const [activeTab, setActiveTab] = useState<'catalog' | 'form'>('catalog');
 
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -1081,53 +1083,6 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
           </div>
         )}
 
-        {/* Universal View Switcher (Visible on Every Screen Size with Smooth Animation) */}
-        <div className="flex bg-slate-200/90 p-1.5 rounded-2xl border border-slate-300/90 gap-1.5 shadow-inner relative z-0">
-          {[
-            {
-              id: 'catalog' as const,
-              label: `Product Catalog (${products.length})`,
-              shortLabel: `Catalog (${products.length})`,
-              icon: <Layers className="w-4 h-4" />,
-              activeColor: 'text-blue-300'
-            },
-            {
-              id: 'form' as const,
-              label: existingProduct ? `Edit: ${existingProduct.name}` : 'Register Stock & Price',
-              shortLabel: existingProduct ? 'Edit Product' : 'Register Stock',
-              icon: <PackagePlus className="w-4 h-4" />,
-              activeColor: 'text-amber-300'
-            }
-          ].map((tab) => {
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`relative flex-1 py-2.5 px-3 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer select-none ${
-                  isActive ? 'text-white' : 'text-slate-600 hover:text-slate-950 font-bold'
-                }`}
-              >
-                {/* Smooth Animated Sliding Indicator Pill */}
-                {isActive && (
-                  <motion.div
-                    layoutId="activeMainTabPill"
-                    className="absolute inset-0 bg-gradient-to-r from-slate-950 via-blue-950 to-indigo-950 rounded-xl shadow-md border border-blue-800/60 z-0"
-                    transition={{ type: "spring", stiffness: 450, damping: 35 }}
-                  />
-                )}
-                
-                <span className={`relative z-10 flex items-center gap-1.5 truncate ${isActive ? tab.activeColor : ''}`}>
-                  {tab.icon}
-                  <span className="hidden sm:inline">{tab.label}</span>
-                  <span className="inline sm:hidden">{tab.shortLabel}</span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
         {/* Animated View Container with Changing Transition Animation */}
         <AnimatePresence mode="wait">
           <motion.div
@@ -1141,93 +1096,106 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
             
             {/* Catalog Section (Visible in 'catalog' mode) */}
             {activeTab === 'catalog' && (
-              <div className="w-full bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 lg:p-8 xl:p-9 shadow-sm space-y-5 sm:space-y-6">
+              <div className="w-full bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 lg:p-8 shadow-sm space-y-5">
                 
-                {/* Top Bar: Title, Stats & View Switcher (Scales with Screen Size) */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4 sm:pb-5 lg:pb-6">
-                  <div>
-                    <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
-                      <h2 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-black text-slate-900 flex items-center gap-2.5 sm:gap-3 tracking-tight">
-                        <Layers className="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 text-blue-600 shrink-0" /> 
-                        <span>Store Catalog & Inventory</span>
-                      </h2>
-                      <span className="px-3 sm:px-3.5 py-1 rounded-full text-xs sm:text-sm font-black bg-blue-100 text-blue-800 border border-blue-200 shadow-2xs">
-                        {products.length} Items
-                      </span>
-                    </div>
-                    <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
-                      Click any product card to quickly edit prices, stock, or generate barcode labels.
-                    </p>
+                {/* Top Bar: "Products" Title on Left, "+ Add Product" & Controls on Right (Matches Screenshot) */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+                      Products
+                    </h2>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                      {products.length}
+                    </span>
                   </div>
 
-                  {/* View Switcher: Grid vs Table & Bulk Delete */}
-                  <div className="flex items-center gap-2.5 sm:gap-3">
-                    {selectedProductIds.length > 0 && (
+                  {/* Actions Group: View Switcher, Bulk Delete & + Add Product */}
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    {/* View Switcher: Table vs Grid */}
+                    <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
                       <button
-                        onClick={handleBulkDelete}
-                        className="px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl bg-red-600 hover:bg-red-700 text-white font-black text-xs sm:text-sm flex items-center gap-2 transition-all shadow-sm cursor-pointer"
+                        type="button"
+                        onClick={() => setViewMode('table')}
+                        className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer ${
+                          viewMode === 'table'
+                            ? 'bg-white text-blue-700 shadow-xs font-black'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                        title="Detailed Table View"
                       >
-                        <Trash2 className="w-4 h-4 sm:w-4.5 sm:h-4.5" /> 
-                        <span>Delete ({selectedProductIds.length})</span>
+                        <List className="w-3.5 h-3.5" />
+                        <span>Table</span>
                       </button>
-                    )}
-
-                    <div className="flex items-center bg-slate-100/90 p-1 sm:p-1.5 rounded-xl sm:rounded-2xl border border-slate-200 text-xs sm:text-sm font-bold">
                       <button
                         type="button"
                         onClick={() => setViewMode('grid')}
-                        className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl flex items-center gap-1.5 transition-all cursor-pointer ${
+                        className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer ${
                           viewMode === 'grid'
-                            ? 'bg-white text-blue-700 shadow-xs border border-slate-200 font-black'
+                            ? 'bg-white text-blue-700 shadow-xs font-black'
                             : 'text-slate-600 hover:text-slate-900'
                         }`}
                         title="POS Card Grid View"
                       >
-                        <LayoutGrid className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
-                        <span className="font-extrabold text-xs sm:text-sm">Grid</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setViewMode('table')}
-                        className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl flex items-center gap-1.5 transition-all cursor-pointer ${
-                          viewMode === 'table'
-                            ? 'bg-white text-blue-700 shadow-xs border border-slate-200 font-black'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                        title="Detailed Inventory Table View"
-                      >
-                        <List className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
-                        <span className="font-extrabold text-xs sm:text-sm">Table</span>
+                        <LayoutGrid className="w-3.5 h-3.5" />
+                        <span>Grid</span>
                       </button>
                     </div>
+
+                    {/* Bulk Delete */}
+                    {selectedProductIds.length > 0 && (
+                      <button
+                        onClick={handleBulkDelete}
+                        className="px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> 
+                        <span>Delete ({selectedProductIds.length})</span>
+                      </button>
+                    )}
+
+                    {/* Primary "+ Add Product" Button (Matches Screenshot) */}
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      type="button"
+                      onClick={() => {
+                        handleResetForm();
+                        setActiveTab('form');
+                      }}
+                      className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Add Product</span>
+                    </motion.button>
                   </div>
                 </div>
 
-                {/* Quick Live Search Bar */}
-                <div className="relative">
-                  <Search className="w-4 h-4 sm:w-5 sm:h-5 absolute left-3.5 sm:left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Search by Barcode, S/N (e.g. 1001), Product Name, or Category & press Enter..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleCodeEnterLookup(searchTerm, 'search');
-                      }
-                    }}
-                    className="w-full pl-10 sm:pl-12 pr-10 py-3 sm:py-3.5 bg-slate-50 border border-slate-300 rounded-xl sm:rounded-2xl text-slate-900 text-xs sm:text-sm md:text-base focus:outline-none focus:border-blue-500 focus:bg-white font-medium transition-all shadow-inner"
-                  />
-                  {searchTerm && (
-                    <button
-                      type="button"
-                      onClick={() => setSearchTerm('')}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1 rounded-full cursor-pointer"
-                    >
-                      <X className="w-4 h-4 sm:w-5 sm:h-5" />
-                    </button>
-                  )}
+                {/* Search Bar matching screenshot */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search products..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleCodeEnterLookup(searchTerm, 'search');
+                        }
+                      }}
+                      className="w-full pl-10 pr-10 py-2.5 bg-slate-50/80 hover:bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-blue-500 focus:bg-white font-medium transition-all shadow-2xs placeholder:text-slate-400"
+                    />
+                    {searchTerm && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchTerm('')}
+                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 rounded-full cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Category Filter Horizontal Scroll Tabs (POS Counter Style) */}
@@ -1497,237 +1465,174 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                     })}
                   </div>
                 ) : (
-                  /* POS Counter Table View */
-                  <div className="overflow-x-auto overflow-y-auto max-h-[720px] overscroll-contain custom-scrollbar border border-slate-200 rounded-2xl">
-                    <table className="w-full text-left text-sm">
-                      <thead className="bg-slate-50 text-xs text-slate-600 uppercase tracking-wider border-b border-slate-200 sticky top-0 z-10">
+                  /* Clean Products Table View (Matches User Screenshot) */
+                  <div className="overflow-x-auto overflow-y-auto max-h-[750px] custom-scrollbar border border-slate-200 rounded-2xl bg-white shadow-2xs">
+                    <table className="w-full text-left text-sm border-collapse">
+                      <thead className="bg-slate-50/90 text-xs text-slate-500 uppercase font-bold tracking-wider border-b border-slate-200 sticky top-0 z-10 backdrop-blur-xs">
                         <tr>
-                          <th className="p-3.5 w-8">
+                          <th className="py-3.5 px-4 w-10 text-center">
                             <input
                               type="checkbox"
                               checked={selectedProductIds.length === filteredCatalog.length && filteredCatalog.length > 0}
                               onChange={handleToggleSelectAll}
-                              className="w-4 h-4 text-orange-600 border-slate-300 rounded focus:ring-orange-500 cursor-pointer"
+                              className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
                               title="Select / Deselect all"
                             />
                           </th>
-                          <th className="p-3.5">Product & Method</th>
-                          <th className="p-3.5">S/N & Barcode</th>
-                          <th className="p-3.5 text-center">Cost & Price</th>
-                          <th className="p-3.5 text-center">Profit / Unit</th>
-                          <th className="p-3.5 text-center">Available Stock</th>
-                          <th className="p-3.5 text-right">Actions</th>
+                          <th className="py-3.5 px-4 w-20 text-center">Image</th>
+                          <th className="py-3.5 px-4 min-w-[200px]">Name</th>
+                          <th className="py-3.5 px-4 w-36">Category</th>
+                          <th className="py-3.5 px-4 w-32">Price</th>
+                          <th className="py-3.5 px-4 w-28 text-center">Stock</th>
+                          <th className="py-3.5 px-4 w-32 text-center">Status</th>
+                          <th className="py-3.5 px-4 w-36 text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 bg-white">
                         {filteredCatalog.map((p) => {
                           const isSelected = selectedProductIds.includes(p.id);
                           const isWeighted = p.sellBy === 'weight' || p.unitType === 'kg' || !!p.pricePerKg;
-                          const cost = p.costPrice || 0;
-                          const sell = p.price;
-                          const itemProfit = sell - cost;
-                          const itemMargin = sell > 0 ? (itemProfit / sell) * 100 : 0;
+                          const discInfo = getProductDiscountInfo(p);
+                          const qty = p.stockQuantity || 0;
+                          const minStock = p.minStockLevel ?? 5;
+                          const isOutOfStock = qty <= 0;
+                          const isLowStock = !isOutOfStock && qty <= minStock;
+
                           return (
-                            <tr key={p.id} className={`${isSelected ? 'bg-orange-50/60' : 'hover:bg-slate-50'} transition-colors`}>
-                              <td className="p-3.5">
+                            <tr 
+                              key={p.id} 
+                              className={`transition-colors hover:bg-slate-50/80 ${isSelected ? 'bg-blue-50/40' : ''}`}
+                            >
+                              <td className="py-3 px-4 text-center">
                                 <input
                                   type="checkbox"
                                   checked={isSelected}
                                   onChange={() => handleToggleSelectProduct(p.id)}
-                                  className="w-4 h-4 text-orange-600 border-slate-300 rounded focus:ring-orange-500 cursor-pointer"
+                                  className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
                                 />
                               </td>
-                              <td className="p-3.5">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-10 h-10 rounded-lg overflow-hidden bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center">
-                                    {p.imageUrl ? (
-                                      <img
-                                        src={p.imageUrl}
-                                        alt={p.name}
-                                        className="w-full h-full object-cover"
-                                        onError={(e) => {
-                                          (e.target as any).style.display = 'none';
-                                        }}
-                                      />
-                                    ) : (
-                                      <ImageIcon className="w-5 h-5 text-slate-300" />
+
+                              {/* 1. Image */}
+                              <td className="py-3 px-4 text-center">
+                                <div className="w-12 h-12 rounded-xl overflow-hidden bg-slate-50 border border-slate-200 mx-auto flex items-center justify-center p-1 shadow-2xs">
+                                  {p.imageUrl ? (
+                                    <img
+                                      src={p.imageUrl}
+                                      alt={p.name}
+                                      className="w-full h-full object-contain"
+                                      onError={(e) => {
+                                        (e.target as any).style.display = 'none';
+                                      }}
+                                    />
+                                  ) : (
+                                    <ImageIcon className="w-5 h-5 text-slate-300" />
+                                  )}
+                                </div>
+                              </td>
+
+                              {/* 2. Name */}
+                              <td className="py-3 px-4">
+                                <div className="space-y-0.5">
+                                  <div className="font-bold text-slate-900 text-sm leading-tight flex items-center gap-1.5">
+                                    <span>{p.name}</span>
+                                    {isWeighted && (
+                                      <span className="px-1.5 py-0.2 rounded text-[10px] font-extrabold bg-orange-100 text-orange-800">
+                                        kg
+                                      </span>
                                     )}
                                   </div>
-                                  <div>
-                                    <div className="flex items-center gap-2">
-                                      <span className="font-bold text-slate-900">{p.name}</span>
-                                      {isWeighted ? (
-                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-orange-100 text-orange-800 border border-orange-200 flex items-center gap-0.5">
-                                          <Scale className="w-2.5 h-2.5" /> By Weight
-                                        </span>
-                                      ) : (
-                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-slate-100 text-slate-700 border border-slate-200">
-                                          By Unit
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium mt-0.5">
-                                      {p.weight && (
-                                        <span className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-mono font-bold">
-                                          {p.weight}
-                                        </span>
-                                      )}
-                                      {p.weightPerUnit && (
-                                        <span className="text-orange-700 font-semibold">
-                                          ({p.weightPerUnit} kg/pack)
-                                        </span>
-                                      )}
-                                      <span>{p.category || 'General'}</span>
-                                    </div>
+                                  <div className="flex items-center gap-2 text-[11px] text-slate-400 font-medium">
+                                    {p.barcode && <span>BC: {p.barcode}</span>}
+                                    {p.serialNumber && <span>• S/N: #{p.serialNumber}</span>}
+                                    {p.weight && <span>• {p.weight}</span>}
                                   </div>
                                 </div>
                               </td>
-                              <td className="p-3.5 text-xs space-y-1 font-mono">
-                                <div className="font-bold text-amber-900 flex items-center gap-1">
-                                  <span className="text-[10px] bg-amber-100 text-amber-950 border border-amber-300 px-1.5 py-0.5 rounded font-black shadow-2xs">
-                                    S/N: #{p.serialNumber || p.shortcutCode || '1001'}
-                                  </span>
-                                </div>
-                                <div className="text-[11px] text-slate-600 font-medium">
-                                  BC: <strong className="text-slate-800">{p.barcode || 'N/A'}</strong>
-                                </div>
-                              </td>
-                              <td className="p-3.5 text-center font-mono">
-                                {(() => {
-                                  const discInfo = getProductDiscountInfo(p);
-                                  if (discInfo.hasDiscount) {
-                                    return (
-                                      <div className="space-y-0.5">
-                                        <div className="font-black text-rose-600 flex items-center justify-center gap-1">
-                                          <span>Rs. {discInfo.discountedPrice.toFixed(2)}{isWeighted ? '/kg' : ''}</span>
-                                          <span className="text-[10px] font-extrabold bg-rose-100 text-rose-800 px-1.5 py-0.2 rounded-full border border-rose-200">
-                                            {discInfo.discountLabel}
-                                          </span>
-                                        </div>
-                                        <div className="text-[11px] text-slate-400 line-through">
-                                          Was Rs. {(p.price ?? 0).toFixed(2)}
-                                        </div>
-                                        {p.discountEndDate && (
-                                          <div className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-flex items-center gap-1">
-                                            <Clock className="w-2.5 h-2.5" />
-                                            <span>{discInfo.dateStatusMessage}</span>
-                                          </div>
-                                        )}
-                                        <div className="text-[10px] text-slate-500 font-semibold">
-                                          Cost: Rs. {(cost || 0).toFixed(2)}
-                                        </div>
-                                      </div>
-                                    );
-                                  } else if (p.discountActive && (discInfo.isExpired || discInfo.isUpcoming)) {
-                                    return (
-                                      <div className="space-y-0.5">
-                                        <div className="font-black text-orange-600">
-                                          Rs. {(p.price ?? 0).toFixed(2)}{isWeighted ? '/kg' : ''}
-                                        </div>
-                                        <div className={`text-[9px] font-bold px-1.5 py-0.5 rounded border inline-flex items-center gap-1 ${
-                                          discInfo.isExpired ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-amber-50 text-amber-800 border-amber-200'
-                                        }`}>
-                                          <Clock className="w-2.5 h-2.5" />
-                                          <span>{discInfo.dateStatusMessage}</span>
-                                        </div>
-                                        <div className="text-[10px] text-slate-500 font-semibold">
-                                          Cost: Rs. {(cost || 0).toFixed(2)}
-                                        </div>
-                                      </div>
-                                    );
-                                  }
-                                  return (
-                                    <div>
-                                      <div className="font-black text-orange-600">
-                                        Rs. {(p.price ?? 0).toFixed(2)}{isWeighted ? '/kg' : ''}
-                                      </div>
-                                      <div className="text-[11px] text-slate-500 font-semibold">
-                                        Cost: Rs. {(cost || 0).toFixed(2)}
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-                              </td>
-                              <td className="p-3.5 text-center font-mono">
-                                <div className={`text-xs font-bold ${itemProfit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
-                                  +Rs. {(itemProfit || 0).toFixed(2)}
-                                </div>
-                                <div className="text-[10px] text-slate-400 font-medium">
-                                  ({(itemMargin || 0).toFixed(0)}% margin)
-                                </div>
-                              </td>
-                              <td className="p-3.5 text-center font-black text-sm">
-                                <span className={(p.stockQuantity || 0) <= 0 ? 'text-red-600 font-black' : (p.stockQuantity || 0) <= 5 ? 'text-amber-600 font-bold' : 'text-emerald-600 font-black'}>
-                                  {(p.stockQuantity || 0) % 1 === 0 ? (p.stockQuantity || 0) : (p.stockQuantity || 0).toFixed(3)} {isWeighted ? 'kg' : 'units'}
+
+                              {/* 3. Category */}
+                              <td className="py-3 px-4">
+                                <span className="text-slate-600 font-medium text-sm">
+                                  {p.category || 'General'}
                                 </span>
                               </td>
-                              <td className="p-3.5 text-right">
+
+                              {/* 4. Price */}
+                              <td className="py-3 px-4 font-mono">
+                                {discInfo.hasDiscount ? (
+                                  <div className="space-y-0.5">
+                                    <div className="font-bold text-rose-600 text-sm">
+                                      Rs. {discInfo.discountedPrice.toFixed(0)}
+                                    </div>
+                                    <div className="text-[11px] text-slate-400 line-through">
+                                      Was Rs. {(p.price ?? 0).toFixed(0)}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <span className="font-bold text-slate-900 text-sm">
+                                    Rs. {(p.price ?? 0).toFixed(0)}
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* 5. Stock */}
+                              <td className="py-3 px-4 text-center font-mono">
+                                <span className="font-bold text-slate-800 text-sm">
+                                  {qty % 1 === 0 ? qty : qty.toFixed(2)}
+                                  {isWeighted ? ' kg' : ''}
+                                </span>
+                              </td>
+
+                              {/* 6. Status (Pill badges matching screenshot) */}
+                              <td className="py-3 px-4 text-center">
+                                {isOutOfStock ? (
+                                  <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-red-50 text-red-600 border border-red-200">
+                                    Out of Stock
+                                  </span>
+                                ) : isLowStock ? (
+                                  <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                    Low Stock
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    In Stock
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* 7. Actions (Edit & Delete matching screenshot) */}
+                              <td className="py-3 px-4 text-right">
                                 <div className="flex items-center justify-end gap-1.5">
-                                  {/* Quick Discount Setting Action */}
-                                  <button
-                                    onClick={() => setQuickDiscountProduct(p)}
-                                    className={`px-2 py-1.5 rounded-lg border transition-all text-xs font-bold flex items-center gap-1 cursor-pointer shadow-xs ${
-                                      p.discountActive && (p.discountValue || 0) > 0
-                                        ? 'bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-600 hover:text-white'
-                                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-rose-50 hover:text-rose-700'
-                                    }`}
-                                    title={p.discountActive ? `Active Discount: ${p.discountValue}${p.discountType === 'percentage' ? '%' : ' Rs.'} off. Click to edit.` : 'Set item discount'}
-                                  >
-                                    <Percent className="w-3 h-3 text-rose-600" />
-                                    {p.discountActive && (p.discountValue || 0) > 0 ? (
-                                      <span>{p.discountValue}{p.discountType === 'percentage' ? '%' : ' Rs.'}</span>
-                                    ) : (
-                                      <span>Discount</span>
-                                    )}
-                                  </button>
-
-                                  {/* Print Barcode / Sticker Action */}
-                                  <button
-                                    onClick={() => handleOpenGeneratorForProduct(p)}
-                                    className="px-2 py-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-800 transition-all text-xs font-bold flex items-center gap-1 cursor-pointer shadow-sm"
-                                    title="Open Barcode & Label Station"
-                                  >
-                                    <Printer className="w-3 h-3 text-amber-300" /> Print
-                                  </button>
-
-                                  {/* Direct Download Barcode Image */}
-                                  <button
-                                    onClick={() => handleDirectDownloadBarcode(p)}
-                                    className="px-2 py-1.5 rounded-lg bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-600 hover:text-white transition-all text-xs font-bold flex items-center gap-1 cursor-pointer shadow-sm"
-                                    title="Download Barcode Sticker PNG"
-                                  >
-                                    <Download className="w-3 h-3 text-sky-600 group-hover:text-white" /> Download
-                                  </button>
-
-                                  <button
-                                    onClick={() => {
-                                      handleSelectProductToEdit(p);
-                                      if (activeTab === 'catalog') setActiveTab('form');
-                                    }}
-                                    className="px-2.5 py-1.5 rounded-lg bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-600 hover:text-white transition-all text-xs font-bold flex items-center gap-1 cursor-pointer shadow-sm"
-                                    title="Update stock or price manually in the form"
-                                  >
-                                    <Edit3 className="w-3 h-3" /> Edit
-                                  </button>
-
+                                  {/* Edit (Blue icon button) */}
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      setAiEditTargetProduct(p);
-                                      setIsAiAssistantOpen(true);
+                                      handleSelectProductToEdit(p);
+                                      setActiveTab('form');
                                     }}
-                                    className="px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-50 to-orange-50 text-orange-900 border border-orange-300 hover:from-orange-600 hover:to-amber-600 hover:text-white transition-all text-xs font-bold flex items-center gap-1 cursor-pointer shadow-xs"
-                                    title="Ask AI Copilot to edit price, cost, stock, or details"
+                                    className="p-2 rounded-xl bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white border border-blue-200 transition-all cursor-pointer shadow-2xs"
+                                    title="Edit product"
                                   >
-                                    <Sparkles className="w-3 h-3 text-amber-500" /> AI Edit
+                                    <Edit3 className="w-4 h-4" />
                                   </button>
 
+                                  {/* Delete (Red icon button) */}
                                   <button
+                                    type="button"
                                     onClick={() => handleDeleteProduct(p)}
-                                    className="px-2 py-1.5 rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-600 hover:text-white transition-all text-xs font-bold flex items-center gap-1 cursor-pointer shadow-sm"
-                                    title="Delete stock item"
+                                    className="p-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border border-red-200 transition-all cursor-pointer shadow-2xs"
+                                    title="Delete product"
                                   >
-                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+
+                                  {/* Print Barcode Sticker */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenGeneratorForProduct(p)}
+                                    className="p-2 rounded-xl bg-slate-50 text-slate-700 hover:bg-slate-900 hover:text-white border border-slate-200 transition-all cursor-pointer shadow-2xs"
+                                    title="Print Barcode Label"
+                                  >
+                                    <Printer className="w-4 h-4" />
                                   </button>
                                 </div>
                               </td>
@@ -1750,12 +1655,23 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                   <div className="absolute top-0 right-0 w-80 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
 
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
-                    <div>
-                      <h2 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-black text-white flex items-center gap-2.5 sm:gap-3 tracking-tight">
-                        <PackagePlus className="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 text-amber-400 shrink-0" /> 
-                        <span>{existingProduct ? 'Product Editor & Pricing Station' : 'Register New Product & Stock'}</span>
-                      </h2>
-                      <p className="text-xs sm:text-sm lg:text-base text-blue-200 font-medium mt-1">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2.5 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('catalog')}
+                          className="px-3 py-1.5 rounded-xl bg-blue-900/80 hover:bg-blue-800 text-white font-bold text-xs flex items-center gap-1.5 transition-all border border-blue-700/60 shadow-xs cursor-pointer active:scale-95"
+                          title="Return to products catalog"
+                        >
+                          <ArrowLeft className="w-3.5 h-3.5" />
+                          <span>Back to Products</span>
+                        </button>
+                        <h2 className="text-lg sm:text-xl md:text-2xl font-black text-white flex items-center gap-2 tracking-tight">
+                          <PackagePlus className="w-5 h-5 text-amber-400 shrink-0" /> 
+                          <span>{existingProduct ? 'Product Editor & Pricing Station' : 'Register New Product & Stock'}</span>
+                        </h2>
+                      </div>
+                      <p className="text-xs sm:text-sm text-blue-200 font-medium pl-1">
                         {existingProduct ? `Active Editing: "${existingProduct.name}"` : 'Scan barcode or enter details to record stock and generate barcode sticker labels'}
                       </p>
                     </div>

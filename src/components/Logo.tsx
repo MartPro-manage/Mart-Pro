@@ -1,5 +1,7 @@
 import React from 'react';
 
+const MART_PRO_LOGO_SRC = "/src/assets/images/mart_pro_logo_1791180866244.jpg";
+
 interface LogoProps {
   className?: string;
   size?: 'sm' | 'md' | 'lg' | 'xl';
@@ -38,12 +40,13 @@ export const Logo: React.FC<LogoProps> = ({
 
   if (variant === 'icon') {
     return (
-      <div className={`relative ${iconSizes[size]} ${className} flex items-center justify-center`}>
+      <div className={`relative ${iconSizes[size]} ${className} flex items-center justify-center rounded-xl overflow-hidden shadow-xs border border-orange-200/50 bg-slate-950`}>
         <img 
-          src="/logo.png" 
+          src={MART_PRO_LOGO_SRC} 
           alt="Mart Pro Logo" 
-          className="w-full h-full object-contain drop-shadow-xs" 
+          className="w-full h-full object-cover" 
           loading="eager"
+          referrerPolicy="no-referrer"
         />
       </div>
     );
@@ -51,16 +54,13 @@ export const Logo: React.FC<LogoProps> = ({
 
   return (
     <div className={`inline-flex items-center gap-2.5 ${className}`}>
-      {/* Mart Pro Cart Icon with speed lines & groceries */}
-      <div className={`${iconSizes[size]} shrink-0 relative flex items-center justify-center overflow-hidden rounded-lg`}>
+      {/* Mart Pro Cart Icon with 3D glossy logo */}
+      <div className={`${iconSizes[size]} shrink-0 relative flex items-center justify-center overflow-hidden rounded-xl shadow-xs border border-orange-200/60 bg-slate-950`}>
         <img 
-          src="/logo.png" 
+          src={MART_PRO_LOGO_SRC} 
           alt="Mart Pro" 
-          className="w-full h-full object-contain"
-          onError={(e) => {
-            // fallback if image tag fails
-            e.currentTarget.style.display = 'none';
-          }}
+          className="w-full h-full object-cover"
+          referrerPolicy="no-referrer"
         />
       </div>
 

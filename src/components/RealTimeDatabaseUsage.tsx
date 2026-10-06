@@ -334,7 +334,7 @@ export const RealTimeDatabaseUsage: React.FC<RealTimeDatabaseUsageProps> = ({ st
           </div>
           <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] font-bold">
             <span className="text-slate-500">Retention Engine:</span>
-            <span className="text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md">7-Day Prune Active</span>
+            <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">Permanent Lifetime Storage</span>
           </div>
         </div>
 

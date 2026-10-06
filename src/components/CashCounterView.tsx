@@ -760,9 +760,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
       handleFirestoreError(err, OperationType.GET, 'products');
     });
 
-    // 2. Sales (Run 7-day auto-purge and filter out expired receipts)
-    cleanupExpiredReceipts(store.id);
-
+    // 2. Sales (Receipts are saved permanently until store is deleted by super admin)
     const qSales = query(
       collection(db, 'sales'),
       where('storeId', '==', store.id)
@@ -829,12 +827,19 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
 
   // Quantity Change Handler (COMPULSORY QUANTITY SELECTION)
   const handleUpdateQuantity = (productId: string, newQty: number) => {
-    if (newQty < 0 || isNaN(newQty)) {
+    if (isNaN(newQty)) {
       return;
     }
 
     const itemInCart = cart.find(c => c.product.id === productId);
     if (!itemInCart) return;
+
+    // If quantity is 0 or less, delete the item from the cart list immediately
+    if (newQty <= 0) {
+      setCart((prevCart) => prevCart.filter((item) => item.product.id !== productId));
+      showNotification('success', `Removed "${itemInCart.product.name}" from cart.`);
+      return;
+    }
 
     // Fetch latest live product stock
     const liveProd = products.find(p => p.id === productId) || itemInCart.product;
@@ -846,6 +851,12 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     }
 
     const roundedQty = Math.round(newQty * 1000) / 1000;
+    if (roundedQty <= 0) {
+      setCart((prevCart) => prevCart.filter((item) => item.product.id !== productId));
+      showNotification('success', `Removed "${itemInCart.product.name}" from cart.`);
+      return;
+    }
+
     const effectivePrice = getEffectiveProductPrice(liveProd) || liveProd.price || liveProd.pricePerKg || itemInCart.product.price;
 
     setCart((prevCart) =>
@@ -2087,15 +2098,24 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                                   onClick={(e) => (e.target as HTMLInputElement).select()}
                                   onChange={(e) => {
                                     const val = e.target.value;
-                                    if (val === '') { handleUpdateQuantity(item.product.id, 0); return; }
+                                    if (val === '' || val === '0') {
+                                      handleUpdateQuantity(item.product.id, 0);
+                                      return;
+                                    }
                                     const num = parseFloat(val);
-                                    if (!isNaN(num) && num >= 0) handleUpdateQuantity(item.product.id, num);
+                                    if (!isNaN(num)) handleUpdateQuantity(item.product.id, num);
                                   }}
-                                  onBlur={() => { if (item.quantity <= 0) handleUpdateQuantity(item.product.id, 1); }}
+                                  onBlur={() => {
+                                    if (item.quantity <= 0) {
+                                      handleUpdateQuantity(item.product.id, 0);
+                                    }
+                                  }}
                                   onKeyDown={(e) => {
                                     if (e.key === 'Enter') {
                                       e.preventDefault();
-                                      if (item.quantity <= 0) handleUpdateQuantity(item.product.id, 1);
+                                      if (item.quantity <= 0) {
+                                        handleUpdateQuantity(item.product.id, 0);
+                                      }
                                       setLastEnteredProductId(null);
                                       if (barcodeInputRef.current) barcodeInputRef.current.value = '';
                                       setBarcodeInput('');
@@ -3044,15 +3064,24 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                                     onClick={(e) => (e.target as HTMLInputElement).select()}
                                     onChange={(e) => {
                                       const val = e.target.value;
-                                      if (val === '') { handleUpdateQuantity(item.product.id, 0); return; }
+                                      if (val === '' || val === '0') {
+                                        handleUpdateQuantity(item.product.id, 0);
+                                        return;
+                                      }
                                       const num = parseFloat(val);
-                                      if (!isNaN(num) && num >= 0) handleUpdateQuantity(item.product.id, num);
+                                      if (!isNaN(num)) handleUpdateQuantity(item.product.id, num);
                                     }}
-                                    onBlur={() => { if (item.quantity <= 0) handleUpdateQuantity(item.product.id, 1); }}
+                                    onBlur={() => {
+                                      if (item.quantity <= 0) {
+                                        handleUpdateQuantity(item.product.id, 0);
+                                      }
+                                    }}
                                     onKeyDown={(e) => {
                                       if (e.key === 'Enter') {
                                         e.preventDefault();
-                                        if (item.quantity <= 0) handleUpdateQuantity(item.product.id, 1);
+                                        if (item.quantity <= 0) {
+                                          handleUpdateQuantity(item.product.id, 0);
+                                        }
                                         setLastEnteredProductId(null);
                                         if (fullScreenScanInputRef.current) fullScreenScanInputRef.current.value = '';
                                         setFullScreenScanInput('');

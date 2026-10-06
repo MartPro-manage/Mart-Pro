@@ -1,6 +1,7 @@
 import React from 'react';
 
-const MART_PRO_LOGO_SRC = "/src/assets/images/mart_pro_logo_1791180866244.jpg";
+const MART_PRO_LOGO_SRC = "/src/assets/images/mart_pro_logo_1791265968495.jpg";
+const MART_PRO_ICON_SRC = "/src/assets/images/mart_pro_icon_1791265986365.jpg";
 
 interface LogoProps {
   className?: string;
@@ -24,6 +25,13 @@ export const Logo: React.FC<LogoProps> = ({
     xl: 'w-20 h-20'
   };
 
+  const fullHeights = {
+    sm: 'h-8',
+    md: 'h-10',
+    lg: 'h-14',
+    xl: 'h-20'
+  };
+
   const textSizes = {
     sm: 'text-lg',
     md: 'text-2xl',
@@ -40,11 +48,11 @@ export const Logo: React.FC<LogoProps> = ({
 
   if (variant === 'icon') {
     return (
-      <div className={`relative ${iconSizes[size]} ${className} flex items-center justify-center rounded-xl overflow-hidden shadow-xs border border-orange-200/50 bg-slate-950`}>
+      <div className={`relative ${iconSizes[size]} ${className} flex items-center justify-center rounded-xl overflow-hidden shadow-xs border border-orange-200/60 bg-white`}>
         <img 
-          src={MART_PRO_LOGO_SRC} 
-          alt="Mart Pro Logo" 
-          className="w-full h-full object-cover" 
+          src={MART_PRO_ICON_SRC} 
+          alt="Mart Pro Icon" 
+          className="w-full h-full object-contain p-0.5" 
           loading="eager"
           referrerPolicy="no-referrer"
         />
@@ -54,12 +62,12 @@ export const Logo: React.FC<LogoProps> = ({
 
   return (
     <div className={`inline-flex items-center gap-2.5 ${className}`}>
-      {/* Mart Pro Cart Icon with 3D glossy logo */}
-      <div className={`${iconSizes[size]} shrink-0 relative flex items-center justify-center overflow-hidden rounded-xl shadow-xs border border-orange-200/60 bg-slate-950`}>
+      {/* Mart Pro Cart Icon with grocery items */}
+      <div className={`${iconSizes[size]} shrink-0 relative flex items-center justify-center overflow-hidden rounded-xl shadow-xs border border-orange-200/60 bg-white`}>
         <img 
-          src={MART_PRO_LOGO_SRC} 
+          src={MART_PRO_ICON_SRC} 
           alt="Mart Pro" 
-          className="w-full h-full object-cover"
+          className="w-full h-full object-contain p-0.5"
           referrerPolicy="no-referrer"
         />
       </div>

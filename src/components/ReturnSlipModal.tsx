@@ -88,7 +88,6 @@ export const ReturnSlipModal: React.FC<ReturnSlipModalProps> = ({
     }
     text += `-----------------------------------\n`;
     text += `TOTAL REFUNDED: Rs. ${(returnRecord.refundAmount ?? 0).toFixed(2)}\n`;
-    text += `RESTOCKED:      ${returnRecord.quantity} units replenished to inventory\n`;
     text += `===================================\n`;
     text += `  Refund processed successfully.   \n`;
     text += `===================================\n`;
@@ -175,7 +174,7 @@ export const ReturnSlipModal: React.FC<ReturnSlipModalProps> = ({
               {store?.name || returnRecord.storeName || 'SUPERMARKET'}
             </div>
             <div className="text-[10px] text-slate-600 uppercase tracking-widest font-bold">
-              Official Stock Restock & Refund Note
+              Official Customer Refund Voucher
             </div>
             {store?.address && (
               <div className="text-[9.5px] text-slate-500">{store.address}</div>
@@ -250,13 +249,10 @@ export const ReturnSlipModal: React.FC<ReturnSlipModalProps> = ({
               <span className="text-rose-400 font-mono">Rs. {(returnRecord.refundAmount ?? 0).toFixed(2)}</span>
             </div>
             {returnRecord.reason && (
-              <div className="p-2 bg-slate-50 border-b border-slate-200 text-[11px] text-slate-700">
+              <div className="p-2 bg-slate-50 text-[11px] text-slate-700">
                 <strong>Return Reason:</strong> {returnRecord.reason}
               </div>
             )}
-            <div className="p-2 bg-emerald-50 text-[10.5px] text-emerald-800 font-bold">
-              ✔ Restock Verified: {totalUnits} unit(s) replenished to inventory.
-            </div>
           </div>
         </div>
 

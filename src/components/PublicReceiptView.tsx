@@ -282,21 +282,7 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
       }
 
       if (!foundSale) {
-        setError(`Receipt #${num || id || ''} could not be located. It may have expired (retained for 7 days) or was already removed.`);
-        setLoading(false);
-        return;
-      }
-
-      // Check 7-day expiration policy for customer slips
-      if (isSaleExpired(foundSale)) {
-        if (foundSale.id && !foundSale.isSlipDeleted) {
-          updateDoc(doc(db, 'sales', foundSale.id), {
-            isSlipDeleted: true,
-            slipExpired: true,
-            slipDeletedAt: new Date().toISOString()
-          }).catch((e) => console.warn('Update slip expired flag in background:', e));
-        }
-        setError(`Customer receipt slip #${foundSale.receiptNumber} has reached its 7-day public retention limit and is no longer available online. The store's sales and accounting ledger remains permanently preserved.`);
+        setError(`Receipt #${num || id || ''} could not be located in store records.`);
         setLoading(false);
         return;
       }
@@ -1472,7 +1458,7 @@ export const PublicReceiptView: React.FC<PublicReceiptViewProps> = ({
       {/* Footer */}
       <footer className="w-full max-w-lg text-center pt-6 pb-4 text-xs text-slate-500 space-y-1 no-print">
         <p className="font-bold text-slate-400">Mart Pro &bull; Supermarket Management System</p>
-        <p className="text-[11px]">Instant E-Receipts &bull; Cloud Verified &bull; 7-Day Online Retention</p>
+        <p className="text-[11px]">Instant E-Receipts &bull; Cloud Verified &bull; Permanent Lifetime Storage</p>
       </footer>
 
     </div>

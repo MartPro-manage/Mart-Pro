@@ -17,7 +17,7 @@ import {
   cleanFirestoreData
 } from '../lib/firebase';
 import { Store, UserAccount } from '../types';
-import { cleanupExpiredReceipts } from '../lib/salesCleanup';
+import { deleteStoreReceiptsOnStoreDelete } from '../lib/salesCleanup';
 import { RealTimeDatabaseUsage } from './RealTimeDatabaseUsage';
 import { safeStorage } from '../utils/safeStorage';
 import { 
@@ -191,8 +191,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
       handleFirestoreError(err, OperationType.GET, 'users');
     });
 
-    // Purge expired receipts older than 7 days across all stores
-    cleanupExpiredReceipts();
+    // Customer receipts are permanently saved until the store is deleted by super admin
 
     return () => {
       unsubStores();
@@ -427,7 +426,10 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
         await deleteDoc(doc(db, 'users', u.id));
       }
 
-      showNotification('success', `Store "${storeToDelete.name}" and associated sub-accounts were permanently deleted.`);
+      // Delete all stored receipts and sales records for this store
+      await deleteStoreReceiptsOnStoreDelete(storeToDelete.id);
+
+      showNotification('success', `Store "${storeToDelete.name}", receipts, and associated sub-accounts were permanently deleted.`);
       setStoreToDelete(null);
       if (furtherDetailsStore?.id === storeToDelete.id) {
         setFurtherDetailsStore(null);

@@ -1,96 +1,55 @@
-import { db, collection, getDocs, doc, updateDoc, query, where } from './firebase';
+import { db, collection, getDocs, doc, deleteDoc, query, where } from './firebase';
 import { Sale } from '../types';
 
-export const RECEIPT_EXPIRY_DAYS = 7;
-export const RECEIPT_EXPIRY_MS = RECEIPT_EXPIRY_DAYS * 24 * 60 * 60 * 1000; // 7 days in milliseconds
+// Receipts are retained FOREVER until the store is deleted by super admin
+export const RECEIPT_EXPIRY_DAYS = Infinity;
 
 /**
- * Checks if a customer receipt slip has passed the 7-day retention limit
- * or has been marked as deleted/expired.
- * NOTE: This applies ONLY to the customer/printable slip view.
- * The underlying sales transaction, revenue, profit, and inventory records are PERMANENT.
+ * Receipts NEVER expire after 7 days.
+ * All customer receipts, transactions, line items, and accounting records are saved FOREVER
+ * until the store is deleted by super admin.
  */
-export function isSlipExpired(saleOrTimestamp: Sale | string | null | undefined): boolean {
-  if (!saleOrTimestamp) return false;
-
-  // If passed a Sale object directly, check flag first
-  if (typeof saleOrTimestamp === 'object') {
-    if (saleOrTimestamp.isSlipDeleted || saleOrTimestamp.slipExpired) return true;
-  }
-
-  const timestampStr = typeof saleOrTimestamp === 'string' ? saleOrTimestamp : saleOrTimestamp.timestamp;
-  if (!timestampStr) return false;
-  
-  const saleTime = new Date(timestampStr).getTime();
-  if (isNaN(saleTime)) return false;
-
-  return (Date.now() - saleTime) > RECEIPT_EXPIRY_MS;
+export function isSlipExpired(_saleOrTimestamp?: Sale | string | null | undefined): boolean {
+  return false;
 }
 
 // Backwards-compatible alias for existing imports
 export const isSaleExpired = isSlipExpired;
 
 /**
- * Gets remaining active days for a customer slip before automatic expiration (1-7 days)
+ * Returns permanent status for customer slips
  */
-export function getReceiptRemainingDays(timestampStr: string): number {
-  const saleTime = new Date(timestampStr).getTime();
-  if (isNaN(saleTime)) return 0;
-  
-  const elapsedMs = Date.now() - saleTime;
-  const remainingMs = RECEIPT_EXPIRY_MS - elapsedMs;
-  if (remainingMs <= 0) return 0;
-  
-  return Math.ceil(remainingMs / (24 * 60 * 60 * 1000));
+export function getReceiptRemainingDays(_timestampStr?: string): number {
+  return 999999;
 }
 
 /**
- * Auto-cleans expired customer receipt slips older than 7 days from digital access.
- * 
- * IMPORTANT: In accordance with supermarket accounting and inventory retention:
- * The SALES RECORD (Total Revenue, Profit, Total Stock, Sold Products, Items, Receipt #)
- * is NEVER DELETED from Firestore. Only the customer slip flag is set to expired/deleted.
+ * Receipt Retention Engine:
+ * In accordance with policy, customer receipts and sales are NEVER deleted after 7 days.
+ * They are preserved FOREVER until the store is deleted by super admin.
  */
-export async function cleanupExpiredReceipts(storeId?: string): Promise<number> {
+export async function cleanupExpiredReceipts(_storeId?: string): Promise<number> {
+  // Permanent retention: receipts are never pruned after 7 days.
+  return 0;
+}
+
+/**
+ * Deletes all receipts and sales belonging to a store when the store itself
+ * is deleted by super admin.
+ */
+export async function deleteStoreReceiptsOnStoreDelete(storeId: string): Promise<number> {
+  if (!storeId) return 0;
   try {
-    const cutoffTime = new Date(Date.now() - RECEIPT_EXPIRY_MS).toISOString();
-    
-    let salesQuery = storeId 
-      ? query(collection(db, 'sales'), where('storeId', '==', storeId))
-      : query(collection(db, 'sales'));
-
+    const salesQuery = query(collection(db, 'sales'), where('storeId', '==', storeId));
     const snapshot = await getDocs(salesQuery);
-    let expiredSlipsCount = 0;
-
-    const updatePromises: Promise<void>[] = [];
+    const deletePromises: Promise<void>[] = [];
     snapshot.forEach((saleDoc) => {
-      const data = saleDoc.data();
-      const saleTimestamp = data.timestamp || data.createdAt;
-      
-      // If older than 7 days and not yet marked as slip deleted
-      if (saleTimestamp && saleTimestamp < cutoffTime && !data.isSlipDeleted) {
-        updatePromises.push(
-          updateDoc(doc(db, 'sales', saleDoc.id), {
-            isSlipDeleted: true,
-            slipExpired: true,
-            slipDeletedAt: new Date().toISOString()
-          })
-            .then(() => {
-              expiredSlipsCount++;
-            })
-            .catch((e) => console.warn(`Failed to update slip expiration status for sale ${saleDoc.id}:`, e))
-        );
-      }
+      deletePromises.push(deleteDoc(doc(db, 'sales', saleDoc.id)));
     });
-
-    if (updatePromises.length > 0) {
-      await Promise.allSettled(updatePromises);
-      console.log(`[Slip Retention] Updated ${expiredSlipsCount} customer slips older than ${RECEIPT_EXPIRY_DAYS} days. Sales records, revenue, and product statistics remain permanently preserved.`);
-    }
-
-    return expiredSlipsCount;
+    await Promise.allSettled(deletePromises);
+    return snapshot.size;
   } catch (err) {
-    console.warn('[Slip Retention] Cleanup error:', err);
+    console.error(`Failed to delete sales for deleted store ${storeId}:`, err);
     return 0;
   }
 }

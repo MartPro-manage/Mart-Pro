@@ -2,7 +2,11 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   db, 
   doc, 
-  runTransaction 
+  runTransaction,
+  collection,
+  query,
+  where,
+  getDocs
 } from '../lib/firebase';
 import { Product, Store, UserAccount, ProductReturn, ProductReturnItem, Sale } from '../types';
 import { playScanSuccessBeep, playScanErrorBeep } from '../lib/sound';
@@ -27,7 +31,9 @@ import {
   Search,
   Trash2,
   CheckCircle2,
-  Hash
+  Hash,
+  ShieldAlert,
+  Loader2
 } from 'lucide-react';
 
 interface ReturnProductModalProps {
@@ -46,6 +52,7 @@ export interface ReturnCartItem {
   id: string;
   product: Product;
   quantity: number;
+  maxAllowedQuantity?: number;
   unitPrice: number;
   refundTotal: number;
   reason: string;
@@ -122,28 +129,54 @@ export const ReturnProductModal: React.FC<ReturnProductModalProps> = ({
   const cleanCode = (v: any) => String(v ?? '').replace(/[\r\n\t\s]/g, '').trim().toLowerCase();
   const cleanName = (v: any) => String(v ?? '').trim().toLowerCase();
 
-  // Add or increment product in return cart
-  const addProductToReturnCart = (product: Product, reasonStr = defaultReason, saleRef?: Sale) => {
+  // Add or increment product in return cart with strict receipt quantity limit enforcement
+  const addProductToReturnCart = (
+    product: Product, 
+    reasonStr = defaultReason, 
+    saleRef?: Sale,
+    maxAllowedQty?: number
+  ) => {
     const unitPrice = product.price || product.pricePerKg || 0;
     
     setReturnItems(prev => {
-      const existingIdx = prev.findIndex(item => item.product.id === product.id);
+      const existingIdx = prev.findIndex(item => 
+        item.product.id === product.id && (!saleRef || item.sale?.id === saleRef.id)
+      );
+
       if (existingIdx >= 0) {
+        const existingItem = prev[existingIdx];
+        const effectiveMax = maxAllowedQty !== undefined ? maxAllowedQty : existingItem.maxAllowedQuantity;
+
+        if (effectiveMax !== undefined && existingItem.quantity >= effectiveMax) {
+          playScanErrorBeep();
+          const recNo = saleRef?.receiptNumber || existingItem.sale?.receiptNumber || 'Invoice';
+          setErrorMsg(`Cannot return more than ${effectiveMax} units of "${product.name}". That is the maximum quantity in Receipt #${recNo}.`);
+          if (voiceEnabled && store?.voiceAnnouncementEnabled !== false) {
+            speakMessage(`Cannot return more than ${effectiveMax} units. Maximum purchased in receipt reached.`);
+          }
+          return prev;
+        }
+
+        const requestedQty = Math.round((existingItem.quantity + 1) * 1000) / 1000;
+        const newQty = effectiveMax !== undefined ? Math.min(requestedQty, effectiveMax) : requestedQty;
         const updated = [...prev];
-        const newQty = Math.round((updated[existingIdx].quantity + 1) * 1000) / 1000;
+
         updated[existingIdx] = {
           ...updated[existingIdx],
           quantity: newQty,
+          maxAllowedQuantity: effectiveMax,
           refundTotal: Math.round(unitPrice * newQty * 100) / 100
         };
         return updated;
       } else {
+        const effectiveMax = maxAllowedQty !== undefined ? maxAllowedQty : undefined;
         return [
           ...prev,
           {
             id: `ret_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
             product,
             quantity: 1,
+            maxAllowedQuantity: effectiveMax,
             unitPrice,
             refundTotal: unitPrice,
             reason: reasonStr,
@@ -165,16 +198,28 @@ export const ReturnProductModal: React.FC<ReturnProductModalProps> = ({
     quantityInKg: number, 
     customTotalPrice: number, 
     reasonStr = defaultReason, 
-    saleRef?: Sale
+    saleRef?: Sale,
+    maxAllowedWeight?: number
   ) => {
     const unitPrice = product.price || product.pricePerKg || 0;
-    
+    const requestedQty = Math.round(quantityInKg * 1000) / 1000;
+
+    if (maxAllowedWeight !== undefined && requestedQty > maxAllowedWeight) {
+      playScanErrorBeep();
+      setErrorMsg(`Cannot return more than ${maxAllowedWeight.toFixed(3)} kg of "${product.name}". Maximum weight in Receipt #${saleRef?.receiptNumber || 'Invoice'} is ${maxAllowedWeight.toFixed(3)} kg.`);
+      if (voiceEnabled && store?.voiceAnnouncementEnabled !== false) {
+        speakMessage(`Cannot return more than ${maxAllowedWeight.toFixed(3)} kilograms.`);
+      }
+      return;
+    }
+
     setReturnItems(prev => [
       ...prev,
       {
         id: `ret_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         product,
-        quantity: Math.round(quantityInKg * 1000) / 1000,
+        quantity: requestedQty,
+        maxAllowedQuantity: maxAllowedWeight,
         unitPrice,
         refundTotal: Math.round(customTotalPrice * 100) / 100,
         reason: reasonStr,
@@ -284,7 +329,7 @@ export const ReturnProductModal: React.FC<ReturnProductModalProps> = ({
           createdAt: new Date().toISOString()
         };
 
-        addProductToReturnCart(constructedProduct, defaultReason, sale);
+        addProductToReturnCart(constructedProduct, defaultReason, sale, item.quantity);
         setRefundMethod(sale.paymentMethod || 'cash');
         setScannedBarcode('');
         if (barcodeInputRef.current) {
@@ -299,40 +344,93 @@ export const ReturnProductModal: React.FC<ReturnProductModalProps> = ({
     setErrorMsg(`No product found matching code/shortcut "${code}". Check 4-digit short key or scan barcode.`);
   };
 
-  // Handle receipt number search
-  const handleReceiptSubmit = (rawReceiptNo: string) => {
-    const receiptQuery = rawReceiptNo.trim().replace(/^#/, '').toLowerCase();
+  // Handle receipt number search (checks memory + Firestore sales collection)
+  const handleReceiptSubmit = async (rawReceiptNo: string) => {
+    const receiptQuery = rawReceiptNo.trim().replace(/^#/, '');
     if (!receiptQuery) return;
 
     setErrorMsg(null);
-    const returnPolicyDays = store.returnPolicyDays && store.returnPolicyDays > 0 ? store.returnPolicyDays : 7;
-    const foundSale = recentSales.find(s => 
-      s.receiptNumber.toLowerCase().includes(receiptQuery) ||
-      s.id.toLowerCase().includes(receiptQuery)
-    );
+    setLoading(true);
 
-    if (foundSale) {
-      const saleAgeDays = Math.floor((Date.now() - new Date(foundSale.timestamp).getTime()) / (1000 * 60 * 60 * 24));
-      if (saleAgeDays > returnPolicyDays) {
-        playScanErrorBeep();
-        setErrorMsg(`Slip Expired / Disqualified! Slip #${foundSale.receiptNumber} is ${saleAgeDays} days old. Admin policy allows restock & refund only within ${returnPolicyDays} days from purchase.`);
-        if (voiceEnabled && store?.voiceAnnouncementEnabled !== false) {
-          speakMessage(`Slip expired. Return allowed only within ${returnPolicyDays} days.`);
+    try {
+      const returnPolicyDays = store.returnPolicyDays && store.returnPolicyDays > 0 ? store.returnPolicyDays : 7;
+      
+      // 1. Check local recentSales first
+      let foundSale = recentSales.find(s => 
+        s.receiptNumber.toLowerCase() === receiptQuery.toLowerCase() ||
+        s.receiptNumber.toLowerCase().includes(receiptQuery.toLowerCase()) ||
+        s.id.toLowerCase() === receiptQuery.toLowerCase()
+      );
+
+      // 2. If not found in memory, query Firestore sales collection
+      if (!foundSale && store.id) {
+        const salesRef = collection(db, 'sales');
+        const qByReceipt = query(
+          salesRef,
+          where('storeId', '==', store.id),
+          where('receiptNumber', '==', receiptQuery)
+        );
+        const snap = await getDocs(qByReceipt);
+        if (!snap.empty) {
+          foundSale = { id: snap.docs[0].id, ...snap.docs[0].data() } as Sale;
+        } else {
+          // Fallback query by ID
+          const qById = query(
+            salesRef,
+            where('storeId', '==', store.id),
+            where('id', '==', receiptQuery)
+          );
+          const snapId = await getDocs(qById);
+          if (!snapId.empty) {
+            foundSale = { id: snapId.docs[0].id, ...snapId.docs[0].data() } as Sale;
+          }
         }
-        return;
       }
-      setSelectedSale(foundSale);
-      playScanSuccessBeep();
-    } else {
-      playScanErrorBeep();
-      setErrorMsg(`Invoice/Receipt #${rawReceiptNo} not found in recent sales records.`);
+
+      if (foundSale) {
+        const saleAgeDays = Math.floor((Date.now() - new Date(foundSale.timestamp).getTime()) / (1000 * 60 * 60 * 24));
+        if (saleAgeDays > returnPolicyDays) {
+          playScanErrorBeep();
+          setErrorMsg(`Slip Expired / Disqualified! Slip #${foundSale.receiptNumber} is ${saleAgeDays} days old. Admin policy allows restock & refund only within ${returnPolicyDays} days from purchase.`);
+          if (voiceEnabled && store?.voiceAnnouncementEnabled !== false) {
+            speakMessage(`Slip expired. Return allowed only within ${returnPolicyDays} days.`);
+          }
+          return;
+        }
+        setSelectedSale(foundSale);
+        playScanSuccessBeep();
+      } else {
+        playScanErrorBeep();
+        setErrorMsg(`Invoice/Receipt #${rawReceiptNo} not found in store sales records.`);
+      }
+    } catch (err: any) {
+      console.warn('Error fetching sale receipt:', err);
+      setErrorMsg('Failed to lookup receipt. Please verify receipt number.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Select an item from a found receipt into return cart
+  // Select an item from a found receipt into return cart with strict quantity cap
   const handleSelectSaleItem = (sale: Sale, itemIndex: number) => {
     const saleItem = sale.items[itemIndex];
     if (!saleItem) return;
+
+    const receiptQty = saleItem.quantity || 1;
+
+    // Check if this receipt item is already in the return cart
+    const existingInCart = returnItems.find(
+      item => item.product.id === saleItem.productId && item.sale?.id === sale.id
+    );
+
+    if (existingInCart && existingInCart.quantity >= receiptQty) {
+      playScanErrorBeep();
+      setErrorMsg(`Cannot return more than ${receiptQty} units of "${saleItem.name}". You have already added the full quantity (${receiptQty} units) from Receipt #${sale.receiptNumber}.`);
+      if (voiceEnabled && store?.voiceAnnouncementEnabled !== false) {
+        speakMessage(`Maximum ${receiptQty} units already added from receipt.`);
+      }
+      return;
+    }
 
     const matchingProduct = products.find(p => p.id === saleItem.productId) || {
       id: saleItem.productId,
@@ -355,27 +453,45 @@ export const ReturnProductModal: React.FC<ReturnProductModalProps> = ({
       return;
     }
 
-    addProductToReturnCart(matchingProduct, defaultReason, sale);
+    addProductToReturnCart(matchingProduct, defaultReason, sale, receiptQty);
     setRefundMethod(sale.paymentMethod || 'cash');
     setErrorMsg(null);
   };
 
-  // Quantity modification for return cart item
+  // Quantity modification for return cart item with hard limit checks
   const updateItemQty = (id: string, newQty: number) => {
     if (newQty <= 0) {
       removeItem(id);
       return;
     }
-    setReturnItems(prev => prev.map(item => {
-      if (item.id === id) {
-        const qty = Math.round(newQty * 1000) / 1000;
+
+    const item = returnItems.find(i => i.id === id);
+    if (!item) return;
+
+    // Strict validation: Number to return CANNOT be greater than receipt quantity
+    if (item.maxAllowedQuantity !== undefined && newQty > item.maxAllowedQuantity) {
+      playScanErrorBeep();
+      const recNo = item.sale?.receiptNumber || 'Invoice';
+      setErrorMsg(`Return quantity cannot exceed ${item.maxAllowedQuantity} (maximum purchased in Receipt #${recNo}).`);
+      if (voiceEnabled && store?.voiceAnnouncementEnabled !== false) {
+        speakMessage(`Return quantity capped at ${item.maxAllowedQuantity} from receipt.`);
+      }
+      newQty = item.maxAllowedQuantity;
+    } else {
+      setErrorMsg(null);
+    }
+
+    const clampedQty = Math.round(newQty * 1000) / 1000;
+
+    setReturnItems(prev => prev.map(it => {
+      if (it.id === id) {
         return {
-          ...item,
-          quantity: qty,
-          refundTotal: Math.round(item.unitPrice * qty * 100) / 100
+          ...it,
+          quantity: clampedQty,
+          refundTotal: Math.round(it.unitPrice * clampedQty * 100) / 100
         };
       }
-      return item;
+      return it;
     }));
   };
 
@@ -407,6 +523,14 @@ export const ReturnProductModal: React.FC<ReturnProductModalProps> = ({
     if (returnItems.length === 0) {
       setErrorMsg('Please scan or select at least one product to return.');
       return;
+    }
+
+    // Double check that no item exceeds receipt quantity
+    for (const item of returnItems) {
+      if (item.maxAllowedQuantity !== undefined && item.quantity > item.maxAllowedQuantity) {
+        setErrorMsg(`Cannot process return: Quantity for "${item.product.name}" (${item.quantity}) exceeds receipt quantity (${item.maxAllowedQuantity}).`);
+        return;
+      }
     }
 
     setLoading(true);
@@ -661,37 +785,66 @@ export const ReturnProductModal: React.FC<ReturnProductModalProps> = ({
               {selectedSale && (
                 <div className="p-3 bg-white border border-rose-200 rounded-2xl space-y-2">
                   <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                    <span className="font-extrabold text-xs text-slate-900">
-                      Receipt #{selectedSale.receiptNumber}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <Receipt className="w-4 h-4 text-rose-600" />
+                      <span className="font-extrabold text-xs text-slate-900">
+                        Receipt #{selectedSale.receiptNumber}
+                      </span>
+                    </div>
                     <span className="font-black text-xs text-slate-900">
                       Total: Rs. {selectedSale.totalAmount.toFixed(2)}
                     </span>
                   </div>
 
-                  <div className="space-y-1">
-                    <div className="text-[11px] font-bold text-slate-600">
-                      Click items below to add to return cart:
+                  <div className="space-y-1.5">
+                    <div className="text-[11px] font-bold text-slate-600 flex items-center justify-between">
+                      <span>Click items below to add to return cart:</span>
+                      <span className="text-[10px] text-amber-700 font-extrabold">
+                        Strict Receipt Qty Limits Enforced
+                      </span>
                     </div>
-                    {selectedSale.items.map((item, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => handleSelectSaleItem(selectedSale, idx)}
-                        className="w-full p-2 bg-slate-50 hover:bg-rose-50 border border-slate-200 hover:border-rose-300 rounded-xl text-left transition-all flex items-center justify-between text-xs cursor-pointer group"
-                      >
-                        <div className="flex items-center gap-2 truncate">
-                          <Plus className="w-3.5 h-3.5 text-rose-500" />
-                          <span className="font-bold text-slate-900 truncate">{item.name}</span>
-                          <span className="text-[10px] text-slate-500 bg-white px-1.5 py-0.5 rounded font-mono border border-slate-200">
-                            x{item.quantity}
-                          </span>
-                        </div>
-                        <div className="font-black text-rose-600 text-xs">
-                          Rs. {item.price.toFixed(2)} ea
-                        </div>
-                      </button>
-                    ))}
+                    {selectedSale.items.map((item, idx) => {
+                      const alreadyInCart = returnItems.find(
+                        ri => ri.product.id === item.productId && ri.sale?.id === selectedSale.id
+                      );
+                      const currentCartQty = alreadyInCart?.quantity || 0;
+                      const maxQty = item.quantity;
+                      const isMaxReached = currentCartQty >= maxQty;
+
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          disabled={isMaxReached}
+                          onClick={() => handleSelectSaleItem(selectedSale, idx)}
+                          className={`w-full p-2.5 rounded-xl text-left transition-all flex items-center justify-between text-xs border ${
+                            isMaxReached
+                              ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-75'
+                              : 'bg-slate-50 hover:bg-rose-50 text-slate-900 border-slate-200 hover:border-rose-300 cursor-pointer'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate flex-1 min-w-0">
+                            <Plus className={`w-3.5 h-3.5 shrink-0 ${isMaxReached ? 'text-slate-400' : 'text-rose-500'}`} />
+                            <span className="font-bold truncate">{item.name}</span>
+                            <span className="text-[10px] bg-white px-2 py-0.5 rounded-md font-mono border border-slate-200 shrink-0">
+                              Receipt Qty: {item.quantity}
+                            </span>
+                            {currentCartQty > 0 && (
+                              <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold shrink-0 ${
+                                isMaxReached 
+                                  ? 'bg-amber-100 text-amber-800 border border-amber-300' 
+                                  : 'bg-blue-100 text-blue-800 border border-blue-200'
+                              }`}>
+                                {isMaxReached ? `Max Added (${currentCartQty}/${maxQty})` : `Added: ${currentCartQty}/${maxQty}`}
+                              </span>
+                            )}
+                          </div>
+                          <div className="font-black text-rose-600 text-xs ml-2 shrink-0">
+                            Rs. {item.price.toFixed(2)} ea
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -783,31 +936,52 @@ export const ReturnProductModal: React.FC<ReturnProductModalProps> = ({
                         </td>
 
                         <td className="p-3 text-center">
-                          <div className="flex items-center justify-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-200">
-                            <button
-                              type="button"
-                              onClick={() => updateItemQty(item.id, item.quantity - 1)}
-                              className="p-1 hover:bg-white text-slate-700 rounded-lg transition-colors cursor-pointer"
-                              title="Decrease return quantity"
-                            >
-                              <Minus className="w-3.5 h-3.5" />
-                            </button>
-                            <input
-                              type="number"
-                              min="1"
-                              step="1"
-                              value={item.quantity}
-                              onChange={(e) => updateItemQty(item.id, parseFloat(e.target.value) || 1)}
-                              className="w-14 text-center border border-slate-300 rounded-lg py-1 font-mono font-black text-xs bg-white text-slate-900 focus:outline-none focus:border-rose-500"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => updateItemQty(item.id, item.quantity + 1)}
-                              className="p-1 hover:bg-white text-slate-700 rounded-lg transition-colors cursor-pointer"
-                              title="Increase return quantity"
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                            </button>
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-200">
+                              <button
+                                type="button"
+                                onClick={() => updateItemQty(item.id, item.quantity - 1)}
+                                className="p-1 hover:bg-white text-slate-700 rounded-lg transition-colors cursor-pointer"
+                                title="Decrease return quantity"
+                              >
+                                <Minus className="w-3.5 h-3.5" />
+                              </button>
+                              <input
+                                type="number"
+                                min="1"
+                                max={item.maxAllowedQuantity}
+                                step="1"
+                                value={item.quantity}
+                                onChange={(e) => updateItemQty(item.id, parseFloat(e.target.value) || 1)}
+                                className={`w-14 text-center border rounded-lg py-1 font-mono font-black text-xs bg-white text-slate-900 focus:outline-none ${
+                                  item.maxAllowedQuantity && item.quantity >= item.maxAllowedQuantity
+                                    ? 'border-amber-400 bg-amber-50/50 text-amber-900'
+                                    : 'border-slate-300 focus:border-rose-500'
+                                }`}
+                              />
+                              <button
+                                type="button"
+                                disabled={item.maxAllowedQuantity !== undefined && item.quantity >= item.maxAllowedQuantity}
+                                onClick={() => updateItemQty(item.id, item.quantity + 1)}
+                                className={`p-1 rounded-lg transition-colors ${
+                                  item.maxAllowedQuantity !== undefined && item.quantity >= item.maxAllowedQuantity
+                                    ? 'text-slate-300 cursor-not-allowed opacity-40'
+                                    : 'hover:bg-white text-slate-700 cursor-pointer'
+                                }`}
+                                title={
+                                  item.maxAllowedQuantity !== undefined && item.quantity >= item.maxAllowedQuantity
+                                    ? `Max ${item.maxAllowedQuantity} units in receipt reached`
+                                    : 'Increase return quantity'
+                                }
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                            {item.maxAllowedQuantity !== undefined && (
+                              <div className="text-[10px] font-black text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 inline-block">
+                                Max in Receipt: {item.maxAllowedQuantity}
+                              </div>
+                            )}
                           </div>
                         </td>
 

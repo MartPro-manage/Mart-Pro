@@ -36,6 +36,8 @@ import { StaffSessionsView } from './StaffSessionsView';
 import { PaymentMethodsView } from './PaymentMethodsView';
 import { StoreStaffTrackerView } from './StoreStaffTrackerView';
 import { StaffAttendanceView } from './StaffAttendanceView';
+import { ManageCategoriesView } from './ManageCategoriesView';
+import { ComprehensiveReportsView } from './ComprehensiveReportsView';
 import { 
   TrendingUp, 
   Package, 
@@ -73,8 +75,10 @@ import {
   BarChart3,
   Sparkles,
   Bot,
+  FolderTree,
   LineChart as LineChartIcon,
   FileSpreadsheet,
+  FileBarChart,
   Menu,
   X,
   PanelLeftClose,
@@ -145,6 +149,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
   const [storeUsers, setStoreUsers] = useState<UserAccount[]>([]);
   
   const [searchTerm, setSearchTerm] = useState('');
+  const [receiptLogSearchTerm, setReceiptLogSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<StoreAdminTab>('sales_by_date');
   const [isSidebarOpenMobile, setIsSidebarOpenMobile] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -230,9 +235,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       handleFirestoreError(err, OperationType.GET, 'products');
     });
 
-    // 2. Subscribe to Sales (Customer slips older than 7 days expire from public access, but sales records, revenue, profit, stock, and sold items remain permanent)
-    cleanupExpiredReceipts(store.id);
-
+    // 2. Subscribe to Sales (Receipts are saved permanently forever until store is deleted by super admin)
     const salesQuery = query(
       collection(db, 'sales'),
       where('storeId', '==', store.id)
@@ -803,17 +806,55 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
     );
   }, [products, searchTerm]);
 
-  // Filtered sales receipts by search query
+  // Filtered sales receipts by search query (supports receipt number, cashier, counter, items)
   const filteredReceipts = useMemo(() => {
-    if (!searchTerm.trim()) return filteredSalesByDate;
-    const term = searchTerm.toLowerCase();
-    return filteredSalesByDate.filter((s) => 
-      s.receiptNumber.toLowerCase().includes(term) ||
-      (s.counterName && s.counterName.toLowerCase().includes(term)) ||
-      (s.cashierUsername && s.cashierUsername.toLowerCase().includes(term)) ||
-      s.items?.some(i => i.name.toLowerCase().includes(term) || i.barcode.toLowerCase().includes(term))
-    );
-  }, [filteredSalesByDate, searchTerm]);
+    const effectiveSearch = receiptLogSearchTerm.trim() || searchTerm.trim();
+    if (!effectiveSearch) return filteredSalesByDate;
+
+    const term = effectiveSearch.toLowerCase();
+    const cleanNum = term.replace(/^#/, '').replace(/^rec-/, '').trim();
+
+    return filteredSalesByDate.filter((s) => {
+      const recNum = (s.receiptNumber || '').toLowerCase();
+      const matchesNum = 
+        recNum.includes(term) || 
+        (cleanNum ? recNum.includes(cleanNum) : false) || 
+        (s.id && s.id.toLowerCase().includes(term));
+
+      const matchesCounter = s.counterName && s.counterName.toLowerCase().includes(term);
+      const matchesCashier = s.cashierUsername && s.cashierUsername.toLowerCase().includes(term);
+      const matchesItems = s.items?.some(i => 
+        i.name.toLowerCase().includes(term) || 
+        (i.barcode && i.barcode.toLowerCase().includes(term))
+      );
+
+      return matchesNum || matchesCounter || matchesCashier || matchesItems;
+    });
+  }, [filteredSalesByDate, receiptLogSearchTerm, searchTerm]);
+
+  // Check if search query matches any receipt across all-time history
+  const allTimeReceiptMatches = useMemo(() => {
+    const term = receiptLogSearchTerm.trim().toLowerCase();
+    if (!term) return [];
+    const cleanNum = term.replace(/^#/, '').replace(/^rec-/, '').trim();
+
+    return sales.filter((s) => {
+      const recNum = (s.receiptNumber || '').toLowerCase();
+      const matchesNum = 
+        recNum.includes(term) || 
+        (cleanNum ? recNum.includes(cleanNum) : false) || 
+        (s.id && s.id.toLowerCase().includes(term));
+
+      const matchesCounter = s.counterName && s.counterName.toLowerCase().includes(term);
+      const matchesCashier = s.cashierUsername && s.cashierUsername.toLowerCase().includes(term);
+      const matchesItems = s.items?.some(i => 
+        i.name.toLowerCase().includes(term) || 
+        (i.barcode && i.barcode.toLowerCase().includes(term))
+      );
+
+      return matchesNum || matchesCounter || matchesCashier || matchesItems;
+    });
+  }, [sales, receiptLogSearchTerm]);
 
   // Filtered returns and refunds by search query
   const filteredReturnsLog = useMemo(() => {
@@ -1051,6 +1092,11 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
 
   // Tab metadata for navigation and header
   const tabTitles: Record<StoreAdminTab, { title: string; subtitle: string; icon: React.ComponentType<{ className?: string }> }> = {
+    reports: {
+      title: 'Sales, Profit & Product Reports',
+      subtitle: 'Filter by date, month, or year to review revenue, wholesale cost prices, selling rates, and net profit per product. Download Excel/CSV or print statements.',
+      icon: FileBarChart
+    },
     sales_by_date: {
       title: 'Sales by Date',
       subtitle: 'Day-by-day revenue, profit margin, orders count, and deep day inspection',
@@ -1080,6 +1126,11 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       title: 'Realtime Stock Inventory',
       subtitle: 'Current in-stock inventory counts, selling prices, wholesale costs, and stock alerts',
       icon: Package
+    },
+    manage_categories: {
+      title: 'Category, Company & Size Management',
+      subtitle: 'Manage hierarchical categories, company brands, and multiple sizes/quantities for the product register',
+      icon: FolderTree
     },
     promotions: {
       title: 'Item Discounts & Promotions',
@@ -1570,6 +1621,23 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
               </div>
             )}
           </div>
+        )}
+
+        {/* TAB: COMPREHENSIVE REPORTS (DATE / MONTH / YEAR / EXCEL / PRINT) */}
+        {activeTab === 'reports' && (
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25 }}
+          >
+            <ComprehensiveReportsView 
+              store={liveStore}
+              sales={sales}
+              products={products}
+              returns={returns}
+              expenses={expenses}
+            />
+          </motion.div>
         )}
 
         {/* TAB: 7-DAY DAILY SALES VOLUME LINE CHART */}
@@ -2571,35 +2639,191 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
           </motion.div>
         )}
 
-        {/* TAB 4: SALES HISTORY (FILTERED BY SELECTED DATE) */}
+        {/* TAB 4: SALES HISTORY / RECEIPTS LOG (FILTERED BY DATE & SEARCHABLE BY RECEIPT NUMBER) */}
         {activeTab === 'sales_history' && (
           <motion.div 
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25 }}
-            className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4"
+            className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-5"
           >
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
+            {/* Header Title & Financial Summary */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-4">
               <div>
-                <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <Receipt className="w-5 h-5 text-emerald-600" /> Completed Checkout Receipts Log
+                <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                  <Receipt className="w-6 h-6 text-emerald-600" /> Completed Checkout Receipts Log
                 </h2>
-                <p className="text-xs text-slate-600 font-medium">
-                  Showing receipts for: <strong className="text-orange-700">{activeDateFilterLabel}</strong>
+                <p className="text-xs text-slate-600 font-medium mt-0.5">
+                  Showing receipts for: <strong className="text-orange-700">{activeDateFilterLabel}</strong> &bull; Permanent lifetime storage (saved forever until store is deleted by super admin)
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
-                  {filteredReceipts.length} Receipts
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-slate-700 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+                  {filteredReceipts.length} {filteredReceipts.length === 1 ? 'Receipt' : 'Receipts'}
+                </span>
+                <span className="text-xs font-extrabold text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200 font-mono">
+                  Total: Rs. {filteredReceipts.reduce((sum, s) => sum + (s.totalAmount || 0), 0).toFixed(2)}
                 </span>
               </div>
             </div>
 
+            {/* Quick Filters Bar: Today, Yesterday, This Month, Specific Date, All Time & Search by Receipt # */}
+            <div className="space-y-3 p-4 bg-slate-50/90 rounded-2xl border border-slate-200">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                {/* Search by receipt number, cashier, item */}
+                <div className="relative flex-1 max-w-md">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={receiptLogSearchTerm}
+                    onChange={(e) => setReceiptLogSearchTerm(e.target.value)}
+                    placeholder="Search by Receipt # (e.g. 1001, REC-1001), cashier, item..."
+                    className="w-full pl-10 pr-9 py-2 bg-white rounded-xl border border-slate-300 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 shadow-2xs"
+                  />
+                  {receiptLogSearchTerm && (
+                    <button
+                      type="button"
+                      onClick={() => setReceiptLogSearchTerm('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded cursor-pointer"
+                      title="Clear search"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter Buttons */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs font-extrabold text-slate-500 mr-1 flex items-center gap-1">
+                    <Filter className="w-3.5 h-3.5" /> Filter:
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => setDateFilter('today')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                      dateFilter === 'today'
+                        ? 'bg-orange-600 text-white shadow-xs'
+                        : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+                    }`}
+                  >
+                    <Clock className="w-3.5 h-3.5" /> Today
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDateFilter('yesterday')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      dateFilter === 'yesterday'
+                        ? 'bg-orange-600 text-white shadow-xs'
+                        : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+                    }`}
+                  >
+                    Yesterday
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDateFilter('this_month')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      dateFilter === 'this_month'
+                        ? 'bg-orange-600 text-white shadow-xs'
+                        : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+                    }`}
+                  >
+                    This Month
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDateFilter('custom_single')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                      dateFilter === 'custom_single'
+                        ? 'bg-orange-600 text-white shadow-xs'
+                        : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+                    }`}
+                  >
+                    <CalendarDays className="w-3.5 h-3.5" /> Specific Date
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDateFilter('all')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                      dateFilter === 'all'
+                        ? 'bg-slate-900 text-white shadow-xs'
+                        : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+                    }`}
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" /> All Time
+                  </button>
+                </div>
+              </div>
+
+              {/* SPECIFIC DATE PICKER INLINE ROW */}
+              {dateFilter === 'custom_single' && (
+                <div className="flex items-center gap-3 pt-2.5 border-t border-slate-200/80 flex-wrap animate-fade-in">
+                  <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Calendar className="w-4 h-4 text-orange-600" /> Choose Specific Date:
+                  </span>
+                  <input
+                    type="date"
+                    value={selectedSingleDate}
+                    onChange={(e) => setSelectedSingleDate(e.target.value)}
+                    className="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-orange-500 shadow-2xs"
+                  />
+                  <span className="text-xs text-orange-700 font-bold">
+                    {formatDisplayDate(selectedSingleDate)}
+                  </span>
+                </div>
+              )}
+
+              {/* Cross-Date Hint when search query matches records in All Time */}
+              {dateFilter !== 'all' && receiptLogSearchTerm.trim() && filteredReceipts.length === 0 && allTimeReceiptMatches.length > 0 && (
+                <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 flex items-center justify-between gap-3 text-xs animate-fade-in">
+                  <span className="text-amber-900">
+                    No receipts found in <strong>{activeDateFilterLabel}</strong>, but found <strong>{allTimeReceiptMatches.length}</strong> matching receipt(s) in All Time records.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setDateFilter('all')}
+                    className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold cursor-pointer shrink-0 transition-colors shadow-2xs"
+                  >
+                    Switch to All Time
+                  </button>
+                </div>
+              )}
+            </div>
+
             {filteredReceipts.length === 0 ? (
-              <p className="text-sm text-slate-500 p-8 text-center border border-dashed border-slate-300 rounded-xl bg-slate-50">
-                No checkout transactions recorded for {activeDateFilterLabel}.
-              </p>
+              <div className="p-8 text-center border border-dashed border-slate-300 rounded-2xl bg-slate-50 space-y-3">
+                <p className="text-sm font-semibold text-slate-600">
+                  {receiptLogSearchTerm.trim()
+                    ? `No receipts found matching "${receiptLogSearchTerm}" in ${activeDateFilterLabel}.`
+                    : `No checkout transactions recorded for ${activeDateFilterLabel}.`}
+                </p>
+                <div className="flex items-center justify-center gap-2 flex-wrap">
+                  {receiptLogSearchTerm && (
+                    <button
+                      type="button"
+                      onClick={() => setReceiptLogSearchTerm('')}
+                      className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      Clear Search
+                    </button>
+                  )}
+                  {dateFilter !== 'all' && (
+                    <button
+                      type="button"
+                      onClick={() => setDateFilter('all')}
+                      className="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-2xs"
+                    >
+                      View All Time Receipts ({sales.length})
+                    </button>
+                  )}
+                </div>
+              </div>
             ) : (
               <div className="space-y-3 max-h-[580px] overflow-y-auto overscroll-contain pr-1.5 custom-scrollbar">
                 {filteredReceipts.map((sale) => {
@@ -2621,7 +2845,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                     <div key={sale.id} className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-slate-300 transition-colors">
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-extrabold text-slate-900 text-sm">Receipt #{sale.receiptNumber}</span>
+                          <span className="font-extrabold text-slate-900 text-sm font-mono">Receipt #{sale.receiptNumber}</span>
                           <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
                             sale.paymentMethod === 'cash' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-blue-50 text-blue-700 border border-blue-200'
                           }`}>
@@ -2637,21 +2861,12 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                               Discount -Rs. {(sale.discountAmount || 0).toFixed(2)}
                             </span>
                           ) : null}
-                          {isSaleExpired(sale) ? (
-                            <span 
-                              className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-300"
-                              title="Customer public receipt slip cleared after 7-day retention period. Sales and profit records are permanently preserved."
-                            >
-                              Slip Cleared (7d) • Record Permanent
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              Slip Active
-                            </span>
-                          )}
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                            <ShieldCheck className="w-3 h-3 text-emerald-600" /> Permanent Cloud Record
+                          </span>
                         </div>
                         <p className="text-xs text-slate-600 mt-1 font-medium">
-                          Counter: <span className="text-slate-900 font-semibold">{sale.counterName}</span> ({sale.cashierUsername}) • <span className="text-orange-700 font-bold">{new Date(sale.timestamp).toLocaleString()}</span>
+                          Counter: <span className="text-slate-900 font-semibold">{sale.counterName}</span> ({sale.cashierUsername}) &bull; <span className="text-orange-700 font-bold">{new Date(sale.timestamp).toLocaleString()}</span>
                         </p>
                         <p className="text-xs text-slate-500 mt-0.5">
                           Items ({sale.items?.reduce((s, i) => s + i.quantity, 0)}): {sale.items?.map(i => `${i.name} (x${i.quantity})`).join(', ')}
@@ -2667,20 +2882,40 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                             Cost: Rs. {(saleCost || 0).toFixed(2)}
                           </div>
                         </div>
-                        {onViewReceipt && (
-                          <button
-                            onClick={() => onViewReceipt(sale)}
-                            className="px-3 py-1.5 rounded-lg bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-600 hover:text-white transition-all text-xs font-bold flex items-center gap-1 cursor-pointer shadow-sm"
-                          >
-                            <Eye className="w-3.5 h-3.5" /> View Receipt
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (onViewReceipt) {
+                              onViewReceipt(sale);
+                            } else {
+                              setViewingReceipt(sale);
+                              setIsReceiptOpen(true);
+                            }
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-600 hover:text-white transition-all text-xs font-bold flex items-center gap-1 cursor-pointer shadow-sm"
+                        >
+                          <Eye className="w-3.5 h-3.5" /> View Receipt
+                        </button>
                       </div>
                     </div>
                   );
                 })}
               </div>
             )}
+          </motion.div>
+        )}
+
+        {/* TAB: MANAGE CATEGORIES, COMPANIES & SIZES */}
+        {activeTab === 'manage_categories' && (
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25 }}
+          >
+            <ManageCategoriesView
+              store={liveStore}
+              onNavigateToRegister={onNavigateToInventory}
+            />
           </motion.div>
         )}
 

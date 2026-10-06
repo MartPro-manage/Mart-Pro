@@ -29,10 +29,14 @@ import {
   Banknote,
   Smartphone,
   Download,
-  Mail
+  Mail,
+  FolderTree,
+  FileBarChart,
+  FileText
 } from 'lucide-react';
 
 export type StoreAdminTab = 
+  | 'reports'
   | 'sales_by_date' 
   | 'volume_chart' 
   | 'revenue_trends' 
@@ -41,6 +45,7 @@ export type StoreAdminTab =
   | 'returns' 
   | 'sold_products' 
   | 'stock_remaining' 
+  | 'manage_categories'
   | 'promotions'
   | 'sales_history' 
   | 'recent_receipts'
@@ -122,6 +127,13 @@ export const StoreAdminSidebar: React.FC<StoreAdminSidebarProps> = ({
       group: 'Analytics & Reports',
       items: [
         {
+          id: 'reports' as StoreAdminTab,
+          label: 'Reports & Statements',
+          icon: FileBarChart,
+          badge: 'Print / Excel',
+          badgeColor: 'bg-indigo-600 text-white font-black shadow-xs'
+        },
+        {
           id: 'sales_by_date' as StoreAdminTab,
           label: 'Sales by Date',
           icon: CalendarDays,
@@ -156,6 +168,12 @@ export const StoreAdminSidebar: React.FC<StoreAdminSidebarProps> = ({
           icon: Package,
           badge: stats.lowStockCount > 0 ? `${stats.lowStockCount} Low` : `${stats.totalProducts}`,
           badgeColor: stats.lowStockCount > 0 ? 'bg-amber-500 text-white font-black' : 'bg-slate-800 text-slate-300'
+        },
+        {
+          id: 'manage_categories' as StoreAdminTab,
+          label: 'Manage Categories',
+          icon: FolderTree,
+          badge: null
         },
         {
           id: 'product_valuation' as StoreAdminTab,

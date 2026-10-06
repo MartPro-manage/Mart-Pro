@@ -596,32 +596,15 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
         )}
 
         {/* SLIP RETENTION & SALES PERMANENCE BANNER */}
-        {isSlipExpired(sale) ? (
-          <div className="px-3.5 py-2 bg-amber-50 text-amber-900 border border-amber-200 rounded-xl text-xs flex items-center justify-between gap-2 no-print shrink-0">
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-amber-600 shrink-0" />
-              <div>
-                <span className="font-bold">Customer Slip Cleared (7-Day Policy)</span>
-                <p className="text-[11px] text-amber-700 font-normal">
-                  Public customer slip expired after 7 days. Store sales ledger, profit, and stock records are permanently preserved.
-                </p>
-              </div>
-            </div>
-            <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-amber-200/60 text-amber-900 shrink-0">
-              Sales Permanent
-            </span>
+        <div className="px-3 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-[11px] flex items-center justify-between gap-2 no-print shrink-0">
+          <div className="flex items-center gap-1.5">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span>Permanent Cloud Receipt • Verified Lifetime Storage</span>
           </div>
-        ) : (
-          <div className="px-3 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-[11px] flex items-center justify-between gap-2 no-print shrink-0">
-            <div className="flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-              <span>Customer Online Slip: Active ({getReceiptRemainingDays(sale.timestamp)} days left)</span>
-            </div>
-            <span className="text-[10px] text-emerald-700 font-semibold shrink-0">
-              Sales Data Permanent
-            </span>
-          </div>
-        )}
+          <span className="text-[10px] text-emerald-700 font-bold shrink-0">
+            Saved Forever
+          </span>
+        </div>
 
         {/* COMPACT CASH TRANSACTION BREAKDOWN & CHANGE RETURN CARD */}
         {sale.paymentMethod === 'cash' && (

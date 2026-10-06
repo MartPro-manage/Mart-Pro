@@ -48,6 +48,7 @@ export interface Store {
   returnPolicyDays?: number;
   soundEffectsEnabled?: boolean;
   customCategories?: string[];
+  managedCategories?: ManagedCategory[];
   zSenderUserId?: string; // SwiftSend / Z-Sender user ID for automated E-Receipt email dispatch
   digitalPaymentMethods?: DigitalPaymentMethodConfig[];
   bankAccount?: StoreBankAccount; // Store bank account entered by admin in payment method option
@@ -351,4 +352,23 @@ export interface ProductReturn {
 export interface AuthState {
   user: UserAccount | null;
   store: Store | null;
+}
+
+export interface CompanyBrand {
+  id: string;
+  name: string;
+  sizes: string[]; // e.g. ["250ml", "500ml", "1 Liter", "1.5 Liter", "2.25 Liter"] or ["100g", "250g", "500g", "1kg", "5kg"]
+  notes?: string;
+  createdAt?: string;
+}
+
+export interface ManagedCategory {
+  id: string;
+  storeId: string;
+  name: string;
+  description?: string;
+  icon?: string;
+  companies: CompanyBrand[];
+  createdAt: string;
+  updatedAt?: string;
 }

@@ -281,6 +281,22 @@ body {
     color: #000 !important;
     border-color: #000 !important;
   }
+
+  /* Comprehensive Sales & Profit Report A4 Printout */
+  #printable-comprehensive-report {
+    display: block !important;
+    visibility: visible !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 10mm !important;
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  #printable-comprehensive-report * {
+    visibility: visible !important;
+  }
 }
 
 

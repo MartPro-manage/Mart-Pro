@@ -430,15 +430,11 @@ export function printReturnSlipDirect(returnRecord: ProductReturn, store?: Store
       </div>
     ` : ''}
 
-    <div style="margin-top: 6px; font-size: 10px; color: #047857;">
-      ✔ Restock Status: <strong>${totalUnits} unit(s) returned to store inventory</strong>
-    </div>
-
     <div class="divider"></div>
 
     <div class="text-center" style="margin-top: 10px;">
       <p class="font-bold" style="margin: 0; font-size: 10px;">REFUND PROCESSED BY ${storeName.toUpperCase()}</p>
-      <p style="margin: 2px 0 0 0; font-size: 9px; color: #555;">Amount deducted from sales register & returned to inventory.</p>
+      <p style="margin: 2px 0 0 0; font-size: 9px; color: #555;">Amount refunded to customer & deducted from sales register.</p>
       <div style="font-size: 9px; font-weight: bold; margin-top: 4px;">Ref: ${returnRecord.returnSlipNumber}</div>
     </div>
   </body>

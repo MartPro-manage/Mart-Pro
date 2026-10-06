@@ -12,7 +12,6 @@ import {
 } from '../lib/firebase';
 import { Store, UserAccount } from '../types';
 import { speakMessage } from '../lib/speech';
-import { getAllCategories, DEFAULT_PRESET_CATEGORIES } from '../lib/categories';
 import { 
   Settings, 
   Receipt, 
@@ -26,21 +25,19 @@ import {
   Bell, 
   Users, 
   Calculator, 
-  PackageCheck,
-  Check,
+  PackageCheck, 
+  Check, 
   Eye, 
-  EyeOff,
-  Upload,
-  Image,
-  Layout,
-  Trash2,
-  Plus,
-  Tag,
-  MapPin,
-  Store as StoreIcon,
-  FileText,
-  QrCode,
-  Mail
+  EyeOff, 
+  Upload, 
+  Image, 
+  Layout, 
+  Trash2, 
+  MapPin, 
+  Store as StoreIcon, 
+  FileText, 
+  QrCode, 
+  Mail 
 } from 'lucide-react';
 
 interface StoreSettingsViewProps {
@@ -78,9 +75,8 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
   const [receiptBorderRadius, setReceiptBorderRadius] = useState(store.receiptBorderRadius || 'rounded-2xl');
   const [logoUrl, setLogoUrl] = useState<string>(store.logoUrl || '');
 
-  // Category Management
+  // Category Management (Preserved in store record)
   const [customCategories, setCustomCategories] = useState<string[]>(store.customCategories || []);
-  const [newCatInput, setNewCatInput] = useState('');
 
   // Audio & Hardware Settings
   const [soundEffectsEnabled, setSoundEffectsEnabled] = useState<boolean>(store.soundEffectsEnabled !== false);
@@ -196,37 +192,6 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
       showNotification('success', 'Custom QR code image uploaded! Remember to click "Save All Settings".');
     };
     reader.readAsDataURL(file);
-  };
-
-  const handleAddCategory = async () => {
-    const trimmed = newCatInput.trim();
-    if (!trimmed) return;
-    if (customCategories.includes(trimmed) || DEFAULT_PRESET_CATEGORIES.includes(trimmed)) {
-      showNotification('error', `Category "${trimmed}" already exists.`);
-      return;
-    }
-    const updated = [...customCategories, trimmed];
-    setCustomCategories(updated);
-    setNewCatInput('');
-    try {
-      const storeRef = doc(db, 'stores', store.id);
-      await updateDoc(storeRef, { customCategories: updated });
-      showNotification('success', `Category "${trimmed}" added and saved!`);
-    } catch (err: any) {
-      showNotification('error', `Failed to save category: ${err?.message || 'Error'}`);
-    }
-  };
-
-  const handleRemoveCustomCategory = async (catName: string) => {
-    const updated = customCategories.filter(c => c !== catName);
-    setCustomCategories(updated);
-    try {
-      const storeRef = doc(db, 'stores', store.id);
-      await updateDoc(storeRef, { customCategories: updated });
-      showNotification('success', `Category "${catName}" removed!`);
-    } catch (err: any) {
-      showNotification('error', `Failed to remove category: ${err?.message || 'Error'}`);
-    }
   };
 
   const handleTestVoice = () => {
@@ -584,91 +549,7 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
           </div>
         </div>
 
-        {/* SECTION 2: Product Category Management */}
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl">
-                <Tag className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="text-base font-extrabold text-slate-900">Product Categories Management</h3>
-                <p className="text-xs text-slate-500 font-medium">
-                  Add new categories for Product Register staff to organize and classify stock.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            {/* Add New Category Input */}
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                placeholder="Enter new category name (e.g. Frozen Foods, Stationery, Beverages)..."
-                value={newCatInput}
-                onChange={(e) => setNewCatInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddCategory(); } }}
-                className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-orange-500 focus:bg-white"
-              />
-              <button
-                type="button"
-                onClick={handleAddCategory}
-                className="px-4 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs"
-              >
-                <Plus className="w-4 h-4" /> Add Category
-              </button>
-            </div>
-
-            {/* Custom Categories List */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                Custom Store Categories ({customCategories.length})
-              </label>
-              {customCategories.length === 0 ? (
-                <p className="text-xs text-slate-400 italic">No custom categories added yet. All default supermarket categories are enabled below.</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {customCategories.map((cat) => (
-                    <span
-                      key={cat}
-                      className="px-3 py-1.5 bg-orange-50 text-orange-800 border border-orange-200 rounded-xl text-xs font-bold flex items-center gap-2 shadow-2xs"
-                    >
-                      <span>{cat}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveCustomCategory(cat)}
-                        className="text-orange-400 hover:text-rose-600 cursor-pointer"
-                        title="Remove category"
-                      >
-                        &times;
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Built-in Presets */}
-            <div className="pt-2">
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                Standard Supermarket Presets (Active)
-              </label>
-              <div className="flex flex-wrap gap-1.5 opacity-80">
-                {DEFAULT_PRESET_CATEGORIES.map((cat) => (
-                  <span
-                    key={cat}
-                    className="px-2.5 py-1 bg-slate-100 text-slate-600 rounded-lg text-[11px] font-medium border border-slate-200"
-                  >
-                    {cat}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* SECTION 3: Additional Receipt Options */}
+        {/* SECTION 2: Additional Receipt Options */}
         <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6">
           <div className="flex items-center justify-between border-b border-slate-100 pb-4">
             <div className="flex items-center gap-3">

@@ -1164,7 +1164,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
     },
     settings: {
       title: 'Settings & Configuration',
-      subtitle: 'Store identity, address, receipt formats, black & white logo, and product categories',
+      subtitle: 'Store identity, address, receipt formats, and black & white thermal logo',
       icon: Settings
     },
     net_profit_revenue: {

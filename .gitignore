@@ -1,6 +1,8 @@
 node_modules/
 coverage/
-.DS_Store
+dist/
+server.js
+.vercel
 *.log
 .env*
 !.env.example

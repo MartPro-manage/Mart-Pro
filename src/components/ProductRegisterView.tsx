@@ -1991,230 +1991,294 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                     </span>
                   </div>
 
-            <form onSubmit={handleSubmitProductStock} className="space-y-4">
-              
-              {/* Selling Method Mode: Piece vs Weight */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                  Selling Method *
-                </label>
-                <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSellBy('unit');
-                      if (unitType === 'kg' || unitType === 'g') setUnitType('piece');
-                    }}
-                    className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      sellBy === 'unit'
-                        ? 'bg-white text-slate-900 shadow-sm border border-slate-200'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <PackagePlus className="w-4 h-4 text-blue-600" />
-                    <span>📦 By Piece / Unit</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSellBy('weight');
-                      setUnitType('kg');
-                    }}
-                    className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      sellBy === 'weight'
-                        ? 'bg-orange-600 text-white shadow-sm'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <Scale className="w-4 h-4 text-amber-300" />
-                    <span>⚖️ By Weight (per kg)</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Product Barcode Field (Full Barcode) with Scan Trigger & Auto-Gen */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                    <BarcodeIcon className="w-3.5 h-3.5 text-orange-600" />
-                    <span>Product Barcode (Full Barcode)</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={handleAutoGenerateBarcodeNumber}
-                    className="text-[10px] text-orange-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
-                  >
-                    <Sparkles className="w-3 h-3" /> Auto-fill Full Barcode
-                  </button>
-                </div>
-                <div className="relative flex gap-2">
-                  <div className="relative flex-1">
-                    <BarcodeIcon className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                      ref={barcodeInputRef}
-                      type="text"
-                      maxLength={50}
-                      autoComplete="off"
-                      autoCorrect="off"
-                      spellCheck={false}
-                      placeholder="Scan or enter full barcode (e.g. 890123456789) & press Enter..."
-                      value={barcode}
-                      onChange={(e) => {
-                        setBarcode(e.target.value);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleCodeEnterLookup(barcode, 'barcode');
-                        }
-                      }}
-                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-mono shadow-inner transition-all font-bold tracking-wide"
-                    />
-                  </div>
-                  {store.cameraScannerEnabled !== false && (
-                    <button
-                      type="button"
-                      onClick={() => setIsScannerOpen(true)}
-                      className="p-2.5 rounded-xl bg-slate-100 border border-slate-300 hover:border-orange-500 text-orange-600 hover:text-orange-700 transition-colors cursor-pointer shrink-0"
-                      title="Camera Scanner"
-                    >
-                      <Camera className="w-5 h-5" />
-                    </button>
-                  )}
-                </div>
-                <div className="flex items-center justify-between text-[11px] text-slate-400 mt-1 px-1">
-                  <span>Full barcode recorded (EAN-13, UPC, Code-128, etc.)</span>
-                  <span className="font-mono font-medium text-slate-500">{barcode.length} chars</span>
-                </div>
-              </div>
-
-              {/* Product Name Field */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-                    Product Name *
-                  </label>
-                  {name.trim().length >= 3 && !imageUrl && autoAiImageEnabled && (
-                    <span className="text-[10px] text-sky-600 font-extrabold flex items-center gap-1 animate-pulse">
-                      <Search className="w-3 h-3 text-sky-500" /> Searching Google for image URL...
-                    </span>
-                  )}
-                </div>
-                <div className="relative">
-                  <input
-                    ref={nameInputRef}
-                    type="text"
-                    required
-                    placeholder="e.g. Olpers Full Cream Milk 1L, Tapal Danedar Tea 450g..."
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    onBlur={() => {
-                      if (autoAiImageEnabled && !imageUrl && name.trim().length >= 3) {
-                        handleAutoGenerateProductPicture(name.trim(), false);
-                      }
-                    }}
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-bold transition-all shadow-inner"
-                  />
-                </div>
-                <p className="text-[11px] text-slate-400 mt-1">Item title printed on receipts and shown in POS.</p>
-              </div>
-
-              {/* Product Category & Hierarchy Selector */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                    <Tag className="w-3.5 h-3.5 text-orange-600" />
-                    <span>Product Category *</span>
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setIsAddCategoryModalOpen(true)}
-                      className="text-[11px] text-orange-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" /> + New Category
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsManageCategoriesModalOpen(true)}
-                      className="text-[11px] text-indigo-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
-                    >
-                      <FolderTree className="w-3.5 h-3.5" /> Hierarchy Manager
-                    </button>
-                  </div>
-                </div>
-
-                <div className="relative">
-                  {/* Category Dropdown Selector */}
-                  <select
-                    value={category}
-                    onChange={(e) => {
-                      setCategory(e.target.value);
-                      setSelectedCompanyId(null);
-                      setSelectedSize(null);
-                    }}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-orange-500 focus:bg-white transition-all cursor-pointer"
-                  >
-                    {availableCategories.map((cat) => (
-                      <option key={cat} value={cat}>
-                        {cat}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Option to Choose Company and Size strictly according to the Category chosen */}
-                <div className="mt-3 p-3.5 bg-gradient-to-br from-indigo-50/80 via-white to-slate-50 border border-indigo-200/90 rounded-2xl space-y-3.5 shadow-2xs">
-                  {/* Company / Brand Selection Section */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <Building2 className="w-4 h-4 text-indigo-600" />
-                        <span className="text-xs font-bold text-indigo-950 uppercase tracking-wider">Choose Company / Brand</span>
-                        <span className="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-full border border-indigo-200/80">
-                          for {category}
-                        </span>
+            <form onSubmit={handleSubmitProductStock} className="space-y-6">
+              {/* 2-Column Responsive Layout for Clean Organisation */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                
+                {/* LEFT COLUMN: Identification & Classification (7 cols) */}
+                <div className="lg:col-span-7 space-y-6">
+                  
+                  {/* Card 1: Basic Identification */}
+                  <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center font-black text-xs border border-blue-100">
+                          1
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-extrabold text-slate-900 tracking-tight">Basic Identification</h3>
+                          <p className="text-[11px] text-slate-500">Name, selling method, and barcode identifiers</p>
+                        </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setIsAddingCustomCompany(!isAddingCustomCompany)}
-                        className="text-[11px] text-indigo-700 font-bold hover:underline flex items-center gap-1 cursor-pointer"
-                      >
-                        <Plus className="w-3 h-3" />
-                        <span>{isAddingCustomCompany ? 'Cancel' : '+ Add Company'}</span>
-                      </button>
+                      <span className="text-[11px] font-mono text-slate-600 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200 font-bold">
+                        S/N #{previewNextSerialNumber}
+                      </span>
                     </div>
 
-                    {/* Inline Add Custom Company input */}
-                    {isAddingCustomCompany && (
-                      <div className="flex items-center gap-1.5 p-2 bg-white rounded-xl border border-indigo-200 shadow-2xs">
-                        <input
-                          type="text"
-                          placeholder={`Type brand/company name for ${category}...`}
-                          value={customCompanyName}
-                          onChange={(e) => setCustomCompanyName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              handleAddCustomCompanySubmit();
-                            }
-                          }}
-                          className="flex-1 px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:border-indigo-500 font-semibold"
-                          autoFocus
-                        />
+                    {/* Selling Method Mode: Piece vs Weight */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                        Selling Method *
+                      </label>
+                      <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl border border-slate-200">
                         <button
                           type="button"
-                          onClick={handleAddCustomCompanySubmit}
-                          className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 cursor-pointer shadow-xs"
+                          onClick={() => {
+                            setSellBy('unit');
+                            if (unitType === 'kg' || unitType === 'g') setUnitType('piece');
+                          }}
+                          className={`py-2 px-3 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                            sellBy === 'unit'
+                              ? 'bg-white text-slate-900 shadow-xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
                         >
-                          Add & Select
+                          <PackagePlus className="w-4 h-4 text-blue-600" />
+                          <span>📦 By Piece / Unit</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSellBy('weight');
+                            setUnitType('kg');
+                          }}
+                          className={`py-2 px-3 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                            sellBy === 'weight'
+                              ? 'bg-orange-600 text-white shadow-xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          <Scale className="w-4 h-4 text-amber-200" />
+                          <span>⚖️ By Weight (kg)</span>
                         </button>
                       </div>
-                    )}
+                    </div>
 
-                    {/* Company Dropdown */}
-                    <div className="relative">
+                    {/* Product Name Field */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                          Product Name *
+                        </label>
+                        {name.trim().length >= 3 && !imageUrl && autoAiImageEnabled && (
+                          <span className="text-[10px] text-sky-600 font-bold flex items-center gap-1 animate-pulse">
+                            <Search className="w-3 h-3 text-sky-500" /> Searching Google for image URL...
+                          </span>
+                        )}
+                      </div>
+                      <input
+                        ref={nameInputRef}
+                        type="text"
+                        required
+                        placeholder="e.g. Olpers Full Cream Milk 1L, Tapal Danedar Tea 450g..."
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        onBlur={() => {
+                          if (autoAiImageEnabled && !imageUrl && name.trim().length >= 3) {
+                            handleAutoGenerateProductPicture(name.trim(), false);
+                          }
+                        }}
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-blue-500 focus:bg-white font-bold transition-all shadow-2xs"
+                      />
+                      <p className="text-[11px] text-slate-400 mt-1">Item title printed on receipts and shown in POS.</p>
+                    </div>
+
+                    {/* Product Barcode Field */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                          <BarcodeIcon className="w-3.5 h-3.5 text-blue-600" />
+                          <span>Product Barcode (Full Barcode)</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={handleAutoGenerateBarcodeNumber}
+                          className="text-[11px] text-blue-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <Sparkles className="w-3 h-3" /> Auto-generate Code
+                        </button>
+                      </div>
+                      <div className="relative flex gap-2">
+                        <div className="relative flex-1">
+                          <BarcodeIcon className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <input
+                            ref={barcodeInputRef}
+                            type="text"
+                            maxLength={50}
+                            autoComplete="off"
+                            autoCorrect="off"
+                            spellCheck={false}
+                            placeholder="Scan or enter barcode (e.g. 890123456789)..."
+                            value={barcode}
+                            onChange={(e) => setBarcode(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleCodeEnterLookup(barcode, 'barcode');
+                              }
+                            }}
+                            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-blue-500 focus:bg-white font-mono transition-all font-bold tracking-wide shadow-2xs"
+                          />
+                        </div>
+                        {store.cameraScannerEnabled !== false && (
+                          <button
+                            type="button"
+                            onClick={() => setIsScannerOpen(true)}
+                            className="p-2.5 rounded-xl bg-slate-100 border border-slate-300 hover:border-blue-500 text-blue-600 hover:text-blue-700 transition-colors cursor-pointer shrink-0"
+                            title="Camera Scanner"
+                          >
+                            <Camera className="w-5 h-5" />
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] text-slate-400 mt-1 px-0.5">
+                        <span>Standard barcode (EAN-13, UPC, Code-128, etc.)</span>
+                        <span className="font-mono text-slate-500 font-medium">{barcode.length} chars</span>
+                      </div>
+                    </div>
+
+                    {/* Weight / Loose Packaging Inputs (if sellBy === 'weight') */}
+                    {sellBy === 'weight' && (
+                      <div className="pt-3 border-t border-slate-100 space-y-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                            Packaging / Weight Description (Optional)
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 1 kg pack, 500g, or Loose in basket"
+                            value={weight}
+                            onChange={(e) => setWeight(e.target.value)}
+                            className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs font-medium focus:outline-none focus:border-blue-500 focus:bg-white"
+                          />
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                              <span>Pre-packed Weight per Bag/Unit (kg)</span>
+                              <span className="text-[10px] text-slate-500 font-normal">(Optional)</span>
+                            </label>
+                            <span className="text-[10px] text-blue-600 font-bold">Auto-multiplier</span>
+                          </div>
+                          <input
+                            type="number"
+                            step="any"
+                            min="0"
+                            placeholder="e.g. 0.5 (kg per packet) or leave blank for loose"
+                            value={weightPerUnit}
+                            onChange={(e) => setWeightPerUnit(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-500 font-mono"
+                          />
+                          <p className="text-[10px] text-slate-400 mt-1">
+                            When sold in fixed weight bags, entering quantity multiplies: <em>Quantity × Weight</em>.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Card 2: Category, Brand & Size Organization */}
+                  <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center font-black text-xs border border-indigo-100">
+                          2
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-extrabold text-slate-900 tracking-tight">Category & Hierarchy</h3>
+                          <p className="text-[11px] text-slate-500">Classify product by Category, Brand & Packaging Size</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setIsAddCategoryModalOpen(true)}
+                          className="text-[11px] text-blue-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <Plus className="w-3 h-3" /> + New Category
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsManageCategoriesModalOpen(true)}
+                          className="text-[11px] text-indigo-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <FolderTree className="w-3 h-3" /> Hierarchy
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Category Selector */}
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1.5">
+                        Product Category *
+                      </label>
+                      <select
+                        value={category}
+                        onChange={(e) => {
+                          setCategory(e.target.value);
+                          setSelectedCompanyId(null);
+                          setSelectedSize(null);
+                        }}
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer shadow-2xs"
+                      >
+                        {availableCategories.map((cat) => (
+                          <option key={cat} value={cat}>
+                            {cat}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Company / Brand Selector */}
+                    <div className="space-y-2 pt-2 border-t border-slate-100">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+                          <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">Choose Company / Brand</span>
+                          <span className="text-[10px] text-indigo-700 font-bold bg-indigo-50 px-2 py-0.5 rounded-md">
+                            for {category}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsAddingCustomCompany(!isAddingCustomCompany)}
+                          className="text-[11px] text-indigo-700 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>{isAddingCustomCompany ? 'Cancel' : '+ Add Brand'}</span>
+                        </button>
+                      </div>
+
+                      {/* Inline Add Brand Input */}
+                      {isAddingCustomCompany && (
+                        <div className="flex items-center gap-1.5 p-2 bg-indigo-50/50 rounded-xl border border-indigo-200">
+                          <input
+                            type="text"
+                            placeholder={`Type brand/company name for ${category}...`}
+                            value={customCompanyName}
+                            onChange={(e) => setCustomCompanyName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleAddCustomCompanySubmit();
+                              }
+                            }}
+                            className="flex-1 px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-indigo-500 font-semibold"
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            onClick={handleAddCustomCompanySubmit}
+                            className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 cursor-pointer shadow-xs"
+                          >
+                            Add & Select
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Company Dropdown */}
                       <select
                         value={selectedCompanyId || ''}
                         onChange={(e) => {
@@ -2228,7 +2292,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                             if (found) handleSelectCompany(found);
                           }
                         }}
-                        className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-xl text-slate-800 text-xs font-bold focus:outline-none focus:border-indigo-500 cursor-pointer shadow-2xs"
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-800 text-xs font-bold focus:outline-none focus:border-indigo-500 cursor-pointer shadow-2xs"
                       >
                         <option value="">-- Choose Company for {category} ({activeCategoryCompanies.length} available) --</option>
                         {activeCategoryCompanies.map((comp) => (
@@ -2238,88 +2302,86 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                         ))}
                         <option value="__add_custom_company__">+ Add Other Company for {category}...</option>
                       </select>
+
+                      {/* Brand Quick Click Pills */}
+                      {activeCategoryCompanies.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-0.5 max-h-24 overflow-y-auto">
+                          {activeCategoryCompanies.map((comp) => {
+                            const isCompSelected = selectedCompanyId === comp.id;
+                            return (
+                              <button
+                                key={comp.id}
+                                type="button"
+                                onClick={() => {
+                                  if (isCompSelected) {
+                                    handleSelectCompany(null);
+                                  } else {
+                                    handleSelectCompany(comp);
+                                  }
+                                }}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                                  isCompSelected
+                                    ? 'bg-indigo-600 text-white shadow-xs'
+                                    : 'bg-slate-50 text-slate-700 border border-slate-200 hover:bg-indigo-50 hover:text-indigo-900'
+                                }`}
+                              >
+                                {isCompSelected && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                                <span>{comp.name}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
 
-                    {/* Company Quick Click Pills */}
-                    {activeCategoryCompanies.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 pt-0.5">
-                        {activeCategoryCompanies.map((comp) => {
-                          const isCompSelected = selectedCompanyId === comp.id;
-                          return (
-                            <button
-                              key={comp.id}
-                              type="button"
-                              onClick={() => {
-                                if (isCompSelected) {
-                                  handleSelectCompany(null);
-                                } else {
-                                  handleSelectCompany(comp);
-                                }
-                              }}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
-                                isCompSelected
-                                  ? 'bg-indigo-600 text-white shadow-xs'
-                                  : 'bg-white text-slate-700 border border-indigo-200 hover:bg-indigo-100 hover:text-indigo-900'
-                              }`}
-                            >
-                              {isCompSelected && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
-                              <span>{comp.name}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Size / Pack / Weight Selection Section */}
-                  <div className="pt-3 border-t border-indigo-200/60 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <Scale className="w-4 h-4 text-emerald-600" />
-                        <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">Choose Size / Pack</span>
-                        <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-200/80">
-                          {activeSelectedCompany ? `for ${activeSelectedCompany.name}` : `for ${category}`}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setIsAddingCustomSize(!isAddingCustomSize)}
-                        className="text-[11px] text-emerald-700 font-bold hover:underline flex items-center gap-1 cursor-pointer"
-                      >
-                        <Plus className="w-3 h-3" />
-                        <span>{isAddingCustomSize ? 'Cancel' : '+ Custom Size'}</span>
-                      </button>
-                    </div>
-
-                    {/* Inline Custom Size input */}
-                    {isAddingCustomSize && (
-                      <div className="flex items-center gap-1.5 p-2 bg-white rounded-xl border border-emerald-200 shadow-2xs">
-                        <input
-                          type="text"
-                          placeholder="e.g. 750ml, 350g, 1.25 Liter, Small Box, 6-Pack..."
-                          value={customSizeName}
-                          onChange={(e) => setCustomSizeName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              handleAddCustomSizeSubmit();
-                            }
-                          }}
-                          className="flex-1 px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 font-semibold"
-                          autoFocus
-                        />
+                    {/* Size / Pack Selection */}
+                    <div className="space-y-2 pt-2 border-t border-slate-100">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <Scale className="w-3.5 h-3.5 text-emerald-600" />
+                          <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">Choose Size / Pack</span>
+                          <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md">
+                            {activeSelectedCompany ? `for ${activeSelectedCompany.name}` : `for ${category}`}
+                          </span>
+                        </div>
                         <button
                           type="button"
-                          onClick={handleAddCustomSizeSubmit}
-                          className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 cursor-pointer shadow-xs"
+                          onClick={() => setIsAddingCustomSize(!isAddingCustomSize)}
+                          className="text-[11px] text-emerald-700 font-bold hover:underline flex items-center gap-1 cursor-pointer"
                         >
-                          Apply Size
+                          <Plus className="w-3 h-3" />
+                          <span>{isAddingCustomSize ? 'Cancel' : '+ Custom Size'}</span>
                         </button>
                       </div>
-                    )}
 
-                    {/* Size Dropdown */}
-                    <div className="relative">
+                      {/* Inline Custom Size input */}
+                      {isAddingCustomSize && (
+                        <div className="flex items-center gap-1.5 p-2 bg-emerald-50/50 rounded-xl border border-emerald-200">
+                          <input
+                            type="text"
+                            placeholder="e.g. 750ml, 350g, 1.25 Liter, 6-Pack..."
+                            value={customSizeName}
+                            onChange={(e) => setCustomSizeName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleAddCustomSizeSubmit();
+                              }
+                            }}
+                            className="flex-1 px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 font-semibold"
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            onClick={handleAddCustomSizeSubmit}
+                            className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 cursor-pointer shadow-xs"
+                          >
+                            Apply Size
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Size Dropdown */}
                       <select
                         value={selectedSize || ''}
                         onChange={(e) => {
@@ -2332,7 +2394,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                             handleSelectSize(val);
                           }
                         }}
-                        className="w-full px-3 py-2 bg-white border border-emerald-200 rounded-xl text-slate-800 text-xs font-bold focus:outline-none focus:border-emerald-500 cursor-pointer shadow-2xs"
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-800 text-xs font-bold focus:outline-none focus:border-emerald-500 cursor-pointer shadow-2xs"
                       >
                         <option value="">
                           -- Choose Size / Pack ({activeSelectedCompany ? activeSelectedCompany.name : category}) --
@@ -2344,60 +2406,54 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                         ))}
                         <option value="__add_custom_size__">+ Enter Custom Size / Pack...</option>
                       </select>
+
+                      {/* Size Quick Click Pills */}
+                      {activeAvailableSizes.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-0.5 max-h-24 overflow-y-auto">
+                          {activeAvailableSizes.map((sz) => {
+                            const isSzSelected = selectedSize === sz;
+                            return (
+                              <button
+                                key={sz}
+                                type="button"
+                                onClick={() => {
+                                  if (isSzSelected) {
+                                    handleSelectSize(null);
+                                  } else {
+                                    handleSelectSize(sz);
+                                  }
+                                }}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                                  isSzSelected
+                                    ? 'bg-emerald-600 text-white shadow-xs'
+                                    : 'bg-slate-50 text-slate-700 border border-slate-200 hover:bg-emerald-50 hover:text-emerald-900'
+                                }`}
+                              >
+                                {isSzSelected && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                                <span>{sz}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
 
-                    {/* Size Quick Click Pills */}
-                    {activeAvailableSizes.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 pt-0.5">
-                        {activeAvailableSizes.map((sz) => {
-                          const isSzSelected = selectedSize === sz;
-                          return (
-                            <button
-                              key={sz}
-                              type="button"
-                              onClick={() => {
-                                if (isSzSelected) {
-                                  handleSelectSize(null);
-                                } else {
-                                  handleSelectSize(sz);
-                                }
-                              }}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
-                                isSzSelected
-                                  ? 'bg-emerald-600 text-white shadow-xs'
-                                  : 'bg-white text-slate-700 border border-slate-200 hover:bg-emerald-50 hover:text-emerald-900'
-                              }`}
-                            >
-                              {isSzSelected && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
-                              <span>{sz}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {/* Current Selection Hierarchy Banner */}
+                    {/* Active Selection Breadcrumb */}
                     {(selectedCompanyId || selectedSize) && (
-                      <div className="mt-2.5 p-2.5 bg-slate-100/90 border border-slate-200/80 rounded-xl flex items-center justify-between text-xs text-slate-700">
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-extrabold text-slate-900 text-[11px] uppercase tracking-wide">Selected:</span>
-                          <span className="bg-orange-100 text-orange-800 px-2 py-0.5 rounded-md font-bold text-[11px] border border-orange-200">
-                            {category}
-                          </span>
+                          <span className="font-extrabold text-slate-800 text-[11px] uppercase tracking-wide">Path:</span>
+                          <span className="font-bold text-slate-900">{category}</span>
                           {activeSelectedCompany && (
                             <>
-                              <span className="text-slate-400 font-bold">➔</span>
-                              <span className="bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-md font-bold text-[11px] border border-indigo-200">
-                                {activeSelectedCompany.name}
-                              </span>
+                              <span className="text-slate-400">/</span>
+                              <span className="font-bold text-indigo-700">{activeSelectedCompany.name}</span>
                             </>
                           )}
                           {selectedSize && (
                             <>
-                              <span className="text-slate-400 font-bold">➔</span>
-                              <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md font-bold text-[11px] border border-emerald-200">
-                                {selectedSize}
-                              </span>
+                              <span className="text-slate-400">/</span>
+                              <span className="font-bold text-emerald-700">{selectedSize}</span>
                             </>
                           )}
                         </div>
@@ -2414,791 +2470,754 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                       </div>
                     )}
                   </div>
-                </div>
-              </div>
 
-              {/* Weight or packaging info if selling by weight */}
-              {sellBy === 'weight' && (
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Weight / Packaging Description (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. 1 kg pack, 500g, or Loose in basket"
-                    value={weight}
-                    onChange={(e) => setWeight(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm font-medium focus:outline-none focus:border-orange-500 focus:bg-white"
-                  />
                 </div>
-              )}
 
-              {/* Product Picture: Google Search & Direct URL Auto-Paste */}
-              <div className="p-3.5 bg-gradient-to-r from-slate-50 via-sky-50/20 to-indigo-50/30 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-                  <div className="flex items-start gap-3 min-w-0 flex-1">
-                    {/* Picture Preview */}
-                    <div className="w-16 h-16 rounded-xl bg-white border border-slate-200 shrink-0 flex items-center justify-center overflow-hidden shadow-xs relative group mt-0.5">
-                      {isGeneratingAiImage ? (
-                        <div className="w-full h-full flex flex-col items-center justify-center bg-sky-50 text-sky-600 animate-pulse">
-                          <RefreshCw className="w-5 h-5 animate-spin" />
-                          <span className="text-[9px] font-black mt-1">Searching...</span>
+                {/* RIGHT COLUMN: Media, Pricing, Stock & Promotions (5 cols) */}
+                <div className="lg:col-span-5 space-y-6">
+                  
+                  {/* Card 3: Visual Media & Product Image */}
+                  <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-7 h-7 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center font-black text-xs border border-sky-100">
+                          3
                         </div>
-                      ) : imageUrl ? (
-                        <>
-                          <img
-                            src={imageUrl}
-                            alt="Product preview"
-                            className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                            referrerPolicy="no-referrer"
-                            onError={(e) => {
-                              if (fallbackThumbnailUrl && (e.target as any).src !== fallbackThumbnailUrl) {
-                                (e.target as any).src = fallbackThumbnailUrl;
-                              } else {
-                                (e.target as any).src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%2394a3b8" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
-                              }
-                            }}
-                          />
-                          <div className="absolute top-1 right-1 bg-emerald-500 text-white p-0.5 rounded-full shadow-xs" title="Picture Attached">
-                            <CheckCircle2 className="w-2.5 h-2.5" />
-                          </div>
-                        </>
-                      ) : (
-                        <ImageIcon className="w-7 h-7 text-slate-300" />
+                        <div>
+                          <h3 className="text-sm font-extrabold text-slate-900 tracking-tight">Product Media</h3>
+                          <p className="text-[11px] text-slate-500">Google image search, direct URL, or device upload</p>
+                        </div>
+                      </div>
+                      {imageUrl && (
+                        <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-md border border-emerald-200 flex items-center gap-1">
+                          <CheckCircle className="w-3 h-3 text-emerald-600" />
+                          Attached
+                        </span>
                       )}
                     </div>
 
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <label className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                          <Globe className="w-3.5 h-3.5 text-sky-600" />
-                          <span>Product Picture URL</span>
-                        </label>
+                    <div className="flex items-start gap-3.5">
+                      {/* Image Thumbnail Box */}
+                      <div className="w-20 h-20 rounded-xl bg-slate-50 border border-slate-200 shrink-0 flex items-center justify-center overflow-hidden shadow-2xs relative group">
                         {isGeneratingAiImage ? (
-                          <span className="text-[10px] bg-sky-100 text-sky-700 font-extrabold px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse border border-sky-200">
-                            <Search className="w-3 h-3 animate-spin text-sky-600" />
-                            Searching Google & copying URL...
-                          </span>
+                          <div className="w-full h-full flex flex-col items-center justify-center bg-sky-50 text-sky-600 animate-pulse">
+                            <RefreshCw className="w-5 h-5 animate-spin" />
+                            <span className="text-[9px] font-black mt-1">Searching...</span>
+                          </div>
                         ) : imageUrl ? (
-                          <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
-                            <CheckCircle className="w-2.5 h-2.5 text-emerald-600" />
-                            {imageSourceDomain ? `Found on ${imageSourceDomain}` : 'Image URL Pasted'}
-                          </span>
+                          <>
+                            <img
+                              src={imageUrl}
+                              alt="Product preview"
+                              className="w-full h-full object-contain p-1"
+                              referrerPolicy="no-referrer"
+                              onError={(e) => {
+                                if (fallbackThumbnailUrl && (e.target as any).src !== fallbackThumbnailUrl) {
+                                  (e.target as any).src = fallbackThumbnailUrl;
+                                } else {
+                                  (e.target as any).src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%2394a3b8" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
+                                }
+                              }}
+                            />
+                            <div className="absolute top-1 right-1 bg-emerald-500 text-white p-0.5 rounded-full shadow-xs" title="Picture Attached">
+                              <CheckCircle2 className="w-2.5 h-2.5" />
+                            </div>
+                          </>
                         ) : (
-                          <span className="text-[10px] text-slate-400 font-medium">
-                            Auto-searches Google as you type name
-                          </span>
+                          <ImageIcon className="w-7 h-7 text-slate-300" />
                         )}
                       </div>
-                      <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                        {imageUrl ? 'Live on POS, Price Checker Kiosk & Receipts' : 'Searches product on Google, copies image URL, and pastes it here'}
-                      </p>
+
+                      {/* Action Buttons for Picture */}
+                      <div className="flex-1 space-y-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <button
+                            type="button"
+                            disabled={isGeneratingAiImage || !name.trim()}
+                            onClick={() => handleSearchProductImageOnline(name, true)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs ${
+                              isGeneratingAiImage
+                                ? 'bg-sky-100 text-sky-400 cursor-not-allowed'
+                                : !name.trim()
+                                ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
+                                : 'bg-sky-600 hover:bg-sky-700 text-white shadow-sky-200'
+                            }`}
+                            title="Search Google for product name and auto-paste image URL"
+                          >
+                            <Search className={`w-3.5 h-3.5 ${isGeneratingAiImage ? 'animate-spin' : 'text-white'}`} />
+                            <span>{imageUrl ? 'Search Again' : 'Google Search & Paste'}</span>
+                          </button>
+
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={handleImageFileUpload}
+                            className="hidden"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="px-2.5 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-bold flex items-center gap-1 cursor-pointer transition-all"
+                            title="Upload image from device"
+                          >
+                            <Upload className="w-3.5 h-3.5 text-slate-600" />
+                            <span>Upload</span>
+                          </button>
+
+                          <a
+                            href={`https://www.google.com/search?tbm=isch&q=${encodeURIComponent((name.trim() || 'product') + ' packaging')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2.5 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-sky-600 border border-slate-200 text-xs font-bold transition-all flex items-center gap-1"
+                            title="Open Google Images in new tab"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+
+                          {imageUrl && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setImageUrl('');
+                                setAiImageSource(null);
+                                setImageSourceDomain(null);
+                                setFallbackThumbnailUrl(null);
+                                setSearchCandidates([]);
+                              }}
+                              className="px-2 py-1.5 rounded-xl bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border border-red-200 text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                              title="Remove picture"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+
+                        <p className="text-[11px] text-slate-500">
+                          {imageSourceDomain ? `Found on ${imageSourceDomain}` : 'Shows on POS terminal, Customer Price Checker & receipts'}
+                        </p>
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Top Action Buttons */}
-                  <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap shrink-0">
-                    <button
-                      type="button"
-                      disabled={isGeneratingAiImage || !name.trim()}
-                      onClick={() => handleSearchProductImageOnline(name, true)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition-all shadow-xs ${
-                        isGeneratingAiImage
-                          ? 'bg-sky-100 text-sky-400 cursor-not-allowed'
-                          : !name.trim()
-                          ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
-                          : 'bg-gradient-to-r from-sky-600 to-blue-600 text-white hover:from-sky-700 hover:to-blue-700 active:scale-95 shadow-sky-200'
-                      }`}
-                      title="Search Google for product name and copy/paste image URL"
-                    >
-                      <Search className={`w-3.5 h-3.5 ${isGeneratingAiImage ? 'animate-spin' : 'text-sky-200'}`} />
-                      <span>{imageUrl ? 'Search Google Again' : '🔍 Search Google & Paste'}</span>
-                    </button>
-
-                    {/* Direct link to Google Images */}
-                    <a
-                      href={`https://www.google.com/search?tbm=isch&q=${encodeURIComponent((name.trim() || 'product') + ' packaging')}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-600 hover:text-sky-600 border border-slate-200 text-xs font-bold transition-all flex items-center gap-1 shadow-2xs"
-                      title="Open Google Images in new tab to browse or copy any image link"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Google Images</span>
-                    </a>
-
-                    {imageUrl ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setImageUrl('');
-                          setAiImageSource(null);
-                          setImageSourceDomain(null);
-                          setFallbackThumbnailUrl(null);
-                          setSearchCandidates([]);
+                    {/* Direct Pasted Image URL Field */}
+                    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 focus-within:border-sky-500 focus-within:bg-white transition-all shadow-2xs">
+                      <LinkIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <input
+                        type="text"
+                        placeholder="Image URL: Copied from Google search (https://...)"
+                        value={imageUrl}
+                        onChange={(e) => {
+                          const val = e.target.value.trim();
+                          setImageUrl(val);
+                          setAiImageSource('manual');
                         }}
-                        className="px-2.5 py-1.5 rounded-xl bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border border-red-200 text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
-                        title="Remove picture"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                        <span>Remove</span>
-                      </button>
-                    ) : (
-                      <>
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          accept="image/*"
-                          onChange={handleImageFileUpload}
-                          className="hidden"
-                        />
+                        className="w-full text-xs text-slate-800 bg-transparent focus:outline-none font-mono font-medium"
+                      />
+                      {imageUrl && (
                         <button
                           type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-orange-50 text-slate-700 hover:text-orange-600 border border-slate-200 text-xs font-bold flex items-center gap-1 cursor-pointer transition-all shadow-2xs"
-                          title="Upload image from device"
+                          onClick={() => {
+                            navigator.clipboard.writeText(imageUrl);
+                            showNotification('success', 'Image URL copied to clipboard!');
+                          }}
+                          className="px-2 py-0.5 text-[10px] font-bold text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded shrink-0 flex items-center gap-1 cursor-pointer transition-all"
                         >
-                          <Upload className="w-3.5 h-3.5 text-orange-600" />
-                          <span>Upload</span>
+                          <Copy className="w-3 h-3" />
+                          <span>Copy</span>
                         </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {/* Direct Pasted Image URL Field */}
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-xl px-3 py-1.5 focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500 shadow-2xs transition-all">
-                    <LinkIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    <input
-                      type="text"
-                      placeholder="Image URL: Copied from Google search (https://...)"
-                      value={imageUrl}
-                      onChange={(e) => {
-                        const val = e.target.value.trim();
-                        setImageUrl(val);
-                        setAiImageSource('manual');
-                      }}
-                      className="w-full text-xs text-slate-800 bg-transparent focus:outline-none font-mono"
-                    />
-                    {imageUrl && (
+                      )}
                       <button
                         type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(imageUrl);
-                          showNotification('success', 'Image URL copied to clipboard!');
-                        }}
-                        className="px-2 py-1 text-[11px] font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg shrink-0 flex items-center gap-1 cursor-pointer transition-all"
-                        title="Copy Image URL to clipboard"
-                      >
-                        <Copy className="w-3 h-3" />
-                        <span>Copy</span>
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          const clipText = await navigator.clipboard.readText();
-                          if (clipText && (clipText.startsWith('http://') || clipText.startsWith('https://'))) {
-                            setImageUrl(clipText.trim());
-                            setAiImageSource('manual');
-                            showNotification('success', 'Pasted image URL from clipboard!');
-                          } else {
+                        onClick={async () => {
+                          try {
+                            const clipText = await navigator.clipboard.readText();
+                            if (clipText && (clipText.startsWith('http://') || clipText.startsWith('https://'))) {
+                              setImageUrl(clipText.trim());
+                              setAiImageSource('manual');
+                              showNotification('success', 'Pasted image URL from clipboard!');
+                            } else {
+                              const manualUrl = prompt('Paste image URL:', imageUrl || '');
+                              if (manualUrl && manualUrl.trim()) {
+                                setImageUrl(manualUrl.trim());
+                                setAiImageSource('manual');
+                              }
+                            }
+                          } catch {
                             const manualUrl = prompt('Paste image URL:', imageUrl || '');
                             if (manualUrl && manualUrl.trim()) {
                               setImageUrl(manualUrl.trim());
                               setAiImageSource('manual');
                             }
                           }
-                        } catch {
-                          const manualUrl = prompt('Paste image URL:', imageUrl || '');
-                          if (manualUrl && manualUrl.trim()) {
-                            setImageUrl(manualUrl.trim());
-                            setAiImageSource('manual');
-                          }
-                        }
-                      }}
-                      className="px-2 py-1 text-[11px] font-bold text-sky-600 hover:text-sky-800 bg-sky-50 hover:bg-sky-100 rounded-lg shrink-0 flex items-center gap-1 cursor-pointer transition-all"
-                      title="Paste Image URL from Clipboard"
-                    >
-                      <span>Paste</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Alternate Candidates from Google/Web Search */}
-                {searchCandidates && searchCandidates.length > 1 && (
-                  <div className="pt-2 border-t border-slate-200/60">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
-                        <Search className="w-3 h-3 text-sky-600" />
-                        <span>Google Search Candidates (Click to select & paste URL):</span>
-                      </span>
-                      <span className="text-[10px] text-slate-400">{searchCandidates.length} images found</span>
-                    </div>
-                    <div className="flex gap-2 overflow-x-auto pb-1.5 pt-0.5 scrollbar-thin">
-                      {searchCandidates.slice(0, 6).map((c, idx) => {
-                        const isCurrent = imageUrl === c.url || imageUrl === c.thumbnail;
-                        return (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => {
-                              setImageUrl(c.url);
-                              setFallbackThumbnailUrl(c.thumbnail);
-                              setImageSourceDomain(c.domain || null);
-                              showNotification('success', `Pasted image URL from ${c.domain || 'Google candidate'}`);
-                            }}
-                            className={`shrink-0 w-14 h-14 rounded-lg border-2 p-0.5 overflow-hidden transition-all relative group cursor-pointer ${
-                              isCurrent
-                                ? 'border-sky-500 ring-2 ring-sky-200 shadow-xs'
-                                : 'border-slate-200 hover:border-sky-400 bg-white'
-                            }`}
-                            title={`Use this image: ${c.title || c.domain || 'Candidate'}`}
-                          >
-                            <img
-                              src={c.thumbnail || c.url}
-                              alt={c.title || 'Candidate'}
-                              className="w-full h-full object-cover rounded"
-                              referrerPolicy="no-referrer"
-                            />
-                            {isCurrent && (
-                              <div className="absolute inset-0 bg-sky-600/20 flex items-center justify-center">
-                                <CheckCircle className="w-4 h-4 text-sky-600 drop-shadow" />
-                              </div>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* Auto Search on Type checkbox */}
-                <div className="pt-1.5 border-t border-slate-200/60 flex items-center justify-between text-[11px] text-slate-500">
-                  <label className="flex items-center gap-1.5 cursor-pointer font-medium select-none hover:text-slate-800">
-                    <input
-                      type="checkbox"
-                      checked={autoAiImageEnabled}
-                      onChange={(e) => setAutoAiImageEnabled(e.target.checked)}
-                      className="w-3.5 h-3.5 text-sky-600 rounded border-slate-300 focus:ring-sky-500 cursor-pointer"
-                    />
-                    <span>Automatically search Google & paste image URL as you enter product name</span>
-                  </label>
-                  <span className="text-[10px] text-sky-600 font-bold hidden sm:inline">
-                    🔍 Live Web Image Search
-                  </span>
-                </div>
-              </div>
-
-              {/* Optional Pre-packaged pack weight when selling by weight */}
-              {sellBy === 'weight' && (
-                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                      <span>Pre-packed Weight per Bag/Unit</span>
-                      <span className="text-[10px] text-slate-500 font-normal">(Optional)</span>
-                    </label>
-                    <span className="text-[10px] text-orange-600 font-bold">Auto-multiply helper</span>
-                  </div>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      step="any"
-                      min="0"
-                      placeholder="e.g. 0.5 (kg per packet) or leave blank for loose"
-                      value={weightPerUnit}
-                      onChange={(e) => setWeightPerUnit(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-orange-500 font-mono"
-                    />
-                  </div>
-                  <p className="text-[10px] text-slate-500">
-                    If this item is sold in fixed-weight bags (e.g. 0.5 kg bag), entering quantity at checkout will automatically multiply: <em>Quantity × Weight</em>.
-                  </p>
-                </div>
-              )}
-
-              {/* Stock Management & Price Grid */}
-              <div className="space-y-3 pt-1">
-                {existingProduct ? (
-                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                        Inventory Stock Adjustment
-                      </label>
-                      <span className="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 font-mono">
-                        Current: {existingProduct.stockQuantity} {sellBy === 'weight' || existingProduct.sellBy === 'weight' || unitType === 'kg' ? 'kg' : 'units'}
-                      </span>
-                    </div>
-
-                    {/* Stock Mode Switcher: Keep vs Add vs Override */}
-                    <div className="grid grid-cols-3 gap-1.5 bg-slate-200/70 p-1 rounded-xl text-xs font-bold">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setStockAdjustmentMode('keep');
-                          setStockQuantityToAdd('');
                         }}
-                        className={`py-1.5 px-2 rounded-lg transition-all text-center cursor-pointer ${
-                          stockAdjustmentMode === 'keep'
-                            ? 'bg-white text-slate-900 shadow-xs'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
+                        className="px-2 py-0.5 text-[10px] font-bold text-sky-700 hover:text-sky-900 bg-sky-50 hover:bg-sky-100 rounded shrink-0 flex items-center gap-1 cursor-pointer transition-all"
                       >
-                        Keep Stock
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setStockAdjustmentMode('add')}
-                        className={`py-1.5 px-2 rounded-lg transition-all text-center cursor-pointer ${
-                          stockAdjustmentMode === 'add'
-                            ? 'bg-emerald-600 text-white shadow-xs'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        + Add Stock
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setStockAdjustmentMode('set')}
-                        className={`py-1.5 px-2 rounded-lg transition-all text-center cursor-pointer ${
-                          stockAdjustmentMode === 'set'
-                            ? 'bg-orange-600 text-white shadow-xs'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        Set Total
+                        <span>Paste</span>
                       </button>
                     </div>
 
-                    {stockAdjustmentMode === 'keep' ? (
-                      <p className="text-[11px] text-slate-500 font-medium">
-                        ✓ Current inventory remains at <strong>{existingProduct.stockQuantity} {sellBy === 'weight' || existingProduct.sellBy === 'weight' || unitType === 'kg' ? 'kg' : 'units'}</strong>. You can update the price or details below without entering quantity.
-                      </p>
-                    ) : (
-                      <div className="space-y-1.5">
-                        <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                          {stockAdjustmentMode === 'add'
-                            ? `Quantity to ADD (+${sellBy === 'weight' || unitType === 'kg' ? 'kg' : 'units'}) *`
-                            : `New Total Stock Count (${sellBy === 'weight' || unitType === 'kg' ? 'kg' : 'units'}) *`}
-                        </label>
-                        <input
-                          ref={quantityInputRef}
-                          type="number"
-                          step="any"
-                          min="0"
-                          required={true}
-                          placeholder={
-                            stockAdjustmentMode === 'add'
-                              ? (sellBy === 'weight' ? 'e.g. 10.5' : 'e.g. 10 or 40')
-                              : (sellBy === 'weight' ? 'e.g. 50.0' : 'e.g. 40')
-                          }
-                          value={stockQuantityToAdd}
-                          onChange={(e) => setStockQuantityToAdd(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                          className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-orange-500 font-bold text-emerald-700 transition-all font-mono"
-                        />
-                        <p className="text-[10px] text-slate-500">
-                          {stockAdjustmentMode === 'add' && typeof stockQuantityToAdd === 'number' && !isNaN(stockQuantityToAdd)
-                            ? `New Total will be: ${Math.round((existingProduct.stockQuantity + stockQuantityToAdd) * 1000) / 1000} ${sellBy === 'weight' || unitType === 'kg' ? 'kg' : 'units'}`
-                            : stockAdjustmentMode === 'set'
-                            ? 'Will replace current stock count in inventory.'
-                            : 'Enter quantity to update inventory.'}
-                        </p>
+                    {/* Alternate Candidates from Google/Web Search */}
+                    {searchCandidates && searchCandidates.length > 1 && (
+                      <div className="pt-2 border-t border-slate-100">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                            <Search className="w-3 h-3 text-sky-600" />
+                            <span>Other Google Candidates:</span>
+                          </span>
+                          <span className="text-[10px] text-slate-400">{searchCandidates.length} found</span>
+                        </div>
+                        <div className="flex gap-2 overflow-x-auto pb-1 pt-0.5">
+                          {searchCandidates.slice(0, 6).map((c, idx) => {
+                            const isCurrent = imageUrl === c.url || imageUrl === c.thumbnail;
+                            return (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => {
+                                  setImageUrl(c.url);
+                                  setFallbackThumbnailUrl(c.thumbnail);
+                                  setImageSourceDomain(c.domain || null);
+                                  showNotification('success', `Selected image from ${c.domain || 'Google candidate'}`);
+                                }}
+                                className={`shrink-0 w-12 h-12 rounded-lg border-2 p-0.5 overflow-hidden transition-all relative group cursor-pointer ${
+                                  isCurrent
+                                    ? 'border-sky-500 ring-2 ring-sky-200 shadow-xs'
+                                    : 'border-slate-200 hover:border-sky-400 bg-white'
+                                }`}
+                                title={`Use this image: ${c.title || c.domain || 'Candidate'}`}
+                              >
+                                <img
+                                  src={c.thumbnail || c.url}
+                                  alt={c.title || 'Candidate'}
+                                  className="w-full h-full object-cover rounded"
+                                  referrerPolicy="no-referrer"
+                                />
+                                {isCurrent && (
+                                  <div className="absolute inset-0 bg-sky-600/20 flex items-center justify-center">
+                                    <CheckCircle className="w-3.5 h-3.5 text-sky-600 drop-shadow" />
+                                  </div>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
-                  </div>
-                ) : (
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                      {sellBy === 'weight' ? 'Initial Stock Weight (kg)' : 'Initial Stock Quantity'}
-                    </label>
-                    <input
-                      ref={quantityInputRef}
-                      type="number"
-                      step="any"
-                      min="0"
-                      placeholder={sellBy === 'weight' ? 'e.g. 50.000 (Optional, default 0)' : 'e.g. 50 or 40 (Optional, default 0)'}
-                      value={stockQuantityToAdd}
-                      onChange={(e) => setStockQuantityToAdd(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-bold text-emerald-700 transition-all font-mono"
-                    />
-                    <p className="text-[10px] text-slate-400 mt-1">Optional. Defaults to 0 if left blank.</p>
-                  </div>
-                )}
 
-                {/* Pricing & Cost Grid (Always visible without fill details first restriction) */}
-                <motion.div 
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="p-4 sm:p-5 bg-gradient-to-br from-indigo-50/85 via-blue-50/60 to-emerald-50/75 rounded-2xl border border-indigo-200/90 shadow-sm space-y-3.5"
-                >
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-black text-indigo-950 uppercase tracking-wider flex items-center gap-1.5">
-                      <Coins className="w-4 h-4 text-indigo-600" />
-                      <span>Pricing & Profit Margin</span>
-                    </label>
-                    <span className="text-[10px] text-emerald-800 font-extrabold bg-emerald-100/90 px-2.5 py-0.5 rounded-full border border-emerald-300 shadow-2xs">
-                      ✨ Auto-Calculates Profit
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {/* 1. Cost / Purchase Price (Rs.) */}
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
-                        Cost Price *
-                      </label>
-                      <div className="relative">
-                        <span className="text-xs font-black text-slate-400 absolute left-3 top-1/2 -translate-y-1/2">
-                          Rs.
-                        </span>
+                    {/* Auto Search on Type checkbox */}
+                    <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                      <label className="flex items-center gap-1.5 cursor-pointer font-medium select-none hover:text-slate-800">
                         <input
-                          type="number"
-                          step="any"
-                          min="0"
-                          required
-                          placeholder="e.g. 100.00"
-                          value={costPrice}
-                          onChange={(e) => {
-                            const val = e.target.value === '' ? '' : parseFloat(e.target.value);
-                            setCostPrice(val);
-                            if (typeof val === 'number' && val > 0 && typeof marginPercent === 'number') {
-                              const calcSell = Math.round(val * (1 + marginPercent / 100) * 100) / 100;
-                              setPrice(calcSell);
-                            } else if (typeof val === 'number' && val > 0 && typeof price === 'number' && price > 0) {
-                              setMarginPercent(Math.round(((price - val) / val) * 100 * 10) / 10);
-                            }
-                          }}
-                          className="w-full pl-9 pr-2.5 py-2.5 bg-white border border-indigo-200 rounded-xl text-slate-900 text-xs sm:text-sm focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/20 font-bold font-mono transition-all shadow-inner"
+                          type="checkbox"
+                          checked={autoAiImageEnabled}
+                          onChange={(e) => setAutoAiImageEnabled(e.target.checked)}
+                          className="w-3.5 h-3.5 text-sky-600 rounded border-slate-300 focus:ring-sky-500 cursor-pointer"
                         />
-                      </div>
-                    </div>
-
-                    {/* 2. Margin Percentage (% Margin) */}
-                    <div>
-                      <label className="block text-[11px] font-black text-indigo-900 uppercase tracking-wider mb-1 flex items-center justify-between">
-                        <span>Margin %</span>
-                        <span className="text-[9px] text-indigo-600 font-extrabold">Auto-sets Sell</span>
+                        <span>Auto-search Google image as you type name</span>
                       </label>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          step="any"
-                          placeholder="e.g. 25"
-                          value={marginPercent}
-                          onChange={(e) => {
-                            const mVal = e.target.value === '' ? '' : parseFloat(e.target.value);
-                            setMarginPercent(mVal);
-                            if (typeof mVal === 'number' && typeof costPrice === 'number' && costPrice > 0) {
-                              const calcSell = Math.round(costPrice * (1 + mVal / 100) * 100) / 100;
-                              setPrice(calcSell);
-                            }
-                          }}
-                          className="w-full pl-3 pr-7 py-2.5 bg-amber-50/90 border border-amber-300 rounded-xl text-amber-950 text-xs sm:text-sm focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 font-mono font-black transition-all shadow-inner"
-                        />
-                        <span className="text-xs font-black text-amber-700 absolute right-2.5 top-1/2 -translate-y-1/2">
-                          %
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* 3. Selling Price (Rs.) */}
-                    <div>
-                      <label className="block text-[11px] font-bold text-emerald-900 uppercase tracking-wider mb-1">
-                        Selling Price *
-                      </label>
-                      <div className="relative">
-                        <span className="text-xs font-black text-emerald-600 absolute left-3 top-1/2 -translate-y-1/2">
-                          Rs.
-                        </span>
-                        <input
-                          ref={priceInputRef}
-                          type="number"
-                          step="any"
-                          min="0"
-                          required
-                          placeholder="e.g. 125.00"
-                          value={price}
-                          onChange={(e) => {
-                            const pVal = e.target.value === '' ? '' : parseFloat(e.target.value);
-                            setPrice(pVal);
-                            if (typeof pVal === 'number' && pVal > 0 && typeof costPrice === 'number' && costPrice > 0) {
-                              setMarginPercent(Math.round(((pVal - costPrice) / costPrice) * 100 * 10) / 10);
-                            }
-                          }}
-                          className="w-full pl-9 pr-2.5 py-2.5 bg-white border border-emerald-300 rounded-xl text-emerald-950 text-xs sm:text-sm focus:outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/20 font-black text-emerald-700 font-mono transition-all shadow-inner"
-                        />
-                      </div>
                     </div>
                   </div>
 
-                  {typeof costPrice === 'number' && typeof price === 'number' && costPrice > 0 && price > 0 && (
-                    <div className="p-3 bg-gradient-to-r from-emerald-600 to-teal-600 rounded-xl text-white text-xs flex items-center justify-between font-bold shadow-sm border border-emerald-500">
-                      <span className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-amber-300 animate-pulse" />
-                        <span>Profit / Unit: <strong className="font-mono text-amber-200 text-sm">Rs. {(price - costPrice).toFixed(2)}</strong></span>
-                      </span>
-                      <span className="text-emerald-950 font-black bg-amber-300 px-2.5 py-1 rounded-lg text-xs shadow-xs tracking-tight">
-                        Margin: {(((price - costPrice) / costPrice) * 100).toFixed(1)}%
-                      </span>
-                    </div>
-                  )}
-                </motion.div>
-
-                {/* Product Discount Configuration */}
-                <div className="p-3.5 bg-rose-50/60 rounded-2xl border border-rose-200/80 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={discountActive}
-                        onChange={(e) => setDiscountActive(e.target.checked)}
-                        className="w-4 h-4 text-rose-600 rounded border-slate-300 focus:ring-rose-500 cursor-pointer"
-                      />
-                      <Tag className="w-3.5 h-3.5 text-rose-600" />
-                      <span>Apply Discount on this Product</span>
-                    </label>
-                    {discountActive && (
-                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200 uppercase tracking-wider">
-                        Active Discount
-                      </span>
-                    )}
-                  </div>
-
-                  {discountActive && (
-                    <div className="space-y-2.5 pt-1">
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
-                            Discount Type
-                          </label>
-                          <select
-                            value={discountType}
-                            onChange={(e) => setDiscountType(e.target.value as any)}
-                            className="w-full px-3 py-2 bg-white border border-rose-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-rose-500"
-                          >
-                            <option value="percentage">Percentage (%)</option>
-                            <option value="fixed">Fixed Rupees (Rs.)</option>
-                          </select>
+                  {/* Card 4: Pricing & Profit Margins */}
+                  <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-black text-xs border border-emerald-100">
+                          4
                         </div>
                         <div>
-                          <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
-                            {discountType === 'percentage' ? 'Percentage Off (%)' : 'Amount Off (Rs.)'}
-                          </label>
+                          <h3 className="text-sm font-extrabold text-slate-900 tracking-tight">Pricing & Margins</h3>
+                          <p className="text-[11px] text-slate-500">Cost, margin percentage, and retail price (PKR)</p>
+                        </div>
+                      </div>
+                      <span className="text-[10px] text-emerald-800 font-extrabold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                        Auto-Calculates
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {/* 1. Cost Price */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                          Cost Price *
+                        </label>
+                        <div className="relative">
+                          <span className="text-xs font-black text-slate-400 absolute left-3 top-1/2 -translate-y-1/2">
+                            Rs.
+                          </span>
                           <input
                             type="number"
                             step="any"
                             min="0"
-                            max={discountType === 'percentage' ? 100 : undefined}
-                            placeholder={discountType === 'percentage' ? 'e.g. 10' : 'e.g. 50'}
-                            value={discountValue}
-                            onChange={(e) => setDiscountValue(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                            className="w-full px-3 py-2 bg-white border border-rose-200 rounded-xl text-xs font-bold text-rose-700 focus:outline-none focus:border-rose-500 font-mono"
+                            required
+                            placeholder="100.00"
+                            value={costPrice}
+                            onChange={(e) => {
+                              const val = e.target.value === '' ? '' : parseFloat(e.target.value);
+                              setCostPrice(val);
+                              if (typeof val === 'number' && val > 0 && typeof marginPercent === 'number') {
+                                const calcSell = Math.round(val * (1 + marginPercent / 100) * 100) / 100;
+                                setPrice(calcSell);
+                              } else if (typeof val === 'number' && val > 0 && typeof price === 'number' && price > 0) {
+                                setMarginPercent(Math.round(((price - val) / val) * 100 * 10) / 10);
+                              }
+                            }}
+                            className="w-full pl-9 pr-2 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs sm:text-sm focus:outline-none focus:border-blue-500 focus:bg-white font-mono font-bold transition-all shadow-2xs"
                           />
                         </div>
                       </div>
 
-                      {/* Time Limit & Date Range Settings */}
-                      <div className="p-3 bg-white/80 border border-rose-200 rounded-xl space-y-2">
-                        <div className="flex items-center justify-between">
-                          <label className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={hasDateLimit}
-                              onChange={(e) => {
-                                setHasDateLimit(e.target.checked);
-                                if (e.target.checked && !discountEndDate) {
-                                  applyDiscountDatePreset(7);
-                                }
-                              }}
-                              className="w-3.5 h-3.5 text-rose-600 rounded border-slate-300 focus:ring-rose-500 cursor-pointer"
-                            />
-                            <Calendar className="w-3.5 h-3.5 text-rose-600" />
-                            <span>Set Time Limit / Expiry Date</span>
-                          </label>
-                          {hasDateLimit && (
-                            <span className="text-[9px] font-black uppercase text-rose-700 bg-rose-100 px-2 py-0.5 rounded-full border border-rose-200">
-                              Time-Limited
+                      {/* 2. Margin Percentage */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                          Margin %
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            step="any"
+                            placeholder="25"
+                            value={marginPercent}
+                            onChange={(e) => {
+                              const mVal = e.target.value === '' ? '' : parseFloat(e.target.value);
+                              setMarginPercent(mVal);
+                              if (typeof mVal === 'number' && typeof costPrice === 'number' && costPrice > 0) {
+                                const calcSell = Math.round(costPrice * (1 + mVal / 100) * 100) / 100;
+                                setPrice(calcSell);
+                              }
+                            }}
+                            className="w-full pl-3 pr-7 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs sm:text-sm focus:outline-none focus:border-blue-500 focus:bg-white font-mono font-bold transition-all shadow-2xs"
+                          />
+                          <span className="text-xs font-black text-slate-500 absolute right-2.5 top-1/2 -translate-y-1/2">
+                            %
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* 3. Selling Price */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                          Selling Price *
+                        </label>
+                        <div className="relative">
+                          <span className="text-xs font-black text-emerald-600 absolute left-3 top-1/2 -translate-y-1/2">
+                            Rs.
+                          </span>
+                          <input
+                            ref={priceInputRef}
+                            type="number"
+                            step="any"
+                            min="0"
+                            required
+                            placeholder="125.00"
+                            value={price}
+                            onChange={(e) => {
+                              const pVal = e.target.value === '' ? '' : parseFloat(e.target.value);
+                              setPrice(pVal);
+                              if (typeof pVal === 'number' && pVal > 0 && typeof costPrice === 'number' && costPrice > 0) {
+                                setMarginPercent(Math.round(((pVal - costPrice) / costPrice) * 100 * 10) / 10);
+                              }
+                            }}
+                            className="w-full pl-9 pr-2 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs sm:text-sm focus:outline-none focus:border-emerald-600 focus:bg-white font-mono font-extrabold text-emerald-700 transition-all shadow-2xs"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Clean Profit & Margin Summary Card */}
+                    {(() => {
+                      const numSellingPrice = typeof price === 'number' ? price : (price !== '' ? parseFloat(price as any) : 0);
+                      const numCostPrice = typeof costPrice === 'number' ? costPrice : (costPrice !== '' ? parseFloat(costPrice as any) : 0);
+                      
+                      if (numSellingPrice <= 0 && numCostPrice <= 0) return null;
+
+                      const unitProfit = numSellingPrice - numCostPrice;
+                      const marginPct = numSellingPrice > 0 ? (unitProfit / numSellingPrice) * 100 : 0;
+                      const markupPct = numCostPrice > 0 ? (unitProfit / numCostPrice) * 100 : 0;
+                      const isProfit = unitProfit >= 0;
+
+                      return (
+                        <div className={`p-3 rounded-xl border transition-all ${
+                          isProfit ? 'bg-emerald-50/70 border-emerald-200' : 'bg-red-50/70 border-red-200'
+                        }`}>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                              <TrendingUp className={`w-3.5 h-3.5 ${isProfit ? 'text-emerald-600' : 'text-red-600'}`} />
+                              <span>Profit Preview ({sellBy === 'weight' ? 'per kg' : 'per unit'})</span>
                             </span>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${
+                              isProfit ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+                            }`}>
+                              {isProfit ? '✓ Profitable' : '⚠ Low / Negative Margin'}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-2 text-center">
+                            <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
+                              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">Est. Profit</div>
+                              <div className={`text-xs sm:text-sm font-black font-mono mt-0.5 ${isProfit ? 'text-emerald-700' : 'text-red-700'}`}>
+                                Rs. {unitProfit.toFixed(2)}
+                              </div>
+                            </div>
+
+                            <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
+                              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">Margin</div>
+                              <div className={`text-xs sm:text-sm font-black font-mono mt-0.5 ${isProfit ? 'text-emerald-700' : 'text-red-700'}`}>
+                                {marginPct.toFixed(1)}%
+                              </div>
+                            </div>
+
+                            <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
+                              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">Markup</div>
+                              <div className={`text-xs sm:text-sm font-black font-mono mt-0.5 ${isProfit ? 'text-emerald-700' : 'text-red-700'}`}>
+                                {numCostPrice > 0 ? `${markupPct.toFixed(1)}%` : 'N/A'}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Card 5: Inventory Stock */}
+                  <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center font-black text-xs border border-amber-100">
+                          5
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-extrabold text-slate-900 tracking-tight">Inventory & Stock</h3>
+                          <p className="text-[11px] text-slate-500">Initial quantity or stock adjustments</p>
+                        </div>
+                      </div>
+                      {existingProduct && (
+                        <span className="text-[11px] font-mono text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 font-bold">
+                          Current: {existingProduct.stockQuantity} {sellBy === 'weight' || existingProduct.sellBy === 'weight' || unitType === 'kg' ? 'kg' : 'units'}
+                        </span>
+                      )}
+                    </div>
+
+                    {existingProduct ? (
+                      <div className="space-y-3">
+                        {/* Stock Mode Switcher */}
+                        <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setStockAdjustmentMode('keep');
+                              setStockQuantityToAdd('');
+                            }}
+                            className={`py-1.5 px-2 rounded-lg transition-all text-center cursor-pointer ${
+                              stockAdjustmentMode === 'keep'
+                                ? 'bg-white text-slate-900 shadow-xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            Keep Current
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setStockAdjustmentMode('add')}
+                            className={`py-1.5 px-2 rounded-lg transition-all text-center cursor-pointer ${
+                              stockAdjustmentMode === 'add'
+                                ? 'bg-emerald-600 text-white shadow-xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            + Add Stock
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setStockAdjustmentMode('set')}
+                            className={`py-1.5 px-2 rounded-lg transition-all text-center cursor-pointer ${
+                              stockAdjustmentMode === 'set'
+                                ? 'bg-orange-600 text-white shadow-xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            Set Total
+                          </button>
+                        </div>
+
+                        {stockAdjustmentMode === 'keep' ? (
+                          <p className="text-[11px] text-slate-500">
+                            Current balance remains at <strong>{existingProduct.stockQuantity} {sellBy === 'weight' || unitType === 'kg' ? 'kg' : 'units'}</strong>.
+                          </p>
+                        ) : (
+                          <div className="space-y-1">
+                            <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                              {stockAdjustmentMode === 'add'
+                                ? `Quantity to ADD (+${sellBy === 'weight' || unitType === 'kg' ? 'kg' : 'units'}) *`
+                                : `New Total Count (${sellBy === 'weight' || unitType === 'kg' ? 'kg' : 'units'}) *`}
+                            </label>
+                            <input
+                              ref={quantityInputRef}
+                              type="number"
+                              step="any"
+                              min="0"
+                              required={true}
+                              placeholder={stockAdjustmentMode === 'add' ? 'e.g. 10 or 50' : 'e.g. 100'}
+                              value={stockQuantityToAdd}
+                              onChange={(e) => setStockQuantityToAdd(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                              className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-blue-500 focus:bg-white font-mono font-bold transition-all shadow-2xs"
+                            />
+                            <p className="text-[10px] text-slate-400">
+                              {stockAdjustmentMode === 'add' && typeof stockQuantityToAdd === 'number' && !isNaN(stockQuantityToAdd)
+                                ? `New Total will be: ${Math.round((existingProduct.stockQuantity + stockQuantityToAdd) * 1000) / 1000} ${sellBy === 'weight' || unitType === 'kg' ? 'kg' : 'units'}`
+                                : 'Enter quantity to update inventory balance.'}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                            {sellBy === 'weight' ? 'Initial Stock (kg)' : 'Initial Stock Quantity'}
+                          </label>
+                          <input
+                            ref={quantityInputRef}
+                            type="number"
+                            step="any"
+                            min="0"
+                            placeholder="e.g. 50 (default 0)"
+                            value={stockQuantityToAdd}
+                            onChange={(e) => setStockQuantityToAdd(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                            className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-blue-500 focus:bg-white font-mono font-bold transition-all shadow-2xs"
+                          />
+                          <p className="text-[10px] text-slate-400 mt-1">Optional. Defaults to 0.</p>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                            Min Stock Alert
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="e.g. 5"
+                            value={minStockLevel}
+                            onChange={(e) => setMinStockLevel(parseInt(e.target.value || '5', 10))}
+                            className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-blue-500 focus:bg-white font-mono font-bold transition-all shadow-2xs"
+                          />
+                          <p className="text-[10px] text-slate-400 mt-1">Triggers low-stock warnings.</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Card 6: Promotional Discounts */}
+                  <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-800 flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={discountActive}
+                          onChange={(e) => setDiscountActive(e.target.checked)}
+                          className="w-4 h-4 text-rose-600 rounded border-slate-300 focus:ring-rose-500 cursor-pointer"
+                        />
+                        <Tag className="w-3.5 h-3.5 text-rose-600" />
+                        <span>Apply Discount on this Product</span>
+                      </label>
+                      {discountActive && (
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 uppercase tracking-wider">
+                          Active
+                        </span>
+                      )}
+                    </div>
+
+                    {discountActive && (
+                      <div className="space-y-3 pt-2 border-t border-slate-100">
+                        <div className="grid grid-cols-2 gap-2.5">
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                              Discount Type
+                            </label>
+                            <select
+                              value={discountType}
+                              onChange={(e) => setDiscountType(e.target.value as any)}
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-rose-500"
+                            >
+                              <option value="percentage">Percentage (%)</option>
+                              <option value="fixed">Fixed Rupees (Rs.)</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                              {discountType === 'percentage' ? 'Percentage Off (%)' : 'Amount Off (Rs.)'}
+                            </label>
+                            <input
+                              type="number"
+                              step="any"
+                              min="0"
+                              max={discountType === 'percentage' ? 100 : undefined}
+                              placeholder={discountType === 'percentage' ? 'e.g. 10' : 'e.g. 50'}
+                              value={discountValue}
+                              onChange={(e) => setDiscountValue(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-rose-700 focus:outline-none focus:border-rose-500 font-mono"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Time Limit & Date Range Settings */}
+                        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={hasDateLimit}
+                                onChange={(e) => {
+                                  setHasDateLimit(e.target.checked);
+                                  if (e.target.checked && !discountEndDate) {
+                                    applyDiscountDatePreset(7);
+                                  }
+                                }}
+                                className="w-3.5 h-3.5 text-rose-600 rounded border-slate-300 focus:ring-rose-500 cursor-pointer"
+                              />
+                              <Calendar className="w-3.5 h-3.5 text-rose-600" />
+                              <span>Set Expiry Date Limit</span>
+                            </label>
+                          </div>
+
+                          {hasDateLimit && (
+                            <div className="space-y-2 pt-0.5">
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5">
+                                    Valid From
+                                  </label>
+                                  <input
+                                    type="date"
+                                    value={discountStartDate}
+                                    onChange={(e) => setDiscountStartDate(e.target.value)}
+                                    className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-rose-500"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5">
+                                    Valid Until
+                                  </label>
+                                  <input
+                                    type="date"
+                                    min={discountStartDate}
+                                    value={discountEndDate}
+                                    onChange={(e) => setDiscountEndDate(e.target.value)}
+                                    className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-rose-800 focus:outline-none focus:border-rose-500"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="flex flex-wrap gap-1">
+                                {[
+                                  { label: 'Today Only', val: 'today' as const },
+                                  { label: '3 Days', val: 3 },
+                                  { label: '7 Days', val: 7 },
+                                  { label: '14 Days', val: 14 },
+                                  { label: '30 Days', val: 30 }
+                                ].map((preset) => (
+                                  <button
+                                    key={preset.label}
+                                    type="button"
+                                    onClick={() => applyDiscountDatePreset(preset.val)}
+                                    className="px-2 py-0.5 rounded text-[10px] font-bold bg-white border border-slate-200 text-slate-600 hover:text-rose-600 hover:border-rose-300 transition-all cursor-pointer"
+                                  >
+                                    {preset.label}
+                                  </button>
+                                ))}
+                              </div>
+
+                              {discountStartDate && discountEndDate && (
+                                <div className="text-[10px] text-rose-800 font-bold bg-rose-50/80 p-1.5 rounded-lg border border-rose-200 flex items-center gap-1">
+                                  <Clock className="w-3 h-3 text-rose-600 shrink-0" />
+                                  <span>Active: <strong>{formatShortDate(discountStartDate)}</strong> → <strong>{formatShortDate(discountEndDate)}</strong></span>
+                                </div>
+                              )}
+                            </div>
                           )}
                         </div>
 
-                        {hasDateLimit ? (
-                          <div className="space-y-2 pt-0.5">
-                            <div className="grid grid-cols-2 gap-2">
-                              <div>
-                                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5">
-                                  Valid From *
-                                </label>
-                                <input
-                                  type="date"
-                                  value={discountStartDate}
-                                  onChange={(e) => setDiscountStartDate(e.target.value)}
-                                  className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-rose-500"
-                                />
+                        {/* Live calculation preview */}
+                        {(() => {
+                          const originalP = typeof price === 'number' ? price : (price ? parseFloat(price as any) : 0);
+                          const discVal = typeof discountValue === 'number' ? discountValue : (discountValue ? parseFloat(discountValue as any) : 0);
+                          if (originalP > 0 && discVal > 0) {
+                            const discAmt = discountType === 'percentage' ? (originalP * discVal) / 100 : discVal;
+                            const finalP = Math.max(0, originalP - discAmt);
+                            return (
+                              <div className="p-2.5 bg-rose-50/50 rounded-xl border border-rose-200 flex items-center justify-between text-xs">
+                                <div>
+                                  <span className="text-slate-500 text-[10px] block">Customer Pays</span>
+                                  <span className="font-black text-rose-700 text-sm font-mono">Rs. {finalP.toFixed(2)}</span>
+                                </div>
+                                <div className="text-right">
+                                  <span className="text-slate-500 text-[10px] block">Customer Saves</span>
+                                  <span className="font-bold text-emerald-600 font-mono">Rs. {discAmt.toFixed(2)} {discountType === 'percentage' ? `(${discVal}%)` : ''}</span>
+                                </div>
                               </div>
-                              <div>
-                                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5">
-                                  Valid Until *
-                                </label>
-                                <input
-                                  type="date"
-                                  min={discountStartDate}
-                                  value={discountEndDate}
-                                  onChange={(e) => setDiscountEndDate(e.target.value)}
-                                  className="w-full px-2 py-1.5 bg-white border border-rose-300 rounded-lg text-xs font-bold text-rose-800 focus:outline-none focus:border-rose-500"
-                                />
-                              </div>
-                            </div>
-
-                            <div className="flex flex-wrap gap-1">
-                              {[
-                                { label: 'Today Only', val: 'today' as const },
-                                { label: '3 Days', val: 3 },
-                                { label: '7 Days', val: 7 },
-                                { label: '14 Days', val: 14 },
-                                { label: '30 Days', val: 30 }
-                              ].map((preset) => (
-                                <button
-                                  key={preset.label}
-                                  type="button"
-                                  onClick={() => applyDiscountDatePreset(preset.val)}
-                                  className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-50 border border-slate-200 text-slate-600 hover:text-rose-600 hover:border-rose-300 transition-all cursor-pointer"
-                                >
-                                  {preset.label}
-                                </button>
-                              ))}
-                            </div>
-
-                            {discountStartDate && discountEndDate && (
-                              <div className="text-[10px] text-rose-800 font-bold bg-rose-50/80 p-1.5 rounded-lg border border-rose-200 flex items-center gap-1">
-                                <Clock className="w-3 h-3 text-rose-600 shrink-0" />
-                                <span>Active: <strong>{formatShortDate(discountStartDate)}</strong> → <strong>{formatShortDate(discountEndDate)}</strong></span>
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <p className="text-[10px] text-slate-400">
-                            No time limit. Discount will remain active indefinitely until unchecked.
-                          </p>
-                        )}
+                            );
+                          }
+                          return null;
+                        })()}
                       </div>
+                    )}
+                  </div>
 
-                      {/* Live calculation preview */}
-                      {(() => {
-                        const originalP = typeof price === 'number' ? price : (price ? parseFloat(price as any) : 0);
-                        const discVal = typeof discountValue === 'number' ? discountValue : (discountValue ? parseFloat(discountValue as any) : 0);
-                        if (originalP > 0 && discVal > 0) {
-                          const discAmt = discountType === 'percentage' ? (originalP * discVal) / 100 : discVal;
-                          const finalP = Math.max(0, originalP - discAmt);
-                          return (
-                            <div className="p-2.5 bg-white rounded-xl border border-rose-200/90 flex items-center justify-between text-xs">
-                              <div>
-                                <span className="text-slate-500 text-[10px] block">Customer Pays</span>
-                                <span className="font-black text-rose-700 text-sm font-mono">Rs. {finalP.toFixed(2)}</span>
-                              </div>
-                              <div className="text-right">
-                                <span className="text-slate-500 text-[10px] block">Customer Saves</span>
-                                <span className="font-bold text-emerald-600 font-mono">Rs. {discAmt.toFixed(2)} {discountType === 'percentage' ? `(${discVal}%)` : ''}</span>
-                              </div>
-                            </div>
-                          );
-                        }
-                        return null;
-                      })()}
-                    </div>
-                  )}
                 </div>
 
-                {/* Live Profit & Margin Indicator */}
-                {(() => {
-                  const numSellingPrice = typeof price === 'number' ? price : (price !== '' ? parseFloat(price as any) : 0);
-                  const numCostPrice = typeof costPrice === 'number' ? costPrice : (costPrice !== '' ? parseFloat(costPrice as any) : 0);
-                  
-                  if (numSellingPrice <= 0 && numCostPrice <= 0) return null;
-
-                  const unitProfit = numSellingPrice - numCostPrice;
-                  const marginPercent = numSellingPrice > 0 ? (unitProfit / numSellingPrice) * 100 : 0;
-                  const markupPercent = numCostPrice > 0 ? (unitProfit / numCostPrice) * 100 : 0;
-                  const isProfit = unitProfit >= 0;
-
-                  return (
-                    <div className={`p-3.5 rounded-2xl border transition-all ${
-                      isProfit ? 'bg-emerald-50/70 border-emerald-200' : 'bg-red-50/70 border-red-200'
-                    }`}>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                          <TrendingUp className={`w-4 h-4 ${isProfit ? 'text-emerald-600' : 'text-red-600'}`} />
-                          Profit Preview ({sellBy === 'weight' ? 'per kg' : 'per item'})
-                        </span>
-                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
-                          isProfit ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
-                        }`}>
-                          {isProfit ? '✓ Profitable' : '⚠ Low / Negative Margin'}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-2 text-center">
-                        <div className="bg-white p-2 rounded-xl border border-slate-200/80 shadow-xs">
-                          <div className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">Est. Profit</div>
-                          <div className={`text-xs sm:text-sm font-black font-mono mt-0.5 ${isProfit ? 'text-emerald-700' : 'text-red-700'}`}>
-                            Rs. {unitProfit.toFixed(2)}
-                          </div>
-                        </div>
-
-                        <div className="bg-white p-2 rounded-xl border border-slate-200/80 shadow-xs">
-                          <div className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">Margin</div>
-                          <div className={`text-xs sm:text-sm font-black font-mono mt-0.5 ${isProfit ? 'text-emerald-700' : 'text-red-700'}`}>
-                            {marginPercent.toFixed(1)}%
-                          </div>
-                        </div>
-
-                        <div className="bg-white p-2 rounded-xl border border-slate-200/80 shadow-xs">
-                          <div className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">Markup</div>
-                          <div className={`text-xs sm:text-sm font-black font-mono mt-0.5 ${isProfit ? 'text-emerald-700' : 'text-red-700'}`}>
-                            {numCostPrice > 0 ? `${markupPercent.toFixed(1)}%` : 'N/A'}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
               </div>
 
-              {/* Action Buttons */}
-              <div className="space-y-2.5 pt-2">
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-3.5 px-4 bg-orange-600 hover:bg-orange-500 text-white font-extrabold rounded-2xl shadow-lg shadow-orange-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer text-xs uppercase tracking-wider"
-                >
-                  <PlusCircle className="w-4 h-4" />
-                  {loading ? 'Saving Stock...' : existingProduct ? 'Update Stock Batch & Price' : 'Register New Product Stock'}
-                </button>
-
-                {/* Quick Barcode Label Generation for current product */}
-                <button
-                  type="button"
-                  onClick={() => handleOpenGeneratorForProduct()}
-                  className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl transition-all flex items-center justify-center gap-2 cursor-pointer text-xs"
-                >
-                  <Printer className="w-3.5 h-3.5 text-amber-400" />
-                  Generate & Print Barcode Label for this Product
-                </button>
-
-                {existingProduct && (
+              {/* Form Action Footer Card */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+                <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
+                  <span className={`text-xs font-bold px-3 py-1.5 rounded-xl border ${
+                    existingProduct 
+                      ? 'bg-amber-50 text-amber-900 border-amber-200' 
+                      : 'bg-blue-50 text-blue-900 border-blue-200'
+                  }`}>
+                    {existingProduct ? `Editing: ${existingProduct.name}` : 'New Product Registration'}
+                  </span>
+                  
                   <button
                     type="button"
-                    onClick={() => handleDeleteProduct(existingProduct)}
-                    disabled={loading}
-                    className="w-full py-2 px-4 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer text-xs"
+                    onClick={handleResetForm}
+                    className="text-xs font-bold text-slate-600 hover:text-slate-900 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 transition-all cursor-pointer shadow-2xs"
                   >
-                    <Trash2 className="w-3.5 h-3.5 text-red-600" />
-                    Delete Product From Stock
+                    Reset Form
                   </button>
-                )}
+                </div>
+
+                <div className="flex items-center gap-2.5 w-full sm:w-auto flex-wrap justify-end">
+                  {existingProduct && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteProduct(existingProduct)}
+                      disabled={loading}
+                      className="px-3.5 py-2.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer text-xs shadow-2xs"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                      <span>Delete</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => handleOpenGeneratorForProduct()}
+                    className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer text-xs shadow-2xs"
+                  >
+                    <Printer className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Print Barcode</span>
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer text-xs uppercase tracking-wider active:scale-95 flex-1 sm:flex-initial"
+                  >
+                    <PlusCircle className="w-4 h-4" />
+                    <span>{loading ? 'Saving Stock...' : existingProduct ? 'Update Stock & Price' : 'Register Product Stock'}</span>
+                  </button>
+                </div>
               </div>
 
             </form>

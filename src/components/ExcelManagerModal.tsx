@@ -340,7 +340,7 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
         const defaultCat = rows[rowIndex]?.category || 'General';
         setRows(prev => [
           ...prev,
-          { id: newId, name: '', costPrice: '', margin: '', price: '', quantity: '', category: defaultCat, barcode: '' }
+          { id: newId, name: '', costPrice: '', margin: '', price: '', quantity: '', category: defaultCat, barcode: '', imageUrl: '', sellBy: 'unit', unitType: 'piece' }
         ]);
         setTimeout(() => {
           cellRefs.current[`${rowIndex + 1}-${fieldName}`]?.focus();
@@ -382,7 +382,7 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
         const defaultCat = rows[rowIndex]?.category || 'General';
         setRows(prev => [
           ...prev,
-          { id: newId, name: '', costPrice: '', margin: '', price: '', quantity: '', category: defaultCat, barcode: '' }
+          { id: newId, name: '', costPrice: '', margin: '', price: '', quantity: '', category: defaultCat, barcode: '', imageUrl: '', sellBy: 'unit', unitType: 'piece' }
         ]);
 
         setTimeout(() => {

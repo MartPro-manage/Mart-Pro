@@ -27,7 +27,15 @@ import { ItemDiscountModal } from './ItemDiscountModal';
 import { ManageCategoriesView } from './ManageCategoriesView';
 import { downloadBarcodeForProduct } from '../lib/barcodeDownload';
 import { BatchProductRow } from '../lib/excelParser';
-import { getAllCategories, addCustomCategoryToStore, saveNewCategoryToStore, fetchStoreManagedCategories } from '../lib/categories';
+import { 
+  getAllCategories, 
+  addCustomCategoryToStore, 
+  saveNewCategoryToStore, 
+  fetchStoreManagedCategories,
+  getCompaniesForCategory,
+  getDefaultSizesForCategory,
+  normalizeSizeLabel
+} from '../lib/categories';
 import { generateNextShortcutCode, generateNext4DigitSerialNumber, generate5DigitBarcode } from '../utils/productShortcuts';
 import { getProductDiscountInfo, formatShortDate } from '../utils/discountUtils';
 import { 
@@ -76,7 +84,10 @@ import {
   List,
   ShoppingBag,
   Hash,
-  CheckCircle2
+  CheckCircle2,
+  Globe,
+  Copy,
+  ExternalLink
 } from 'lucide-react';
 
 interface ProductRegisterViewProps {
@@ -105,6 +116,12 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   const [managedCategories, setManagedCategories] = useState<ManagedCategory[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
+  const [isAddingCustomCompany, setIsAddingCustomCompany] = useState(false);
+  const [customCompanyName, setCustomCompanyName] = useState('');
+  const [isAddingCustomSize, setIsAddingCustomSize] = useState(false);
+  const [customSizeName, setCustomSizeName] = useState('');
+  const [customCompanyList, setCustomCompanyList] = useState<CompanyBrand[]>([]);
+  const [customSizeList, setCustomSizeList] = useState<string[]>([]);
   const [isManageCategoriesModalOpen, setIsManageCategoriesModalOpen] = useState(false);
 
   // Form states
@@ -115,6 +132,16 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   const [name, setName] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [imageInputMode, setImageInputMode] = useState<'upload' | 'url'>('upload');
+  
+  // Google Image Search & Auto-Paste states
+  const [isGeneratingAiImage, setIsGeneratingAiImage] = useState(false);
+  const [autoAiImageEnabled, setAutoAiImageEnabled] = useState(true);
+  const [aiImageSource, setAiImageSource] = useState<string | null>(null);
+  const [imageSourceDomain, setImageSourceDomain] = useState<string | null>(null);
+  const [fallbackThumbnailUrl, setFallbackThumbnailUrl] = useState<string | null>(null);
+  const [searchCandidates, setSearchCandidates] = useState<Array<{ url: string; thumbnail: string; title: string; domain?: string }>>([]);
+  const aiImageFetchDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const lastFetchedNameRef = useRef<string>('');
   const [weight, setWeight] = useState('');
   const [weightPerUnit, setWeightPerUnit] = useState<number | ''>('');
   const [category, setCategory] = useState('General');
@@ -198,14 +225,29 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     return managedCategories.find(c => c.name.toLowerCase() === category.toLowerCase()) || null;
   }, [managedCategories, category]);
 
+  // Companies strictly according to the category chosen by the user
   const activeCategoryCompanies = useMemo(() => {
-    return activeManagedCategory?.companies || [];
-  }, [activeManagedCategory]);
+    const base = getCompaniesForCategory(category, managedCategories);
+    const extra = customCompanyList.filter(c => !base.some(b => b.id === c.id));
+    return [...base, ...extra];
+  }, [category, managedCategories, customCompanyList]);
 
   const activeSelectedCompany = useMemo(() => {
     if (!selectedCompanyId) return null;
     return activeCategoryCompanies.find(c => c.id === selectedCompanyId) || null;
   }, [activeCategoryCompanies, selectedCompanyId]);
+
+  // Sizes available according to selected company or category defaults
+  const activeAvailableSizes = useMemo(() => {
+    let sizes: string[] = [];
+    if (activeSelectedCompany && activeSelectedCompany.sizes && activeSelectedCompany.sizes.length > 0) {
+      sizes = activeSelectedCompany.sizes.map(s => normalizeSizeLabel(s)).filter(Boolean);
+    } else {
+      sizes = getDefaultSizesForCategory(category);
+    }
+    const combined = Array.from(new Set([...sizes, ...customSizeList]));
+    return combined;
+  }, [activeSelectedCompany, category, customSizeList]);
 
   // Preview system assigned 4-digit serial number
   const previewNextSerialNumber = useMemo(() => {
@@ -475,6 +517,136 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     }
   }, [barcode, serialNumber, products]);
 
+  // Handler to search Google and copy/paste real product image URL
+  const handleSearchProductImageOnline = async (productTitle?: string, force = false) => {
+    const targetTitle = (productTitle !== undefined ? productTitle : name).trim();
+    if (!targetTitle) {
+      if (force) {
+        showNotification('error', 'Please enter a product name first to search Google for an image.');
+      }
+      return;
+    }
+
+    if (!force && lastFetchedNameRef.current.toLowerCase() === targetTitle.toLowerCase() && imageUrl) {
+      return;
+    }
+
+    setIsGeneratingAiImage(true);
+    try {
+      const brandName = activeSelectedCompany?.name || undefined;
+      const res = await fetch('/api/ai/product-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: targetTitle,
+          category: category !== 'General' ? category : undefined,
+          brand: brandName,
+          size: selectedSize || undefined,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Image search request failed');
+      }
+
+      const data = await res.json();
+      if (data && data.imageUrl) {
+        setImageUrl(data.imageUrl);
+        setFallbackThumbnailUrl(data.thumbnailUrl || null);
+        setAiImageSource(data.source || 'google_web_search');
+        setImageSourceDomain(data.sourceDomain || null);
+        if (Array.isArray(data.candidates) && data.candidates.length > 0) {
+          setSearchCandidates(data.candidates);
+        }
+        lastFetchedNameRef.current = targetTitle;
+        showNotification('success', `✓ Searched Google & pasted image URL for "${targetTitle}"!`);
+      }
+    } catch (err: any) {
+      console.warn('[Online Image Search Error]:', err);
+      if (force) {
+        showNotification('error', 'Could not retrieve image from Google. You can paste any image URL or upload manually.');
+      }
+    } finally {
+      setIsGeneratingAiImage(false);
+    }
+  };
+  const handleAutoGenerateProductPicture = handleSearchProductImageOnline;
+
+  // Automatically trigger AI Product Picture when user enters or edits product name/category/brand
+  useEffect(() => {
+    if (!autoAiImageEnabled) return;
+    const trimmed = name.trim();
+    if (trimmed.length < 3) return;
+    if (existingProduct && imageUrl && !aiImageSource) return;
+
+    if (aiImageFetchDebounceRef.current) {
+      clearTimeout(aiImageFetchDebounceRef.current);
+    }
+
+    aiImageFetchDebounceRef.current = setTimeout(() => {
+      if (!imageUrl || aiImageSource) {
+        handleAutoGenerateProductPicture(trimmed, false);
+      }
+    }, 750);
+
+    return () => {
+      if (aiImageFetchDebounceRef.current) {
+        clearTimeout(aiImageFetchDebounceRef.current);
+      }
+    };
+  }, [name, category, selectedCompanyId, selectedSize, autoAiImageEnabled]);
+
+  const handleSelectCompany = (comp: CompanyBrand | null) => {
+    if (!comp) {
+      setSelectedCompanyId(null);
+      setSelectedSize(null);
+      return;
+    }
+    setSelectedCompanyId(comp.id);
+    setSelectedSize(null);
+    // User adds product name manually; do not automatically add company name or category
+  };
+
+  const handleSelectSize = (szStr: string | null) => {
+    if (!szStr) {
+      setSelectedSize(null);
+      return;
+    }
+    setSelectedSize(szStr);
+    if (szStr.includes('kg') || szStr.includes('g') || szStr.includes('Liter') || szStr.includes('ml')) {
+      setWeight(szStr);
+    }
+    // User adds product name manually; do not automatically add company name or category
+  };
+
+  const handleAddCustomCompanySubmit = () => {
+    const trimmed = customCompanyName.trim();
+    if (!trimmed) return;
+    const newComp: CompanyBrand = {
+      id: `comp-custom-${Date.now()}`,
+      name: trimmed,
+      sizes: getDefaultSizesForCategory(category),
+      createdAt: new Date().toISOString()
+    };
+    setCustomCompanyList(prev => [...prev, newComp]);
+    setSelectedCompanyId(newComp.id);
+    setSelectedSize(null);
+    setCustomCompanyName('');
+    setIsAddingCustomCompany(false);
+    // User adds product name manually; do not automatically add company name or category
+    showNotification('success', `Added company "${trimmed}" for ${category}!`);
+  };
+
+  const handleAddCustomSizeSubmit = () => {
+    const trimmed = customSizeName.trim();
+    if (!trimmed) return;
+    setCustomSizeList(prev => [...prev, trimmed]);
+    handleSelectSize(trimmed);
+    setCustomSizeName('');
+    setIsAddingCustomSize(false);
+    showNotification('success', `Selected size "${trimmed}"!`);
+  };
+
   const showNotification = (type: 'success' | 'error', text: string) => {
     setMsg({ type, text });
     setTimeout(() => setMsg(null), 5000);
@@ -485,11 +657,17 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     setSerialNumber('');
     setName('');
     setImageUrl('');
+    setAiImageSource(null);
+    lastFetchedNameRef.current = '';
     setWeight('');
     setWeightPerUnit('');
     setCategory('General');
     setSelectedCompanyId(null);
     setSelectedSize(null);
+    setIsAddingCustomCompany(false);
+    setIsAddingCustomSize(false);
+    setCustomCompanyList([]);
+    setCustomSizeList([]);
     setCostPrice('');
     setMarginPercent('');
     setPrice('');
@@ -586,17 +764,11 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     let trimmedBarcode = barcode.trim();
     let trimmedName = name.trim();
     if (!trimmedName) {
-      const compObj = activeManagedCategory?.companies?.find(c => c.id === selectedCompanyId);
-      const sizeObj = compObj?.sizes?.find(s => s.name === selectedSize);
-      if (compObj && sizeObj) {
-        trimmedName = `${compObj.name} ${category !== 'General' ? category : ''} ${sizeObj.name}`.trim();
-      } else if (compObj) {
-        trimmedName = `${compObj.name} ${category !== 'General' ? category : 'Product'}`.trim();
-      } else if (category && category !== 'General') {
-        trimmedName = `${category} Item`;
-      } else {
-        trimmedName = trimmedBarcode ? `Product ${trimmedBarcode}` : 'Product Item';
+      showNotification('error', 'Please enter a product name.');
+      if (nameInputRef.current) {
+        nameInputRef.current.focus();
       }
+      return;
     }
     const trimmedWeight = weight.trim();
     const numericPrice = typeof price === 'number' ? price : parseFloat(price as any);
@@ -1917,77 +2089,608 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                 </div>
               </div>
 
-              {/* Product Picture / Image Attachment (Small Compact Design) */}
-              <div className="p-2.5 bg-slate-50/90 rounded-xl border border-slate-200 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                  <div className="w-10 h-10 rounded-lg bg-white border border-slate-200 shrink-0 flex items-center justify-center overflow-hidden shadow-2xs relative">
-                    {imageUrl ? (
-                      <img
-                        src={imageUrl}
-                        alt="Product preview"
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          (e.target as any).src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%2394a3b8" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
-                        }}
-                      />
-                    ) : (
-                      <ImageIcon className="w-5 h-5 text-slate-300" />
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <label className="text-[11px] font-extrabold text-slate-800 uppercase tracking-wider block truncate">
-                      Product Picture <span className="text-slate-400 font-normal lowercase">(optional)</span>
-                    </label>
-                    <p className="text-[10px] text-slate-500 truncate">
-                      {imageUrl ? 'Picture attached for Price Checker & POS' : 'Upload photo or paste URL'}
-                    </p>
+              {/* Product Name Field */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                    Product Name *
+                  </label>
+                  {name.trim().length >= 3 && !imageUrl && autoAiImageEnabled && (
+                    <span className="text-[10px] text-sky-600 font-extrabold flex items-center gap-1 animate-pulse">
+                      <Search className="w-3 h-3 text-sky-500" /> Searching Google for image URL...
+                    </span>
+                  )}
+                </div>
+                <div className="relative">
+                  <input
+                    ref={nameInputRef}
+                    type="text"
+                    required
+                    placeholder="e.g. Olpers Full Cream Milk 1L, Tapal Danedar Tea 450g..."
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    onBlur={() => {
+                      if (autoAiImageEnabled && !imageUrl && name.trim().length >= 3) {
+                        handleAutoGenerateProductPicture(name.trim(), false);
+                      }
+                    }}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-orange-500 focus:bg-white font-bold transition-all shadow-inner"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">Item title printed on receipts and shown in POS.</p>
+              </div>
+
+              {/* Product Category & Hierarchy Selector */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5 text-orange-600" />
+                    <span>Product Category *</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsAddCategoryModalOpen(true)}
+                      className="text-[11px] text-orange-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> + New Category
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsManageCategoriesModalOpen(true)}
+                      className="text-[11px] text-indigo-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <FolderTree className="w-3.5 h-3.5" /> Hierarchy Manager
+                    </button>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {imageUrl ? (
-                    <button
-                      type="button"
-                      onClick={() => setImageUrl('')}
-                      className="px-2 py-1 rounded-lg bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border border-red-200 text-xs font-bold transition-colors cursor-pointer"
-                      title="Remove picture"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  ) : (
-                    <>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        onChange={handleImageFileUpload}
-                        className="hidden"
-                      />
+                <div className="relative">
+                  {/* Category Dropdown Selector */}
+                  <select
+                    value={category}
+                    onChange={(e) => {
+                      setCategory(e.target.value);
+                      setSelectedCompanyId(null);
+                      setSelectedSize(null);
+                    }}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-orange-500 focus:bg-white transition-all cursor-pointer"
+                  >
+                    {availableCategories.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Option to Choose Company and Size strictly according to the Category chosen */}
+                <div className="mt-3 p-3.5 bg-gradient-to-br from-indigo-50/80 via-white to-slate-50 border border-indigo-200/90 rounded-2xl space-y-3.5 shadow-2xs">
+                  {/* Company / Brand Selection Section */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <Building2 className="w-4 h-4 text-indigo-600" />
+                        <span className="text-xs font-bold text-indigo-950 uppercase tracking-wider">Choose Company / Brand</span>
+                        <span className="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-full border border-indigo-200/80">
+                          for {category}
+                        </span>
+                      </div>
                       <button
                         type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="px-2.5 py-1 rounded-lg bg-white hover:bg-orange-50 text-slate-700 hover:text-orange-600 border border-slate-200 text-xs font-bold flex items-center gap-1 cursor-pointer transition-all shadow-2xs"
+                        onClick={() => setIsAddingCustomCompany(!isAddingCustomCompany)}
+                        className="text-[11px] text-indigo-700 font-bold hover:underline flex items-center gap-1 cursor-pointer"
                       >
-                        <Upload className="w-3.5 h-3.5 text-orange-600" />
-                        <span>Upload</span>
+                        <Plus className="w-3 h-3" />
+                        <span>{isAddingCustomCompany ? 'Cancel' : '+ Add Company'}</span>
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const url = prompt('Paste direct product image URL:');
-                          if (url && url.trim()) setImageUrl(url.trim());
+                    </div>
+
+                    {/* Inline Add Custom Company input */}
+                    {isAddingCustomCompany && (
+                      <div className="flex items-center gap-1.5 p-2 bg-white rounded-xl border border-indigo-200 shadow-2xs">
+                        <input
+                          type="text"
+                          placeholder={`Type brand/company name for ${category}...`}
+                          value={customCompanyName}
+                          onChange={(e) => setCustomCompanyName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddCustomCompanySubmit();
+                            }
+                          }}
+                          className="flex-1 px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:border-indigo-500 font-semibold"
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddCustomCompanySubmit}
+                          className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 cursor-pointer shadow-xs"
+                        >
+                          Add & Select
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Company Dropdown */}
+                    <div className="relative">
+                      <select
+                        value={selectedCompanyId || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '__add_custom_company__') {
+                            setIsAddingCustomCompany(true);
+                          } else if (!val) {
+                            handleSelectCompany(null);
+                          } else {
+                            const found = activeCategoryCompanies.find(c => c.id === val);
+                            if (found) handleSelectCompany(found);
+                          }
                         }}
-                        className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-xs font-bold flex items-center gap-1 cursor-pointer transition-all"
+                        className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-xl text-slate-800 text-xs font-bold focus:outline-none focus:border-indigo-500 cursor-pointer shadow-2xs"
                       >
-                        <LinkIcon className="w-3.5 h-3.5 text-slate-500" />
-                        <span>URL</span>
+                        <option value="">-- Choose Company for {category} ({activeCategoryCompanies.length} available) --</option>
+                        {activeCategoryCompanies.map((comp) => (
+                          <option key={comp.id} value={comp.id}>
+                            {comp.name}
+                          </option>
+                        ))}
+                        <option value="__add_custom_company__">+ Add Other Company for {category}...</option>
+                      </select>
+                    </div>
+
+                    {/* Company Quick Click Pills */}
+                    {activeCategoryCompanies.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                        {activeCategoryCompanies.map((comp) => {
+                          const isCompSelected = selectedCompanyId === comp.id;
+                          return (
+                            <button
+                              key={comp.id}
+                              type="button"
+                              onClick={() => {
+                                if (isCompSelected) {
+                                  handleSelectCompany(null);
+                                } else {
+                                  handleSelectCompany(comp);
+                                }
+                              }}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                                isCompSelected
+                                  ? 'bg-indigo-600 text-white shadow-xs'
+                                  : 'bg-white text-slate-700 border border-indigo-200 hover:bg-indigo-100 hover:text-indigo-900'
+                              }`}
+                            >
+                              {isCompSelected && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                              <span>{comp.name}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Size / Pack / Weight Selection Section */}
+                  <div className="pt-3 border-t border-indigo-200/60 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <Scale className="w-4 h-4 text-emerald-600" />
+                        <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">Choose Size / Pack</span>
+                        <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-200/80">
+                          {activeSelectedCompany ? `for ${activeSelectedCompany.name}` : `for ${category}`}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingCustomSize(!isAddingCustomSize)}
+                        className="text-[11px] text-emerald-700 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>{isAddingCustomSize ? 'Cancel' : '+ Custom Size'}</span>
                       </button>
-                    </>
-                  )}
+                    </div>
+
+                    {/* Inline Custom Size input */}
+                    {isAddingCustomSize && (
+                      <div className="flex items-center gap-1.5 p-2 bg-white rounded-xl border border-emerald-200 shadow-2xs">
+                        <input
+                          type="text"
+                          placeholder="e.g. 750ml, 350g, 1.25 Liter, Small Box, 6-Pack..."
+                          value={customSizeName}
+                          onChange={(e) => setCustomSizeName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddCustomSizeSubmit();
+                            }
+                          }}
+                          className="flex-1 px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 font-semibold"
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddCustomSizeSubmit}
+                          className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 cursor-pointer shadow-xs"
+                        >
+                          Apply Size
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Size Dropdown */}
+                    <div className="relative">
+                      <select
+                        value={selectedSize || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '__add_custom_size__') {
+                            setIsAddingCustomSize(true);
+                          } else if (!val) {
+                            handleSelectSize(null);
+                          } else {
+                            handleSelectSize(val);
+                          }
+                        }}
+                        className="w-full px-3 py-2 bg-white border border-emerald-200 rounded-xl text-slate-800 text-xs font-bold focus:outline-none focus:border-emerald-500 cursor-pointer shadow-2xs"
+                      >
+                        <option value="">
+                          -- Choose Size / Pack ({activeSelectedCompany ? activeSelectedCompany.name : category}) --
+                        </option>
+                        {activeAvailableSizes.map((sz) => (
+                          <option key={sz} value={sz}>
+                            {sz}
+                          </option>
+                        ))}
+                        <option value="__add_custom_size__">+ Enter Custom Size / Pack...</option>
+                      </select>
+                    </div>
+
+                    {/* Size Quick Click Pills */}
+                    {activeAvailableSizes.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                        {activeAvailableSizes.map((sz) => {
+                          const isSzSelected = selectedSize === sz;
+                          return (
+                            <button
+                              key={sz}
+                              type="button"
+                              onClick={() => {
+                                if (isSzSelected) {
+                                  handleSelectSize(null);
+                                } else {
+                                  handleSelectSize(sz);
+                                }
+                              }}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                                isSzSelected
+                                  ? 'bg-emerald-600 text-white shadow-xs'
+                                  : 'bg-white text-slate-700 border border-slate-200 hover:bg-emerald-50 hover:text-emerald-900'
+                              }`}
+                            >
+                              {isSzSelected && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                              <span>{sz}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Current Selection Hierarchy Banner */}
+                    {(selectedCompanyId || selectedSize) && (
+                      <div className="mt-2.5 p-2.5 bg-slate-100/90 border border-slate-200/80 rounded-xl flex items-center justify-between text-xs text-slate-700">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-extrabold text-slate-900 text-[11px] uppercase tracking-wide">Selected:</span>
+                          <span className="bg-orange-100 text-orange-800 px-2 py-0.5 rounded-md font-bold text-[11px] border border-orange-200">
+                            {category}
+                          </span>
+                          {activeSelectedCompany && (
+                            <>
+                              <span className="text-slate-400 font-bold">➔</span>
+                              <span className="bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-md font-bold text-[11px] border border-indigo-200">
+                                {activeSelectedCompany.name}
+                              </span>
+                            </>
+                          )}
+                          {selectedSize && (
+                            <>
+                              <span className="text-slate-400 font-bold">➔</span>
+                              <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md font-bold text-[11px] border border-emerald-200">
+                                {selectedSize}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedCompanyId(null);
+                            setSelectedSize(null);
+                          }}
+                          className="text-[11px] text-red-600 font-bold hover:underline cursor-pointer ml-2 shrink-0"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
+              {/* Weight or packaging info if selling by weight */}
+              {sellBy === 'weight' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Weight / Packaging Description (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 1 kg pack, 500g, or Loose in basket"
+                    value={weight}
+                    onChange={(e) => setWeight(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm font-medium focus:outline-none focus:border-orange-500 focus:bg-white"
+                  />
+                </div>
+              )}
 
+              {/* Product Picture: Google Search & Direct URL Auto-Paste */}
+              <div className="p-3.5 bg-gradient-to-r from-slate-50 via-sky-50/20 to-indigo-50/30 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                  <div className="flex items-start gap-3 min-w-0 flex-1">
+                    {/* Picture Preview */}
+                    <div className="w-16 h-16 rounded-xl bg-white border border-slate-200 shrink-0 flex items-center justify-center overflow-hidden shadow-xs relative group mt-0.5">
+                      {isGeneratingAiImage ? (
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-sky-50 text-sky-600 animate-pulse">
+                          <RefreshCw className="w-5 h-5 animate-spin" />
+                          <span className="text-[9px] font-black mt-1">Searching...</span>
+                        </div>
+                      ) : imageUrl ? (
+                        <>
+                          <img
+                            src={imageUrl}
+                            alt="Product preview"
+                            className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                            referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              if (fallbackThumbnailUrl && (e.target as any).src !== fallbackThumbnailUrl) {
+                                (e.target as any).src = fallbackThumbnailUrl;
+                              } else {
+                                (e.target as any).src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%2394a3b8" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
+                              }
+                            }}
+                          />
+                          <div className="absolute top-1 right-1 bg-emerald-500 text-white p-0.5 rounded-full shadow-xs" title="Picture Attached">
+                            <CheckCircle2 className="w-2.5 h-2.5" />
+                          </div>
+                        </>
+                      ) : (
+                        <ImageIcon className="w-7 h-7 text-slate-300" />
+                      )}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <label className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                          <Globe className="w-3.5 h-3.5 text-sky-600" />
+                          <span>Product Picture URL</span>
+                        </label>
+                        {isGeneratingAiImage ? (
+                          <span className="text-[10px] bg-sky-100 text-sky-700 font-extrabold px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse border border-sky-200">
+                            <Search className="w-3 h-3 animate-spin text-sky-600" />
+                            Searching Google & copying URL...
+                          </span>
+                        ) : imageUrl ? (
+                          <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                            <CheckCircle className="w-2.5 h-2.5 text-emerald-600" />
+                            {imageSourceDomain ? `Found on ${imageSourceDomain}` : 'Image URL Pasted'}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 font-medium">
+                            Auto-searches Google as you type name
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                        {imageUrl ? 'Live on POS, Price Checker Kiosk & Receipts' : 'Searches product on Google, copies image URL, and pastes it here'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Top Action Buttons */}
+                  <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap shrink-0">
+                    <button
+                      type="button"
+                      disabled={isGeneratingAiImage || !name.trim()}
+                      onClick={() => handleSearchProductImageOnline(name, true)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition-all shadow-xs ${
+                        isGeneratingAiImage
+                          ? 'bg-sky-100 text-sky-400 cursor-not-allowed'
+                          : !name.trim()
+                          ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
+                          : 'bg-gradient-to-r from-sky-600 to-blue-600 text-white hover:from-sky-700 hover:to-blue-700 active:scale-95 shadow-sky-200'
+                      }`}
+                      title="Search Google for product name and copy/paste image URL"
+                    >
+                      <Search className={`w-3.5 h-3.5 ${isGeneratingAiImage ? 'animate-spin' : 'text-sky-200'}`} />
+                      <span>{imageUrl ? 'Search Google Again' : '🔍 Search Google & Paste'}</span>
+                    </button>
+
+                    {/* Direct link to Google Images */}
+                    <a
+                      href={`https://www.google.com/search?tbm=isch&q=${encodeURIComponent((name.trim() || 'product') + ' packaging')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-600 hover:text-sky-600 border border-slate-200 text-xs font-bold transition-all flex items-center gap-1 shadow-2xs"
+                      title="Open Google Images in new tab to browse or copy any image link"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Google Images</span>
+                    </a>
+
+                    {imageUrl ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setImageUrl('');
+                          setAiImageSource(null);
+                          setImageSourceDomain(null);
+                          setFallbackThumbnailUrl(null);
+                          setSearchCandidates([]);
+                        }}
+                        className="px-2.5 py-1.5 rounded-xl bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border border-red-200 text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                        title="Remove picture"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span>Remove</span>
+                      </button>
+                    ) : (
+                      <>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageFileUpload}
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-orange-50 text-slate-700 hover:text-orange-600 border border-slate-200 text-xs font-bold flex items-center gap-1 cursor-pointer transition-all shadow-2xs"
+                          title="Upload image from device"
+                        >
+                          <Upload className="w-3.5 h-3.5 text-orange-600" />
+                          <span>Upload</span>
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Direct Pasted Image URL Field */}
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-xl px-3 py-1.5 focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500 shadow-2xs transition-all">
+                    <LinkIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <input
+                      type="text"
+                      placeholder="Image URL: Copied from Google search (https://...)"
+                      value={imageUrl}
+                      onChange={(e) => {
+                        const val = e.target.value.trim();
+                        setImageUrl(val);
+                        setAiImageSource('manual');
+                      }}
+                      className="w-full text-xs text-slate-800 bg-transparent focus:outline-none font-mono"
+                    />
+                    {imageUrl && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(imageUrl);
+                          showNotification('success', 'Image URL copied to clipboard!');
+                        }}
+                        className="px-2 py-1 text-[11px] font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg shrink-0 flex items-center gap-1 cursor-pointer transition-all"
+                        title="Copy Image URL to clipboard"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>Copy</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const clipText = await navigator.clipboard.readText();
+                          if (clipText && (clipText.startsWith('http://') || clipText.startsWith('https://'))) {
+                            setImageUrl(clipText.trim());
+                            setAiImageSource('manual');
+                            showNotification('success', 'Pasted image URL from clipboard!');
+                          } else {
+                            const manualUrl = prompt('Paste image URL:', imageUrl || '');
+                            if (manualUrl && manualUrl.trim()) {
+                              setImageUrl(manualUrl.trim());
+                              setAiImageSource('manual');
+                            }
+                          }
+                        } catch {
+                          const manualUrl = prompt('Paste image URL:', imageUrl || '');
+                          if (manualUrl && manualUrl.trim()) {
+                            setImageUrl(manualUrl.trim());
+                            setAiImageSource('manual');
+                          }
+                        }
+                      }}
+                      className="px-2 py-1 text-[11px] font-bold text-sky-600 hover:text-sky-800 bg-sky-50 hover:bg-sky-100 rounded-lg shrink-0 flex items-center gap-1 cursor-pointer transition-all"
+                      title="Paste Image URL from Clipboard"
+                    >
+                      <span>Paste</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Alternate Candidates from Google/Web Search */}
+                {searchCandidates && searchCandidates.length > 1 && (
+                  <div className="pt-2 border-t border-slate-200/60">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                        <Search className="w-3 h-3 text-sky-600" />
+                        <span>Google Search Candidates (Click to select & paste URL):</span>
+                      </span>
+                      <span className="text-[10px] text-slate-400">{searchCandidates.length} images found</span>
+                    </div>
+                    <div className="flex gap-2 overflow-x-auto pb-1.5 pt-0.5 scrollbar-thin">
+                      {searchCandidates.slice(0, 6).map((c, idx) => {
+                        const isCurrent = imageUrl === c.url || imageUrl === c.thumbnail;
+                        return (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => {
+                              setImageUrl(c.url);
+                              setFallbackThumbnailUrl(c.thumbnail);
+                              setImageSourceDomain(c.domain || null);
+                              showNotification('success', `Pasted image URL from ${c.domain || 'Google candidate'}`);
+                            }}
+                            className={`shrink-0 w-14 h-14 rounded-lg border-2 p-0.5 overflow-hidden transition-all relative group cursor-pointer ${
+                              isCurrent
+                                ? 'border-sky-500 ring-2 ring-sky-200 shadow-xs'
+                                : 'border-slate-200 hover:border-sky-400 bg-white'
+                            }`}
+                            title={`Use this image: ${c.title || c.domain || 'Candidate'}`}
+                          >
+                            <img
+                              src={c.thumbnail || c.url}
+                              alt={c.title || 'Candidate'}
+                              className="w-full h-full object-cover rounded"
+                              referrerPolicy="no-referrer"
+                            />
+                            {isCurrent && (
+                              <div className="absolute inset-0 bg-sky-600/20 flex items-center justify-center">
+                                <CheckCircle className="w-4 h-4 text-sky-600 drop-shadow" />
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Auto Search on Type checkbox */}
+                <div className="pt-1.5 border-t border-slate-200/60 flex items-center justify-between text-[11px] text-slate-500">
+                  <label className="flex items-center gap-1.5 cursor-pointer font-medium select-none hover:text-slate-800">
+                    <input
+                      type="checkbox"
+                      checked={autoAiImageEnabled}
+                      onChange={(e) => setAutoAiImageEnabled(e.target.checked)}
+                      className="w-3.5 h-3.5 text-sky-600 rounded border-slate-300 focus:ring-sky-500 cursor-pointer"
+                    />
+                    <span>Automatically search Google & paste image URL as you enter product name</span>
+                  </label>
+                  <span className="text-[10px] text-sky-600 font-bold hidden sm:inline">
+                    🔍 Live Web Image Search
+                  </span>
+                </div>
+              </div>
 
               {/* Optional Pre-packaged pack weight when selling by weight */}
               {sellBy === 'weight' && (
@@ -2124,137 +2827,125 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                   </div>
                 )}
 
-                {/* Pricing & Cost Grid (High-Attraction Financial Theme) - Appears after entering compulsory details */}
-                {(!name.trim() || !category.trim()) && !existingProduct ? (
-                  <div className="p-4 bg-amber-50/90 rounded-2xl border border-amber-200/90 text-amber-950 flex items-center justify-between gap-3 text-xs font-bold shadow-2xs">
-                    <div className="flex items-center gap-2.5">
-                      <Info className="w-5 h-5 text-amber-600 shrink-0" />
-                      <span>Enter compulsory details above (<strong>Product Name</strong> & <strong>Category</strong>) to unlock Pricing & Profit Margin calculations.</span>
-                    </div>
-                    <span className="text-[10px] bg-amber-200 text-amber-950 px-2.5 py-1 rounded-full font-black uppercase tracking-wide shrink-0">
-                      Fill Details First
+                {/* Pricing & Cost Grid (Always visible without fill details first restriction) */}
+                <motion.div 
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="p-4 sm:p-5 bg-gradient-to-br from-indigo-50/85 via-blue-50/60 to-emerald-50/75 rounded-2xl border border-indigo-200/90 shadow-sm space-y-3.5"
+                >
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-black text-indigo-950 uppercase tracking-wider flex items-center gap-1.5">
+                      <Coins className="w-4 h-4 text-indigo-600" />
+                      <span>Pricing & Profit Margin</span>
+                    </label>
+                    <span className="text-[10px] text-emerald-800 font-extrabold bg-emerald-100/90 px-2.5 py-0.5 rounded-full border border-emerald-300 shadow-2xs">
+                      ✨ Auto-Calculates Profit
                     </span>
                   </div>
-                ) : (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="p-4 sm:p-5 bg-gradient-to-br from-indigo-50/85 via-blue-50/60 to-emerald-50/75 rounded-2xl border border-indigo-200/90 shadow-sm space-y-3.5"
-                  >
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-black text-indigo-950 uppercase tracking-wider flex items-center gap-1.5">
-                        <Coins className="w-4 h-4 text-indigo-600" />
-                        <span>Pricing & Profit Margin</span>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {/* 1. Cost / Purchase Price (Rs.) */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                        Cost Price *
                       </label>
-                      <span className="text-[10px] text-emerald-800 font-extrabold bg-emerald-100/90 px-2.5 py-0.5 rounded-full border border-emerald-300 shadow-2xs">
-                        ✨ Auto-Calculates Profit
+                      <div className="relative">
+                        <span className="text-xs font-black text-slate-400 absolute left-3 top-1/2 -translate-y-1/2">
+                          Rs.
+                        </span>
+                        <input
+                          type="number"
+                          step="any"
+                          min="0"
+                          required
+                          placeholder="e.g. 100.00"
+                          value={costPrice}
+                          onChange={(e) => {
+                            const val = e.target.value === '' ? '' : parseFloat(e.target.value);
+                            setCostPrice(val);
+                            if (typeof val === 'number' && val > 0 && typeof marginPercent === 'number') {
+                              const calcSell = Math.round(val * (1 + marginPercent / 100) * 100) / 100;
+                              setPrice(calcSell);
+                            } else if (typeof val === 'number' && val > 0 && typeof price === 'number' && price > 0) {
+                              setMarginPercent(Math.round(((price - val) / val) * 100 * 10) / 10);
+                            }
+                          }}
+                          className="w-full pl-9 pr-2.5 py-2.5 bg-white border border-indigo-200 rounded-xl text-slate-900 text-xs sm:text-sm focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/20 font-bold font-mono transition-all shadow-inner"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 2. Margin Percentage (% Margin) */}
+                    <div>
+                      <label className="block text-[11px] font-black text-indigo-900 uppercase tracking-wider mb-1 flex items-center justify-between">
+                        <span>Margin %</span>
+                        <span className="text-[9px] text-indigo-600 font-extrabold">Auto-sets Sell</span>
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="any"
+                          placeholder="e.g. 25"
+                          value={marginPercent}
+                          onChange={(e) => {
+                            const mVal = e.target.value === '' ? '' : parseFloat(e.target.value);
+                            setMarginPercent(mVal);
+                            if (typeof mVal === 'number' && typeof costPrice === 'number' && costPrice > 0) {
+                              const calcSell = Math.round(costPrice * (1 + mVal / 100) * 100) / 100;
+                              setPrice(calcSell);
+                            }
+                          }}
+                          className="w-full pl-3 pr-7 py-2.5 bg-amber-50/90 border border-amber-300 rounded-xl text-amber-950 text-xs sm:text-sm focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 font-mono font-black transition-all shadow-inner"
+                        />
+                        <span className="text-xs font-black text-amber-700 absolute right-2.5 top-1/2 -translate-y-1/2">
+                          %
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* 3. Selling Price (Rs.) */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-emerald-900 uppercase tracking-wider mb-1">
+                        Selling Price *
+                      </label>
+                      <div className="relative">
+                        <span className="text-xs font-black text-emerald-600 absolute left-3 top-1/2 -translate-y-1/2">
+                          Rs.
+                        </span>
+                        <input
+                          ref={priceInputRef}
+                          type="number"
+                          step="any"
+                          min="0"
+                          required
+                          placeholder="e.g. 125.00"
+                          value={price}
+                          onChange={(e) => {
+                            const pVal = e.target.value === '' ? '' : parseFloat(e.target.value);
+                            setPrice(pVal);
+                            if (typeof pVal === 'number' && pVal > 0 && typeof costPrice === 'number' && costPrice > 0) {
+                              setMarginPercent(Math.round(((pVal - costPrice) / costPrice) * 100 * 10) / 10);
+                            }
+                          }}
+                          className="w-full pl-9 pr-2.5 py-2.5 bg-white border border-emerald-300 rounded-xl text-emerald-950 text-xs sm:text-sm focus:outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/20 font-black text-emerald-700 font-mono transition-all shadow-inner"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {typeof costPrice === 'number' && typeof price === 'number' && costPrice > 0 && price > 0 && (
+                    <div className="p-3 bg-gradient-to-r from-emerald-600 to-teal-600 rounded-xl text-white text-xs flex items-center justify-between font-bold shadow-sm border border-emerald-500">
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-amber-300 animate-pulse" />
+                        <span>Profit / Unit: <strong className="font-mono text-amber-200 text-sm">Rs. {(price - costPrice).toFixed(2)}</strong></span>
+                      </span>
+                      <span className="text-emerald-950 font-black bg-amber-300 px-2.5 py-1 rounded-lg text-xs shadow-xs tracking-tight">
+                        Margin: {(((price - costPrice) / costPrice) * 100).toFixed(1)}%
                       </span>
                     </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      {/* 1. Cost / Purchase Price (Rs.) */}
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
-                          Cost Price *
-                        </label>
-                        <div className="relative">
-                          <span className="text-xs font-black text-slate-400 absolute left-3 top-1/2 -translate-y-1/2">
-                            Rs.
-                          </span>
-                          <input
-                            type="number"
-                            step="any"
-                            min="0"
-                            required
-                            placeholder="e.g. 100.00"
-                            value={costPrice}
-                            onChange={(e) => {
-                              const val = e.target.value === '' ? '' : parseFloat(e.target.value);
-                              setCostPrice(val);
-                              if (typeof val === 'number' && val > 0 && typeof marginPercent === 'number') {
-                                const calcSell = Math.round(val * (1 + marginPercent / 100) * 100) / 100;
-                                setPrice(calcSell);
-                              } else if (typeof val === 'number' && val > 0 && typeof price === 'number' && price > 0) {
-                                setMarginPercent(Math.round(((price - val) / val) * 100 * 10) / 10);
-                              }
-                            }}
-                            className="w-full pl-9 pr-2.5 py-2.5 bg-white border border-indigo-200 rounded-xl text-slate-900 text-xs sm:text-sm focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/20 font-bold font-mono transition-all shadow-inner"
-                          />
-                        </div>
-                      </div>
-
-                      {/* 2. Margin Percentage (% Margin) */}
-                      <div>
-                        <label className="block text-[11px] font-black text-indigo-900 uppercase tracking-wider mb-1 flex items-center justify-between">
-                          <span>Margin %</span>
-                          <span className="text-[9px] text-indigo-600 font-extrabold">Auto-sets Sell</span>
-                        </label>
-                        <div className="relative">
-                          <input
-                            type="number"
-                            step="any"
-                            placeholder="e.g. 25"
-                            value={marginPercent}
-                            onChange={(e) => {
-                              const mVal = e.target.value === '' ? '' : parseFloat(e.target.value);
-                              setMarginPercent(mVal);
-                              if (typeof mVal === 'number' && typeof costPrice === 'number' && costPrice > 0) {
-                                const calcSell = Math.round(costPrice * (1 + mVal / 100) * 100) / 100;
-                                setPrice(calcSell);
-                              }
-                            }}
-                            className="w-full pl-3 pr-7 py-2.5 bg-amber-50/90 border border-amber-300 rounded-xl text-amber-950 text-xs sm:text-sm focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 font-mono font-black transition-all shadow-inner"
-                          />
-                          <span className="text-xs font-black text-amber-700 absolute right-2.5 top-1/2 -translate-y-1/2">
-                            %
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* 3. Selling Price (Rs.) */}
-                      <div>
-                        <label className="block text-[11px] font-bold text-emerald-900 uppercase tracking-wider mb-1">
-                          Selling Price *
-                        </label>
-                        <div className="relative">
-                          <span className="text-xs font-black text-emerald-600 absolute left-3 top-1/2 -translate-y-1/2">
-                            Rs.
-                          </span>
-                          <input
-                            ref={priceInputRef}
-                            type="number"
-                            step="any"
-                            min="0"
-                            required
-                            placeholder="e.g. 125.00"
-                            value={price}
-                            onChange={(e) => {
-                              const pVal = e.target.value === '' ? '' : parseFloat(e.target.value);
-                              setPrice(pVal);
-                              if (typeof pVal === 'number' && pVal > 0 && typeof costPrice === 'number' && costPrice > 0) {
-                                setMarginPercent(Math.round(((pVal - costPrice) / costPrice) * 100 * 10) / 10);
-                              }
-                            }}
-                            className="w-full pl-9 pr-2.5 py-2.5 bg-white border border-emerald-300 rounded-xl text-emerald-950 text-xs sm:text-sm focus:outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/20 font-black text-emerald-700 font-mono transition-all shadow-inner"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {typeof costPrice === 'number' && typeof price === 'number' && costPrice > 0 && price > 0 && (
-                      <div className="p-3 bg-gradient-to-r from-emerald-600 to-teal-600 rounded-xl text-white text-xs flex items-center justify-between font-bold shadow-sm border border-emerald-500">
-                        <span className="flex items-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full bg-amber-300 animate-pulse" />
-                          <span>Profit / Unit: <strong className="font-mono text-amber-200 text-sm">Rs. {(price - costPrice).toFixed(2)}</strong></span>
-                        </span>
-                        <span className="text-emerald-950 font-black bg-amber-300 px-2.5 py-1 rounded-lg text-xs shadow-xs tracking-tight">
-                          Margin: {(((price - costPrice) / costPrice) * 100).toFixed(1)}%
-                        </span>
-                      </div>
-                    )}
-                  </motion.div>
-                )}
+                  )}
+                </motion.div>
 
                 {/* Product Discount Configuration */}
                 <div className="p-3.5 bg-rose-50/60 rounded-2xl border border-rose-200/80 space-y-3">

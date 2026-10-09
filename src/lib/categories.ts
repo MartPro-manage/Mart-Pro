@@ -246,6 +246,192 @@ export const DEFAULT_TAXONOMY_CATEGORIES: Omit<ManagedCategory, 'id' | 'storeId'
     ]
   },
   {
+    name: 'Laundry',
+    description: 'Fabric care, washing bars, liquid detergents & bleaches',
+    icon: 'Wind',
+    companies: [
+      {
+        id: 'surf-excel-laundry',
+        name: 'Unilever Surf Excel',
+        sizes: ['500g Pouch', '1 kg Pouch', '2 kg Pouch', '5 kg Bucket', '250g Washing Bar']
+      },
+      {
+        id: 'ariel-laundry',
+        name: 'P&G Ariel',
+        sizes: ['500g Pouch', '1 kg Pouch', '2 kg Pouch', '3 kg Family Pack']
+      },
+      {
+        id: 'brite-laundry',
+        name: 'Brite Maximum Power',
+        sizes: ['500g Pouch', '1 kg Pouch', '200g Bar']
+      },
+      {
+        id: 'robin-blue',
+        name: 'Reckitt Robin Blue',
+        sizes: ['75ml Bottle', '150ml Bottle', '100g Powder']
+      }
+    ]
+  },
+  {
+    name: 'Ghee',
+    description: 'Banaspati ghee, pure desi ghee & vegetable cooking fats',
+    icon: 'Droplet',
+    companies: [
+      {
+        id: 'dalda-ghee',
+        name: 'Dalda Foods (Pure Desi & Banaspati Ghee)',
+        sizes: ['1 kg Pouch', '1 Liter Pouch', '2.5 kg Tin', '5 kg Tin', '16 kg Tin']
+      },
+      {
+        id: 'habib-ghee',
+        name: 'Habib Banaspati Ghee',
+        sizes: ['1 kg Pouch', '2.5 kg Tin', '5 kg Tin']
+      },
+      {
+        id: 'kisan-ghee',
+        name: 'Kisan Banaspati Ghee',
+        sizes: ['1 kg Pouch', '2.5 kg Tin', '5 kg Tin']
+      },
+      {
+        id: 'sufi-ghee',
+        name: 'Sufi Banaspati & Pure Desi Ghee',
+        sizes: ['1 kg Pouch', '1 kg Jar', '2.5 kg Tin', '5 kg Tin']
+      }
+    ]
+  },
+  {
+    name: 'Spices',
+    description: 'Recipe spice mixes, plain ground spices & whole seeds',
+    icon: 'Sparkles',
+    companies: [
+      {
+        id: 'national-spices',
+        name: 'National Foods',
+        sizes: ['Biryani Masala 50g', 'Bombay Biryani 50g', 'Chicken Karahi 50g', 'Qorma Masala 50g', 'Red Chilli 200g', 'Turmeric / Haldi 100g', 'Chaat Masala 50g']
+      },
+      {
+        id: 'shan-spices',
+        name: 'Shan Foods',
+        sizes: ['Special Bombay Biryani 60g', 'Chicken Masala 50g', 'Nihari Masala 50g', 'Haleem Mix 50g', 'Red Chilli Powder 200g', 'Coriander Powder 100g']
+      },
+      {
+        id: 'mehran-spices',
+        name: 'Mehran Spices',
+        sizes: ['Garam Masala 100g', 'Black Pepper 100g', 'Cumin / Zeera 100g', 'Biryani Masala 50g']
+      },
+      {
+        id: 'loose-spices',
+        name: 'Whole / Loose Bazaar Spices',
+        sizes: ['50g Loose', '100g Loose', '250g Loose', '500g Loose', '1 kg Loose']
+      }
+    ]
+  },
+  {
+    name: 'Bakery',
+    description: 'Fresh sliced bread, buns, rusk, cakes & confectionery',
+    icon: 'Cookie',
+    companies: [
+      {
+        id: 'dawn-bread',
+        name: 'Dawn Bread',
+        sizes: ['Plain Bread Large', 'Plain Bread Small', 'Milky Bread Large', 'Brown Bread', 'Burger Buns 4-pack', 'Rusk 300g']
+      },
+      {
+        id: 'bake-parlor',
+        name: 'Bake Parlor',
+        sizes: ['Sandwich Bread Large', 'Plain Buns 4-pack', 'Cake Rusk 250g', 'Fruit Cake Medium']
+      },
+      {
+        id: 'gourmet-bakery',
+        name: 'Gourmet Bakers',
+        sizes: ['Plain Bread Large', 'Tea Rusk 400g', 'Cupcakes 6-pack', 'Puff Pastry 200g']
+      }
+    ]
+  },
+  {
+    name: 'Personal Care',
+    description: 'Shampoos, soaps, toothpastes, creams & lotions',
+    icon: 'Sparkles',
+    companies: [
+      {
+        id: 'unilever-personal',
+        name: 'Unilever (Dove / Sunsilk / Lifebuoy / Pond\'s)',
+        sizes: ['Shampoo 180ml', 'Shampoo 360ml', 'Face Wash 100g', 'Body Lotion 200ml', 'Beauty Bar 135g']
+      },
+      {
+        id: 'pg-personal',
+        name: 'Procter & Gamble (Head & Shoulders / Pantene / Gillette)',
+        sizes: ['Shampoo 180ml', 'Shampoo 360ml', 'Conditioner 180ml', 'Shaving Foam 200ml', 'Gillette Mach3 Razor']
+      },
+      {
+        id: 'colgate-personal',
+        name: 'Colgate-Palmolive (Colgate / Palmolive)',
+        sizes: ['Colgate Max Cavity 75g', 'Colgate Max Cavity 150g', 'Palmolive Body Wash 250ml', 'Colgate Toothbrush Twin']
+      }
+    ]
+  },
+  {
+    name: 'Fruits & Vegetables',
+    description: 'Fresh fruits, farm vegetables & leafy greens',
+    icon: 'Package',
+    companies: [
+      {
+        id: 'farm-fresh',
+        name: 'Fresh Farm Produce (Daily Market)',
+        sizes: ['500g', '1 kg', '2 kg', '5 kg Bag', '1 Dozen', 'Single Piece']
+      },
+      {
+        id: 'organic-produce',
+        name: 'Certified Organic Harvest',
+        sizes: ['500g Pre-pack', '1 kg Pre-pack', 'Salad Clamshell 250g']
+      },
+      {
+        id: 'imported-fruits',
+        name: 'Imported Premium Fruits',
+        sizes: ['1 kg Pack', 'Per Piece', 'Gift Box Pack']
+      }
+    ]
+  },
+  {
+    name: 'Toys',
+    description: 'Action figures, diecast cars, playsets & educational toys',
+    icon: 'Package',
+    companies: [
+      {
+        id: 'kidzone-toys',
+        name: 'KidZone Premium Toys',
+        sizes: ['Single Piece', 'Small Box Set', 'Medium Playset', 'Large Gift Box']
+      },
+      {
+        id: 'mattel-hotwheels',
+        name: 'Mattel / Hot Wheels',
+        sizes: ['1 Diecast Car', '5-Car Gift Pack', 'Track Set']
+      },
+      {
+        id: 'lego-blocks',
+        name: 'Lego / Building Blocks',
+        sizes: ['Starter Pack 50pcs', 'Medium Box 200pcs', 'Creator Set 500pcs']
+      }
+    ]
+  },
+  {
+    name: 'Grocery',
+    description: 'Essential packaged provisions, staples & household goods',
+    icon: 'Package',
+    companies: [
+      {
+        id: 'martpro-grocery',
+        name: 'MartPro Wholesale Grocery',
+        sizes: ['250g Pack', '500g Pack', '1 kg Pack', '2 kg Pack', '5 kg Pack', 'Carton / Box']
+      },
+      {
+        id: 'national-grocery',
+        name: 'National Commercial Supplier',
+        sizes: ['Standard Pack', 'Family Pack', 'Twin Pack', 'Wholesale Pack']
+      }
+    ]
+  },
+  {
     name: 'General',
     description: 'General supermarket goods, kitchen items & household',
     icon: 'Package',
@@ -254,6 +440,11 @@ export const DEFAULT_TAXONOMY_CATEGORIES: Omit<ManagedCategory, 'id' | 'storeId'
         id: 'general-brand',
         name: 'Standard Wholesale Supplier',
         sizes: ['1 Piece', 'Small Size', 'Medium Size', 'Large Size', 'Pack of 6', '1 Dozen']
+      },
+      {
+        id: 'local-distributor',
+        name: 'Local Store Supplier',
+        sizes: ['1 Piece', 'Pack of 2', 'Pack of 6', '1 Dozen', 'Box of 24']
       }
     ]
   }
@@ -438,6 +629,58 @@ export function deleteCompanyFromCategory(
 }
 
 /**
+ * Deletes all companies and their sizes from a category
+ */
+export function deleteAllCompaniesFromCategory(
+  category: ManagedCategory
+): ManagedCategory {
+  return {
+    ...category,
+    companies: [],
+    updatedAt: new Date().toISOString()
+  };
+}
+
+/**
+ * Deletes all sizes for a specific company under a category
+ */
+export function deleteAllSizesFromCompany(
+  category: ManagedCategory,
+  companyId: string
+): ManagedCategory {
+  const updatedCompanies = (category.companies || []).map(comp => {
+    if (comp.id === companyId) {
+      return { ...comp, sizes: [] };
+    }
+    return comp;
+  });
+
+  return {
+    ...category,
+    companies: updatedCompanies,
+    updatedAt: new Date().toISOString()
+  };
+}
+
+/**
+ * Deletes all sizes from all companies under a category
+ */
+export function deleteAllSizesFromCategoryCompanies(
+  category: ManagedCategory
+): ManagedCategory {
+  const updatedCompanies = (category.companies || []).map(comp => ({
+    ...comp,
+    sizes: []
+  }));
+
+  return {
+    ...category,
+    companies: updatedCompanies,
+    updatedAt: new Date().toISOString()
+  };
+}
+
+/**
  * Saves a new custom category name to the store document in Firestore.
  */
 export async function saveNewCategoryToStore(storeId: string, currentCustom: string[] = [], newCategory: string): Promise<string[]> {
@@ -490,5 +733,145 @@ export async function addCustomCategoryToStore(
   } catch (err: any) {
     return { success: false, categories: currentCustom, error: err?.message || 'Failed to save category.' };
   }
+}
+
+/**
+ * Safely normalizes a size entry to a clean string label.
+ */
+export function normalizeSizeLabel(sz: any): string {
+  if (!sz) return '';
+  if (typeof sz === 'string') return sz.trim();
+  if (typeof sz === 'object' && sz.name) return String(sz.name).trim();
+  return String(sz).trim();
+}
+
+/**
+ * Common packaging sizes by commodity type
+ */
+export function getDefaultSizesForCategory(categoryName: string): string[] {
+  const lower = (categoryName || '').toLowerCase();
+  if (lower.includes('beverag') || lower.includes('drink') || lower.includes('juice') || lower.includes('soda') || lower.includes('water')) {
+    return ['250ml Glass', '300ml Can', '500ml Pet', '1 Liter', '1.5 Liter', '2.25 Liter'];
+  }
+  if (lower.includes('milk') || lower.includes('dairy')) {
+    return ['250ml Tetra', '500ml Pack', '1 Liter Family Pack', '1.5 Liter Eco Pack', 'Cream 200ml'];
+  }
+  if (lower.includes('oil') || lower.includes('ghee')) {
+    return ['1 Liter Pouch', '1 kg Pouch', '2.5 Liter Tin', '5 Liter Can', '16 Liter Tin'];
+  }
+  if (lower.includes('tea') || lower.includes('coffee')) {
+    return ['95g Pack', '190g Pack', '380g Pack', '450g Pack', '900g Family Pack', '50 Tea Bags'];
+  }
+  if (lower.includes('grain') || lower.includes('rice') || lower.includes('flour') || lower.includes('atta') || lower.includes('pulse')) {
+    return ['500g Pack', '1 kg Pouch', '2 kg Pouch', '5 kg Bag', '10 kg Bag', '20 kg Bag'];
+  }
+  if (lower.includes('spice') || lower.includes('masala')) {
+    return ['50g Recipe Pack', '100g Pack', '200g Pack', '500g Jar', '1 kg Pack'];
+  }
+  if (lower.includes('detergent') || lower.includes('laundry')) {
+    return ['500g Pouch', '1 kg Pouch', '2 kg Pouch', '3 kg Pack', '5 kg Bucket', '250g Bar'];
+  }
+  if (lower.includes('soap')) {
+    return ['75g Bar', '100g Bar', '140g Special Bar', '175g Jumbo Bar', 'Pack of 3 Soap', 'Liquid 250ml'];
+  }
+  if (lower.includes('snack') || lower.includes('chip') || lower.includes('biscuit') || lower.includes('cookie')) {
+    return ['Small Snack Pack', 'Medium Pack', 'Half Roll Pack', 'Family Pack', 'Tiffin Box Pack'];
+  }
+  if (lower.includes('bakery') || lower.includes('bread')) {
+    return ['Plain Bread Small', 'Plain Bread Large', 'Milky Bread', 'Brown Bread', '4-Pack Buns', 'Rusk 300g'];
+  }
+  if (lower.includes('fruit') || lower.includes('vegetable')) {
+    return ['500g', '1 kg', '2 kg', '5 kg Bag', '1 Dozen', 'Single Piece'];
+  }
+  if (lower.includes('personal') || lower.includes('shampoo') || lower.includes('care')) {
+    return ['75g / 75ml', '100g / 100ml', '180ml Bottle', '360ml Family Bottle', '200ml Lotion'];
+  }
+  return ['1 Piece', 'Small Size', 'Medium Size', 'Large Size', 'Pack of 6', '1 Dozen'];
+}
+
+/**
+ * Returns companies matching the selected category.
+ * Prioritizes store-managed categories, falling back to rich built-in taxonomy.
+ */
+export function getCompaniesForCategory(
+  categoryName: string,
+  managedCategories: ManagedCategory[] = []
+): CompanyBrand[] {
+  const trimmed = (categoryName || '').trim();
+  if (!trimmed) return [];
+  const lower = trimmed.toLowerCase();
+
+  // 1. Check Store Managed Categories
+  if (managedCategories && managedCategories.length > 0) {
+    const foundManaged = managedCategories.find(mc => mc.name.toLowerCase() === lower);
+    if (foundManaged && foundManaged.companies && foundManaged.companies.length > 0) {
+      return foundManaged.companies;
+    }
+  }
+
+  // 2. Check Built-in Default Taxonomy (Exact Name)
+  const exactDefault = DEFAULT_TAXONOMY_CATEGORIES.find(tc => tc.name.toLowerCase() === lower);
+  if (exactDefault && exactDefault.companies && exactDefault.companies.length > 0) {
+    return exactDefault.companies as CompanyBrand[];
+  }
+
+  // 3. Check Built-in Default Taxonomy (Fuzzy / Keyword Match)
+  const fuzzy = DEFAULT_TAXONOMY_CATEGORIES.find(tc => {
+    const tcLower = tc.name.toLowerCase();
+    return lower.includes(tcLower) || tcLower.includes(lower);
+  });
+  if (fuzzy && fuzzy.companies && fuzzy.companies.length > 0) {
+    return fuzzy.companies as CompanyBrand[];
+  }
+
+  // 4. Commodity keyword aliases
+  if (lower.includes('drink') || lower.includes('juice') || lower.includes('soda') || lower.includes('water')) {
+    const bev = DEFAULT_TAXONOMY_CATEGORIES.find(tc => tc.name === 'Beverages');
+    if (bev) return bev.companies as CompanyBrand[];
+  }
+  if (lower.includes('milk') || lower.includes('cheese') || lower.includes('butter') || lower.includes('cream')) {
+    const dairy = DEFAULT_TAXONOMY_CATEGORIES.find(tc => tc.name === 'Dairy');
+    if (dairy) return dairy.companies as CompanyBrand[];
+  }
+  if (lower.includes('oil')) {
+    const oil = DEFAULT_TAXONOMY_CATEGORIES.find(tc => tc.name === 'Oil');
+    if (oil) return oil.companies as CompanyBrand[];
+  }
+  if (lower.includes('ghee')) {
+    const ghee = DEFAULT_TAXONOMY_CATEGORIES.find(tc => tc.name === 'Ghee');
+    if (ghee) return ghee.companies as CompanyBrand[];
+  }
+  if (lower.includes('chip') || lower.includes('nimko')) {
+    const snacks = DEFAULT_TAXONOMY_CATEGORIES.find(tc => tc.name === 'Snacks');
+    if (snacks) return snacks.companies as CompanyBrand[];
+  }
+  if (lower.includes('cookie') || lower.includes('wafer')) {
+    const biscuit = DEFAULT_TAXONOMY_CATEGORIES.find(tc => tc.name === 'Biscuit');
+    if (biscuit) return biscuit.companies as CompanyBrand[];
+  }
+  if (lower.includes('washing') || lower.includes('detergent')) {
+    const det = DEFAULT_TAXONOMY_CATEGORIES.find(tc => tc.name === 'Detergent');
+    if (det) return det.companies as CompanyBrand[];
+  }
+  if (lower.includes('laundry')) {
+    const lnd = DEFAULT_TAXONOMY_CATEGORIES.find(tc => tc.name === 'Laundry');
+    if (lnd) return lnd.companies as CompanyBrand[];
+  }
+  if (lower.includes('masala') || lower.includes('salt') || lower.includes('spice')) {
+    const sp = DEFAULT_TAXONOMY_CATEGORIES.find(tc => tc.name === 'Spices');
+    if (sp) return sp.companies as CompanyBrand[];
+  }
+  if (lower.includes('bread') || lower.includes('bun') || lower.includes('cake')) {
+    const bk = DEFAULT_TAXONOMY_CATEGORIES.find(tc => tc.name === 'Bakery');
+    if (bk) return bk.companies as CompanyBrand[];
+  }
+  if (lower.includes('shampoo') || lower.includes('lotion') || lower.includes('toothpaste') || lower.includes('cream')) {
+    const pc = DEFAULT_TAXONOMY_CATEGORIES.find(tc => tc.name === 'Personal Care');
+    if (pc) return pc.companies as CompanyBrand[];
+  }
+
+  // 5. Default General Category Supplier fallback
+  const general = DEFAULT_TAXONOMY_CATEGORIES.find(tc => tc.name === 'General');
+  return (general?.companies || []) as CompanyBrand[];
 }
 

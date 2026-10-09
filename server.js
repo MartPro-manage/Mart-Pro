@@ -4,6 +4,199 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import { GoogleGenAI } from "@google/genai";
+
+// src/server/productImageService.ts
+var CURATED_GROCERY_PHOTOS = {
+  milk: "https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=600&q=80",
+  dairy: "https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=600&q=80",
+  yogurt: "https://images.unsplash.com/photo-1571212515416-fef01fc43637?auto=format&fit=crop&w=600&q=80",
+  cheese: "https://images.unsplash.com/photo-1486297678162-eb2a19b0a32d?auto=format&fit=crop&w=600&q=80",
+  butter: "https://images.unsplash.com/photo-1589985270826-4b7bb135bc9d?auto=format&fit=crop&w=600&q=80",
+  ghee: "https://images.unsplash.com/photo-1589985270826-4b7bb135bc9d?auto=format&fit=crop&w=600&q=80",
+  eggs: "https://images.unsplash.com/photo-1582722872445-44dc5f7e3c8f?auto=format&fit=crop&w=600&q=80",
+  bread: "https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=600&q=80",
+  bakery: "https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&w=600&q=80",
+  cola: "https://images.unsplash.com/photo-1622483767028-3f66f32aef97?auto=format&fit=crop&w=600&q=80",
+  soda: "https://images.unsplash.com/photo-1622483767028-3f66f32aef97?auto=format&fit=crop&w=600&q=80",
+  water: "https://images.unsplash.com/photo-1560023907-5f339617ea30?auto=format&fit=crop&w=600&q=80",
+  juice: "https://images.unsplash.com/photo-1600271886742-f049cd451bba?auto=format&fit=crop&w=600&q=80",
+  tea: "https://images.unsplash.com/photo-1576092768241-dec231879fc3?auto=format&fit=crop&w=600&q=80",
+  coffee: "https://images.unsplash.com/photo-1559056199-641a0ac8b55e?auto=format&fit=crop&w=600&q=80",
+  rice: "https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=600&q=80",
+  flour: "https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=600&q=80",
+  cooking_oil: "https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?auto=format&fit=crop&w=600&q=80",
+  sugar: "https://images.unsplash.com/photo-1622484212850-cab596d628d0?auto=format&fit=crop&w=600&q=80",
+  salt: "https://images.unsplash.com/photo-1518977676601-b53f82aba655?auto=format&fit=crop&w=600&q=80",
+  spices: "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=600&q=80",
+  masala: "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=600&q=80",
+  biscuits: "https://images.unsplash.com/photo-1558961363-fa8fdf82db35?auto=format&fit=crop&w=600&q=80",
+  chips: "https://images.unsplash.com/photo-1566478989037-eec170784d0b?auto=format&fit=crop&w=600&q=80",
+  chocolate: "https://images.unsplash.com/photo-1511381939415-e44015466834?auto=format&fit=crop&w=600&q=80",
+  soap: "https://images.unsplash.com/photo-1607006314644-8cb3a2d67768?auto=format&fit=crop&w=600&q=80",
+  shampoo: "https://images.unsplash.com/photo-1535585209827-a15fcdbc4c2d?auto=format&fit=crop&w=600&q=80",
+  toothpaste: "https://images.unsplash.com/photo-1559591937-e1032c74d6c7?auto=format&fit=crop&w=600&q=80",
+  detergent: "https://images.unsplash.com/photo-1610557892470-55d9e80c0bce?auto=format&fit=crop&w=600&q=80",
+  general: "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=600&q=80"
+};
+function getDomain(urlStr) {
+  try {
+    const u = new URL(urlStr);
+    return u.hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+async function searchWebForProductImage(query) {
+  const candidates = [];
+  const searchQueries = [
+    `${query.trim()} product`,
+    `${query.trim()} product packaging`,
+    query.trim()
+  ];
+  for (const q of searchQueries) {
+    try {
+      const tokenRes = await fetch(`https://duckduckgo.com/?q=${encodeURIComponent(q)}`, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept-Language": "en-US,en;q=0.9"
+        },
+        signal: AbortSignal.timeout(5e3)
+      });
+      if (!tokenRes.ok) continue;
+      const text = await tokenRes.text();
+      const vqdMatch = text.match(/vqd=([\d-]+)/) || text.match(/vqd="([\d-]+)"/);
+      if (!vqdMatch) continue;
+      const vqd = vqdMatch[1];
+      const imgRes = await fetch(
+        `https://duckduckgo.com/i.js?l=us-en&o=json&q=${encodeURIComponent(q)}&vqd=${vqd}&f=,,,`,
+        {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://duckduckgo.com/",
+            "Accept": "application/json"
+          },
+          signal: AbortSignal.timeout(6e3)
+        }
+      );
+      if (!imgRes.ok) continue;
+      const data = await imgRes.json();
+      const results = data.results || [];
+      for (const item of results) {
+        const rawUrl = item.image;
+        if (!rawUrl || typeof rawUrl !== "string") continue;
+        if (!rawUrl.startsWith("http://") && !rawUrl.startsWith("https://")) continue;
+        if (rawUrl.includes("logo") && !rawUrl.includes("product")) continue;
+        const candidate = {
+          url: rawUrl,
+          thumbnail: item.thumbnail || rawUrl,
+          title: item.title || query,
+          source: item.url || "",
+          domain: getDomain(item.url || rawUrl)
+        };
+        if (!candidates.some((c) => c.url === candidate.url)) {
+          candidates.push(candidate);
+        }
+        if (candidates.length >= 8) break;
+      }
+      if (candidates.length > 0) {
+        break;
+      }
+    } catch (err) {
+      console.warn(`[Web Image Search Warning] for query "${q}":`, err?.message || err);
+    }
+  }
+  return candidates;
+}
+async function searchOpenFoodFacts(query) {
+  try {
+    const res = await fetch(
+      `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=3`,
+      {
+        headers: {
+          "User-Agent": "MartProSupermarket/1.0 (support@martpro.com)"
+        },
+        signal: AbortSignal.timeout(4e3)
+      }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const product = data.products?.find((p) => p.image_front_url || p.image_url);
+    if (product) {
+      const imgUrl = product.image_front_url || product.image_url;
+      return {
+        url: imgUrl,
+        thumbnail: product.image_front_small_url || imgUrl,
+        title: product.product_name || query,
+        source: `https://world.openfoodfacts.org/product/${product.code || ""}`,
+        domain: "openfoodfacts.org"
+      };
+    }
+  } catch {
+  }
+  return null;
+}
+async function resolveProductImage(_ai, name, category, brand, size) {
+  const cleanName = name.trim();
+  const searchTerms = [
+    brand && !cleanName.toLowerCase().includes(brand.toLowerCase()) ? brand : "",
+    cleanName,
+    size && !cleanName.toLowerCase().includes(size.toLowerCase()) ? size : ""
+  ].filter(Boolean).join(" ");
+  const query = searchTerms || cleanName;
+  const webCandidates = await searchWebForProductImage(query);
+  if (webCandidates.length > 0) {
+    const best = webCandidates[0];
+    return {
+      imageUrl: best.url,
+      thumbnailUrl: best.thumbnail,
+      source: "google_web_search",
+      title: best.title,
+      searchQuery: query,
+      sourceDomain: best.domain,
+      candidates: webCandidates
+    };
+  }
+  const offCandidate = await searchOpenFoodFacts(cleanName);
+  if (offCandidate) {
+    return {
+      imageUrl: offCandidate.url,
+      thumbnailUrl: offCandidate.thumbnail,
+      source: "open_food_facts",
+      title: offCandidate.title,
+      searchQuery: query,
+      sourceDomain: offCandidate.domain,
+      candidates: [offCandidate]
+    };
+  }
+  const lower = cleanName.toLowerCase();
+  let matchedPhotoKey = "general";
+  for (const k of Object.keys(CURATED_GROCERY_PHOTOS)) {
+    if (lower.includes(k)) {
+      matchedPhotoKey = k;
+      break;
+    }
+  }
+  const photoUrl = CURATED_GROCERY_PHOTOS[matchedPhotoKey] || CURATED_GROCERY_PHOTOS.general;
+  return {
+    imageUrl: photoUrl,
+    thumbnailUrl: photoUrl,
+    source: "curated_photo",
+    title: `${cleanName} (Photo)`,
+    searchQuery: query,
+    sourceDomain: "unsplash.com",
+    candidates: [
+      {
+        url: photoUrl,
+        thumbnail: photoUrl,
+        title: cleanName,
+        source: photoUrl,
+        domain: "unsplash.com"
+      }
+    ]
+  };
+}
+
+// server.ts
 var __filename = fileURLToPath(import.meta.url);
 var __dirname = path.dirname(__filename);
 var ai = new GoogleGenAI({
@@ -17,7 +210,9 @@ var ai = new GoogleGenAI({
 async function startServer() {
   const app = express();
   const PORT = parseInt(process.env.PORT || "3000", 10);
-  const isDev = process.env.NODE_ENV !== "production";
+  const distPath = path.resolve(__dirname, "dist");
+  const hasBuiltDist = fs.existsSync(path.resolve(distPath, "index.html"));
+  const isDev = process.env.NODE_ENV !== "production" && !hasBuiltDist;
   app.use(express.json({ limit: "15mb" }));
   app.get("/api/health", (_req, res) => {
     res.json({
@@ -183,7 +378,7 @@ ${JSON.stringify(storeContext, null, 2)}
         parts: [{ text: fullPromptText }]
       });
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.8-flash",
         contents: contentsPayload,
         config: {
           systemInstruction,
@@ -199,6 +394,22 @@ ${JSON.stringify(storeContext, null, 2)}
       console.error("[AI Copilot Error]:", err);
       return res.status(500).json({
         error: err?.message || "Failed to process AI query",
+        fallback: true
+      });
+    }
+  });
+  app.post("/api/ai/product-image", async (req, res) => {
+    try {
+      const { name, category, brand, size } = req.body;
+      if (!name || typeof name !== "string" || !name.trim()) {
+        return res.status(400).json({ error: "Product name is required" });
+      }
+      const result = await resolveProductImage(ai, name.trim(), category, brand, size);
+      return res.json(result);
+    } catch (err) {
+      console.error("[AI Product Image Error]:", err);
+      return res.status(500).json({
+        error: err?.message || "Failed to generate product image",
         fallback: true
       });
     }
@@ -227,14 +438,14 @@ ${JSON.stringify(storeContext, null, 2)}
       }
     });
   } else {
-    const distPath = fs.existsSync(path.resolve(__dirname, "index.html")) ? __dirname : fs.existsSync(path.resolve(__dirname, "dist")) ? path.resolve(__dirname, "dist") : __dirname;
-    if (fs.existsSync(path.resolve(distPath, "index.html"))) {
-      app.use(express.static(distPath, {
+    const distPath2 = fs.existsSync(path.resolve(__dirname, "dist", "index.html")) ? path.resolve(__dirname, "dist") : fs.existsSync(path.resolve(__dirname, "index.html")) ? __dirname : path.resolve(__dirname, "dist");
+    if (fs.existsSync(path.resolve(distPath2, "index.html"))) {
+      app.use(express.static(distPath2, {
         maxAge: "1h",
         etag: true
       }));
       app.get("*", (_req, res) => {
-        res.sendFile(path.resolve(distPath, "index.html"));
+        res.sendFile(path.resolve(distPath2, "index.html"));
       });
     } else {
       app.get("*", (_req, res) => {

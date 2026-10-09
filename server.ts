@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { GoogleGenAI } from '@google/genai';
+import { resolveProductImage } from './src/server/productImageService.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,7 +22,7 @@ const ai = new GoogleGenAI({
 async function startServer() {
   const app = express();
   const PORT = parseInt(process.env.PORT || '3000', 10);
-  const isDev = process.env.NODE_ENV !== 'production';
+  const isDev = process.env.NODE_ENV !== 'production' && process.env.npm_lifecycle_event !== 'start';
 
   app.use(express.json({ limit: '15mb' }));
 
@@ -197,7 +198,7 @@ You have two superpowers:
       });
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.8-flash',
         contents: contentsPayload,
         config: {
           systemInstruction,
@@ -215,6 +216,25 @@ You have two superpowers:
       console.error('[AI Copilot Error]:', err);
       return res.status(500).json({
         error: err?.message || 'Failed to process AI query',
+        fallback: true
+      });
+    }
+  });
+
+  // Automated AI Product Image Generator Endpoint
+  app.post('/api/ai/product-image', async (req: Request, res: Response) => {
+    try {
+      const { name, category, brand, size } = req.body;
+      if (!name || typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ error: 'Product name is required' });
+      }
+
+      const result = await resolveProductImage(ai, name.trim(), category, brand, size);
+      return res.json(result);
+    } catch (err: any) {
+      console.error('[AI Product Image Error]:', err);
+      return res.status(500).json({
+        error: err?.message || 'Failed to generate product image',
         fallback: true
       });
     }
@@ -249,9 +269,9 @@ You have two superpowers:
     });
   } else {
     // Production static serving
-    const distPath = fs.existsSync(path.resolve(__dirname, 'index.html'))
-      ? __dirname
-      : (fs.existsSync(path.resolve(__dirname, 'dist')) ? path.resolve(__dirname, 'dist') : __dirname);
+    const distPath = fs.existsSync(path.resolve(__dirname, 'dist', 'index.html'))
+      ? path.resolve(__dirname, 'dist')
+      : (fs.existsSync(path.resolve(__dirname, 'index.html')) ? __dirname : path.resolve(__dirname, 'dist'));
     if (fs.existsSync(path.resolve(distPath, 'index.html'))) {
       app.use(express.static(distPath, {
         maxAge: '1h',

@@ -18,7 +18,8 @@ import {
   Scale,
   RefreshCw,
   ShoppingBag,
-  ExternalLink
+  ExternalLink,
+  AlertTriangle
 } from 'lucide-react';
 import { Store, ManagedCategory, CompanyBrand } from '../types';
 import { 
@@ -27,7 +28,11 @@ import {
   deleteManagedCategory, 
   addCompanyToCategory, 
   updateCompanySizes, 
-  deleteCompanyFromCategory 
+  deleteCompanyFromCategory,
+  deleteAllCompaniesFromCategory,
+  deleteAllSizesFromCompany,
+  deleteAllSizesFromCategoryCompanies,
+  seedDefaultCategoriesForStore
 } from '../lib/categories';
 import { db, collection, onSnapshot, query, where } from '../lib/firebase';
 
@@ -49,6 +54,21 @@ export const ManageCategoriesView: React.FC<ManageCategoriesViewProps> = ({
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   // Selected Company ID
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+
+  // In-App Confirmation Modal state
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    confirmText: string;
+    onConfirm: () => Promise<void> | void;
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    confirmText: 'Delete',
+    onConfirm: () => {}
+  });
 
   // New Category Form
   const [newCatName, setNewCatName] = useState('');
@@ -181,20 +201,26 @@ export const ManageCategoriesView: React.FC<ManageCategoriesViewProps> = ({
     }
   };
 
-  const handleDeleteCategory = async (cat: ManagedCategory) => {
-    const confirmMsg = `Are you sure you want to delete category "${cat.name}" and all its companies/sizes?`;
-    if (!window.confirm(confirmMsg)) return;
-
-    try {
-      await deleteManagedCategory(cat.id);
-      if (selectedCategoryId === cat.id) {
-        setSelectedCategoryId(null);
-        setSelectedCompanyId(null);
+  const handleDeleteCategory = (cat: ManagedCategory) => {
+    setConfirmModal({
+      isOpen: true,
+      title: `Delete Category "${cat.name}"?`,
+      description: `Are you sure you want to delete category "${cat.name}" and all its ${(cat.companies || []).length} registered companies and sizes? This action cannot be undone.`,
+      confirmText: 'Delete Category',
+      onConfirm: async () => {
+        try {
+          await deleteManagedCategory(cat.id);
+          if (selectedCategoryId === cat.id) {
+            setSelectedCategoryId(null);
+            setSelectedCompanyId(null);
+          }
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+          showToast('success', `Category "${cat.name}" deleted.`);
+        } catch (err: any) {
+          showToast('error', err?.message || 'Failed to delete category.');
+        }
       }
-      showToast('success', `Category "${cat.name}" deleted.`);
-    } catch (err: any) {
-      showToast('error', err?.message || 'Failed to delete category.');
-    }
+    });
   };
 
   // --- Handlers: Company Management ---
@@ -249,20 +275,150 @@ export const ManageCategoriesView: React.FC<ManageCategoriesViewProps> = ({
     }
   };
 
-  const handleDeleteCompany = async (comp: CompanyBrand) => {
+  const handleDeleteCompany = (comp: CompanyBrand) => {
     if (!selectedCategory) return;
-    if (!window.confirm(`Delete company "${comp.name}" and its sizes?`)) return;
-
-    try {
-      const updatedCat = deleteCompanyFromCategory(selectedCategory, comp.id);
-      await saveManagedCategory(updatedCat);
-      if (selectedCompanyId === comp.id) {
-        setSelectedCompanyId(null);
+    setConfirmModal({
+      isOpen: true,
+      title: `Delete Company "${comp.name}"?`,
+      description: `Are you sure you want to delete company "${comp.name}" and all its ${(comp.sizes || []).length} configured sizes from "${selectedCategory.name}"?`,
+      confirmText: 'Delete Company',
+      onConfirm: async () => {
+        try {
+          const updatedCat = deleteCompanyFromCategory(selectedCategory, comp.id);
+          await saveManagedCategory(updatedCat);
+          if (selectedCompanyId === comp.id) {
+            setSelectedCompanyId(null);
+          }
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+          showToast('success', `Company "${comp.name}" removed.`);
+        } catch (err: any) {
+          showToast('error', err?.message || 'Failed to remove company.');
+        }
       }
-      showToast('success', `Company "${comp.name}" removed.`);
-    } catch (err: any) {
-      showToast('error', err?.message || 'Failed to remove company.');
+    });
+  };
+
+  // Delete ALL Companies and their sizes from the currently selected category
+  const handleDeleteAllCompaniesFromCategory = () => {
+    if (!selectedCategory) return;
+    const count = (selectedCategory.companies || []).length;
+    if (count === 0) return;
+
+    setConfirmModal({
+      isOpen: true,
+      title: `Delete All Companies from "${selectedCategory.name}"?`,
+      description: `Are you sure you want to delete all ${count} companies/brands and all their sizes from "${selectedCategory.name}"? This action will clear the company and size options for this category.`,
+      confirmText: `Delete All ${count} Companies`,
+      onConfirm: async () => {
+        try {
+          const updatedCat = deleteAllCompaniesFromCategory(selectedCategory);
+          await saveManagedCategory(updatedCat);
+          setSelectedCompanyId(null);
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+          showToast('success', `All companies and sizes deleted from "${selectedCategory.name}".`);
+        } catch (err: any) {
+          showToast('error', err?.message || 'Failed to delete companies.');
+        }
+      }
+    });
+  };
+
+  // Delete ALL Sizes from the currently selected company
+  const handleDeleteAllSizesFromCompany = () => {
+    if (!selectedCategory || !selectedCompany) return;
+    const count = (selectedCompany.sizes || []).length;
+    if (count === 0) return;
+
+    setConfirmModal({
+      isOpen: true,
+      title: `Delete All Sizes for "${selectedCompany.name}"?`,
+      description: `Are you sure you want to delete all ${count} configured sizes and packaging quantities from "${selectedCompany.name}"?`,
+      confirmText: `Delete All ${count} Sizes`,
+      onConfirm: async () => {
+        try {
+          const updatedCat = deleteAllSizesFromCompany(selectedCategory, selectedCompany.id);
+          await saveManagedCategory(updatedCat);
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+          showToast('success', `All sizes removed from "${selectedCompany.name}".`);
+        } catch (err: any) {
+          showToast('error', err?.message || 'Failed to delete sizes.');
+        }
+      }
+    });
+  };
+
+  // Delete ALL sizes across all companies in the current category
+  const handleDeleteAllSizesFromCategory = () => {
+    if (!selectedCategory) return;
+    const totalSizes = (selectedCategory.companies || []).reduce((sum, c) => sum + (c.sizes || []).length, 0);
+    if (totalSizes === 0) return;
+
+    setConfirmModal({
+      isOpen: true,
+      title: `Delete All Sizes in "${selectedCategory.name}"?`,
+      description: `This will remove all ${totalSizes} sizes across all ${(selectedCategory.companies || []).length} companies under "${selectedCategory.name}". Company names will remain.`,
+      confirmText: `Delete All ${totalSizes} Sizes`,
+      onConfirm: async () => {
+        try {
+          const updatedCat = deleteAllSizesFromCategoryCompanies(selectedCategory);
+          await saveManagedCategory(updatedCat);
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+          showToast('success', `All sizes cleared for companies in "${selectedCategory.name}".`);
+        } catch (err: any) {
+          showToast('error', err?.message || 'Failed to delete sizes.');
+        }
+      }
+    });
+  };
+
+  // Store-wide Delete All Companies (across all categories)
+  const handleDeleteAllCompaniesAcrossStore = () => {
+    const totalCompanies = categories.reduce((sum, c) => sum + (c.companies || []).length, 0);
+    if (totalCompanies === 0) {
+      showToast('error', 'No companies currently exist in any category.');
+      return;
     }
+
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete All Companies Across All Categories?',
+      description: `This will clear all ${totalCompanies} companies and their sizes across all ${categories.length} categories in your store. Category names will be preserved.`,
+      confirmText: `Delete All ${totalCompanies} Companies`,
+      onConfirm: async () => {
+        try {
+          for (const cat of categories) {
+            if (cat.companies && cat.companies.length > 0) {
+              const updated = deleteAllCompaniesFromCategory(cat);
+              await saveManagedCategory(updated);
+            }
+          }
+          setSelectedCompanyId(null);
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+          showToast('success', 'All companies and sizes cleared across all categories.');
+        } catch (err: any) {
+          showToast('error', err?.message || 'Failed to delete all companies.');
+        }
+      }
+    });
+  };
+
+  // Restore Default Categories & Taxonomy
+  const handleRestoreDefaultTaxonomy = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Restore Default Taxonomy?',
+      description: 'This will seed or restore default supermarket categories (Beverages, Dairy, Snacks, Ghee, Spices, Bakery, Personal Care, Laundry, etc.) with pre-configured companies and packaging sizes.',
+      confirmText: 'Restore Defaults',
+      onConfirm: async () => {
+        try {
+          await seedDefaultCategoriesForStore(store.id);
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+          showToast('success', 'Default categories, companies, and sizes restored!');
+        } catch (err: any) {
+          showToast('error', err?.message || 'Failed to restore default taxonomy.');
+        }
+      }
+    });
   };
 
   // --- Handlers: Multiple Sizes / Quantities Management ---
@@ -400,6 +556,30 @@ export const ManageCategoriesView: React.FC<ManageCategoriesViewProps> = ({
             </div>
           </>
         )}
+
+        {/* Store-wide Bulk Action Buttons */}
+        <div className="ml-auto flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={handleRestoreDefaultTaxonomy}
+            className="px-2.5 py-1.5 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors flex items-center gap-1.5 text-xs font-bold border border-slate-200 cursor-pointer shadow-2xs"
+            title="Restore default supermarket categories, brands & sizes"
+          >
+            <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
+            <span className="hidden sm:inline">Reset Defaults</span>
+          </button>
+          {categories.some(c => (c.companies || []).length > 0) && (
+            <button
+              type="button"
+              onClick={handleDeleteAllCompaniesAcrossStore}
+              className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 transition-colors flex items-center gap-1.5 text-xs font-extrabold border border-rose-200 cursor-pointer shadow-2xs"
+              title="Delete all companies and sizes across all categories in store"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+              <span>Delete All Companies (All Categories)</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 3-Panel Hierarchical Workspace */}
@@ -635,14 +815,27 @@ export const ManageCategoriesView: React.FC<ManageCategoriesViewProps> = ({
             </div>
 
             {selectedCategory && (
-              <button
-                type="button"
-                onClick={() => setIsAddingCompany(true)}
-                className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-extrabold flex items-center gap-1 cursor-pointer transition-colors border border-indigo-200 shadow-2xs"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add Company</span>
-              </button>
+              <div className="flex items-center gap-2">
+                {(selectedCategory.companies || []).length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleDeleteAllCompaniesFromCategory}
+                    className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-extrabold flex items-center gap-1 cursor-pointer transition-colors border border-rose-200 shadow-2xs"
+                    title={`Delete all companies in ${selectedCategory.name}`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                    <span>Delete All Companies</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsAddingCompany(true)}
+                  className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-extrabold flex items-center gap-1 cursor-pointer transition-colors border border-indigo-200 shadow-2xs"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Company</span>
+                </button>
+              </div>
             )}
           </div>
 
@@ -844,9 +1037,22 @@ export const ManageCategoriesView: React.FC<ManageCategoriesViewProps> = ({
             </div>
 
             {selectedCompany && (
-              <span className="text-xs font-black text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-200">
-                {(selectedCompany.sizes || []).length} active
-              </span>
+              <div className="flex items-center gap-2">
+                {(selectedCompany.sizes || []).length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleDeleteAllSizesFromCompany}
+                    className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-extrabold flex items-center gap-1 cursor-pointer transition-colors border border-rose-200 shadow-2xs"
+                    title={`Delete all sizes for ${selectedCompany.name}`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                    <span>Delete All Sizes</span>
+                  </button>
+                )}
+                <span className="text-xs font-black text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-200">
+                  {(selectedCompany.sizes || []).length} active
+                </span>
+              </div>
             )}
           </div>
 
@@ -961,6 +1167,17 @@ export const ManageCategoriesView: React.FC<ManageCategoriesViewProps> = ({
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs font-black text-slate-700">
                   <span>Configured Sizes / Quantities ({(selectedCompany.sizes || []).length})</span>
+                  {(selectedCompany.sizes || []).length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleDeleteAllSizesFromCompany}
+                      className="text-[11px] text-rose-600 hover:text-rose-700 hover:underline flex items-center gap-1 font-bold cursor-pointer transition-colors"
+                      title="Clear all configured sizes for this company"
+                    >
+                      <Trash2 className="w-3 h-3 text-rose-500" />
+                      <span>Clear all sizes</span>
+                    </button>
+                  )}
                 </div>
 
                 {(selectedCompany.sizes || []).length === 0 ? (
@@ -1002,6 +1219,54 @@ export const ManageCategoriesView: React.FC<ManageCategoriesViewProps> = ({
         </div>
 
       </div>
+
+      {/* Confirmation Modal for Safe Deletion */}
+      <AnimatePresence>
+        {confirmModal.isOpen && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 12 }}
+              className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-200 space-y-4"
+              role="dialog"
+              aria-modal="true"
+            >
+              <div className="flex items-start gap-3.5">
+                <div className="p-3 bg-rose-100 text-rose-600 rounded-2xl shrink-0">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div className="space-y-1.5 flex-1 min-w-0">
+                  <h3 className="text-base font-black text-slate-900">
+                    {confirmModal.title}
+                  </h3>
+                  <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                    {confirmModal.description}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmModal.onConfirm}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold rounded-xl cursor-pointer shadow-md shadow-rose-600/20 transition-all flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{confirmModal.confirmText}</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

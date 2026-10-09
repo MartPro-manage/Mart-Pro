@@ -4,23 +4,31 @@ import App from './App.tsx';
 import './index.css';
 import { registerSW } from 'virtual:pwa-register';
 
-// Safely register PWA Service Worker with automatic updates and offline capabilities
+// Safely handle PWA Service Worker (unregister in development to avoid stale caching in preview)
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-  try {
-    registerSW({
-      immediate: true,
-      onNeedRefresh() {
-        console.log('Mart Pro PWA: New content available, auto-updating...');
-      },
-      onOfflineReady() {
-        console.log('Mart Pro PWA: App ready to work offline');
-      },
-      onRegisterError(error) {
-        console.warn('Mart Pro PWA registration error:', error);
-      },
-    });
-  } catch (err) {
-    console.warn('Mart Pro PWA registration skipped in sandbox:', err);
+  if (import.meta.env.DEV) {
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      for (const reg of registrations) {
+        reg.unregister();
+      }
+    }).catch(() => {});
+  } else {
+    try {
+      registerSW({
+        immediate: true,
+        onNeedRefresh() {
+          console.log('Mart Pro PWA: New content available, auto-updating...');
+        },
+        onOfflineReady() {
+          console.log('Mart Pro PWA: App ready to work offline');
+        },
+        onRegisterError(error) {
+          console.warn('Mart Pro PWA registration error:', error);
+        },
+      });
+    } catch (err) {
+      console.warn('Mart Pro PWA registration skipped in sandbox:', err);
+    }
   }
 }
 

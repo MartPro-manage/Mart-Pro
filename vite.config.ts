@@ -91,8 +91,7 @@ export default defineConfig(() => {
           ],
         },
         devOptions: {
-          enabled: true,
-          type: 'module',
+          enabled: false,
         },
       }),
     ],
@@ -100,22 +99,12 @@ export default defineConfig(() => {
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
+      dedupe: ['react', 'react-dom'],
     },
     build: {
       outDir: 'dist',
       emptyOutDir: true,
-      chunkSizeWarningLimit: 1500,
-      rollupOptions: {
-        output: {
-          manualChunks: {
-            'vendor-react': ['react', 'react-dom'],
-            'vendor-recharts': ['recharts'],
-            'vendor-lucide': ['lucide-react'],
-            'vendor-firebase': ['firebase/app', 'firebase/firestore', 'firebase/auth'],
-            'vendor-utils': ['jspdf', 'html2canvas', 'xlsx']
-          }
-        }
-      }
+      chunkSizeWarningLimit: 2500,
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.

@@ -1931,7 +1931,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
 
             {/* Product Registration & Stock Terminal (Visible in 'form' mode) */}
             {activeTab === 'form' && (
-              <div className="max-w-4xl lg:max-w-5xl xl:max-w-6xl 2xl:max-w-7xl mx-auto w-full bg-white rounded-3xl border border-slate-200 shadow-md overflow-hidden transition-all">
+              <div className="max-w-4xl mx-auto w-full bg-white rounded-3xl border border-slate-200 shadow-md overflow-hidden transition-all">
                 {/* Terminal Dark Header (Responsive Scaling with Screen Size) */}
                 <div className="bg-gradient-to-r from-slate-950 via-blue-950 to-indigo-950 text-white p-4 sm:p-6 lg:p-7 xl:p-8 border-b border-blue-900/60 relative overflow-hidden">
                   {/* Ambient Glow */}
@@ -1991,24 +1991,16 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                     </span>
                   </div>
 
-            <form onSubmit={handleSubmitProductStock} className="space-y-6">
-              {/* 2-Column Responsive Layout for Clean Organisation */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            <form onSubmit={handleSubmitProductStock} className="space-y-8">
+              {/* Single Unified Form - Undivided Layout */}
+              <div className="space-y-6">
                 
-                {/* LEFT COLUMN: Identification & Classification (7 cols) */}
-                <div className="lg:col-span-7 space-y-6">
-                  
-                  {/* Card 1: Basic Identification */}
-                  <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center font-black text-xs border border-blue-100">
-                          1
-                        </div>
-                        <div>
-                          <h3 className="text-sm font-extrabold text-slate-900 tracking-tight">Basic Identification</h3>
-                          <p className="text-[11px] text-slate-500">Name, selling method, and barcode identifiers</p>
-                        </div>
+                {/* Basic Identification */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+                      <div>
+                        <h3 className="text-sm font-extrabold text-slate-900 tracking-tight">Basic Identification</h3>
+                        <p className="text-[11px] text-slate-500">Name, selling method, and barcode identifiers</p>
                       </div>
                       <span className="text-[11px] font-mono text-slate-600 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200 font-bold">
                         S/N #{previewNextSerialNumber}
@@ -2179,17 +2171,12 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                     )}
                   </div>
 
-                  {/* Card 2: Category, Brand & Size Organization */}
-                  <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center font-black text-xs border border-indigo-100">
-                          2
-                        </div>
-                        <div>
-                          <h3 className="text-sm font-extrabold text-slate-900 tracking-tight">Category & Hierarchy</h3>
-                          <p className="text-[11px] text-slate-500">Classify product by Category, Brand & Packaging Size</p>
-                        </div>
+                  {/* Category, Brand & Size Organization */}
+                  <div className="space-y-4 pt-6 border-t border-slate-200">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+                      <div>
+                        <h3 className="text-sm font-extrabold text-slate-900 tracking-tight">Category & Hierarchy</h3>
+                        <p className="text-[11px] text-slate-500">Classify product by Category, Brand & Packaging Size</p>
                       </div>
                       <div className="flex items-center gap-2">
                         <button
@@ -2471,22 +2458,12 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                     )}
                   </div>
 
-                </div>
-
-                {/* RIGHT COLUMN: Media, Pricing, Stock & Promotions (5 cols) */}
-                <div className="lg:col-span-5 space-y-6">
-                  
-                  {/* Card 3: Visual Media & Product Image */}
-                  <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center font-black text-xs border border-sky-100">
-                          3
-                        </div>
-                        <div>
-                          <h3 className="text-sm font-extrabold text-slate-900 tracking-tight">Product Media</h3>
-                          <p className="text-[11px] text-slate-500">Google image search, direct URL, or device upload</p>
-                        </div>
+                  {/* Product Media */}
+                  <div className="space-y-4 pt-6 border-t border-slate-200">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+                      <div>
+                        <h3 className="text-sm font-extrabold text-slate-900 tracking-tight">Product Media</h3>
+                        <p className="text-[11px] text-slate-500">Google image search, direct URL, or device upload</p>
                       </div>
                       {imageUrl && (
                         <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-md border border-emerald-200 flex items-center gap-1">
@@ -2718,17 +2695,12 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                     </div>
                   </div>
 
-                  {/* Card 4: Pricing & Profit Margins */}
-                  <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-black text-xs border border-emerald-100">
-                          4
-                        </div>
-                        <div>
-                          <h3 className="text-sm font-extrabold text-slate-900 tracking-tight">Pricing & Margins</h3>
-                          <p className="text-[11px] text-slate-500">Cost, margin percentage, and retail price (PKR)</p>
-                        </div>
+                  {/* Pricing & Profit Margins */}
+                  <div className="space-y-4 pt-6 border-t border-slate-200">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+                      <div>
+                        <h3 className="text-sm font-extrabold text-slate-900 tracking-tight">Pricing & Margins</h3>
+                        <p className="text-[11px] text-slate-500">Cost, margin percentage, and retail price (PKR)</p>
                       </div>
                       <span className="text-[10px] text-emerald-800 font-extrabold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
                         Auto-Calculates
@@ -2879,17 +2851,12 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                     })()}
                   </div>
 
-                  {/* Card 5: Inventory Stock */}
-                  <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center font-black text-xs border border-amber-100">
-                          5
-                        </div>
-                        <div>
-                          <h3 className="text-sm font-extrabold text-slate-900 tracking-tight">Inventory & Stock</h3>
-                          <p className="text-[11px] text-slate-500">Initial quantity or stock adjustments</p>
-                        </div>
+                  {/* Inventory Stock */}
+                  <div className="space-y-4 pt-6 border-t border-slate-200">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+                      <div>
+                        <h3 className="text-sm font-extrabold text-slate-900 tracking-tight">Inventory & Stock</h3>
+                        <p className="text-[11px] text-slate-500">Initial quantity or stock adjustments</p>
                       </div>
                       {existingProduct && (
                         <span className="text-[11px] font-mono text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 font-bold">
@@ -3007,8 +2974,8 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                     )}
                   </div>
 
-                  {/* Card 6: Promotional Discounts */}
-                  <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3">
+                  {/* Promotional Discounts */}
+                  <div className="space-y-3 pt-6 border-t border-slate-200">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-bold text-slate-800 flex items-center gap-2 cursor-pointer">
                         <input
@@ -3163,12 +3130,10 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                     )}
                   </div>
 
-                </div>
-
               </div>
 
-              {/* Form Action Footer Card */}
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+              {/* Form Actions Footer */}
+              <div className="pt-6 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
                   <span className={`text-xs font-bold px-3 py-1.5 rounded-xl border ${
                     existingProduct 

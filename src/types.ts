@@ -53,15 +53,6 @@ export interface Store {
   digitalPaymentMethods?: DigitalPaymentMethodConfig[];
   bankAccount?: StoreBankAccount; // Store bank account entered by admin in payment method option
   bankAccounts?: StoreBankAccount[]; // All configured store bank accounts
-  // Online Store & Shopping Website Integration
-  onlineStoreEnabled?: boolean; // Super Admin toggle to enable/disable online store
-  onlineStoreId?: string; // Unique public store identifier/slug (e.g. "ha-mart")
-  onlineApiKey?: string; // API key for external app/website integration
-  onlineStorePhone?: string; // WhatsApp/Phone for online orders
-  onlineStoreDeliveryFee?: number; // Delivery fee in currency (e.g. 150)
-  onlineStoreMinOrder?: number; // Minimum order value in currency (e.g. 500)
-  onlineStoreNotice?: string; // Custom promotional/delivery banner notice
-  onlineStoreEstimatedTime?: string; // Estimated delivery turnaround (e.g. "30-45 mins")
   createdAt: string;
 }
 
@@ -317,65 +308,6 @@ export interface Sale {
   isSlipDeleted?: boolean;
   slipExpired?: boolean;
   slipDeletedAt?: string;
-  // Online Channel Integration
-  orderSource?: 'pos' | 'online'; // Tracks whether sale originated at in-store POS counter or online store
-  onlineOrderId?: string; // Linked online order ID
-  onlineCustomerName?: string;
-  onlineCustomerPhone?: string;
-  customerAddress?: string;
-  deliveryFee?: number;
-}
-
-export type OnlineOrderStatus = 
-  | 'pending' 
-  | 'accepted' 
-  | 'packing' 
-  | 'out_for_delivery' 
-  | 'delivered' 
-  | 'cancelled';
-
-export interface OnlineOrderItem {
-  productId: string;
-  barcode: string;
-  shortcutCode?: string;
-  name: string;
-  price: number; // Selling price per unit
-  originalPrice?: number; // Pre-discount price
-  costPrice?: number; // Wholesale cost for profit accounting
-  quantity: number;
-  sellBy?: 'unit' | 'weight';
-  unitType?: string;
-  total: number;
-  imageUrl?: string;
-}
-
-export interface OnlineOrder {
-  id: string;
-  orderNumber: string; // e.g. "ORD-1004"
-  storeId: string;
-  onlineStoreId: string; // slug e.g. "ha-mart"
-  storeName: string;
-  customerName: string;
-  customerPhone: string;
-  customerAddress: string;
-  customerNotes?: string;
-  items: OnlineOrderItem[];
-  subtotal: number;
-  discountAmount?: number;
-  deliveryFee: number;
-  totalAmount: number;
-  totalCost?: number; // Cost of goods sold for profit calculation
-  netProfit?: number; // totalAmount - totalCost
-  paymentMethod: 'cod' | 'online_transfer' | 'easypaisa' | 'jazzcash';
-  paymentStatus: 'unpaid' | 'paid';
-  status: OnlineOrderStatus;
-  createdAt: string; // ISO string
-  updatedAt?: string;
-  deliveredAt?: string;
-  acceptedAt?: string;
-  cancelledAt?: string;
-  cancelReason?: string;
-  saleId?: string; // Linked ID in sales collection once settled
 }
 
 export interface ProductReturnItem {
@@ -440,3 +372,37 @@ export interface ManagedCategory {
   createdAt: string;
   updatedAt?: string;
 }
+
+export interface OnlineOrderItem {
+  productId: string;
+  name: string;
+  barcode?: string;
+  price: number;
+  quantity: number;
+  total: number;
+  imageUrl?: string;
+  unitType?: string;
+}
+
+export interface OnlineOrder {
+  id: string;
+  storeId: string;
+  orderNumber: string;
+  customerName: string;
+  customerPhone: string;
+  deliveryAddress: string;
+  city?: string;
+  deliveryType: 'delivery' | 'pickup';
+  paymentMethod: 'cod' | 'online' | 'card';
+  paymentProvider?: string;
+  transactionId?: string;
+  items: OnlineOrderItem[];
+  subtotalAmount: number;
+  deliveryFee: number;
+  totalAmount: number;
+  status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+

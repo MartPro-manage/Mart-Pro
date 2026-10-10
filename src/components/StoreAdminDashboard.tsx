@@ -13,7 +13,7 @@ import {
   handleFirestoreError,
   OperationType 
 } from '../lib/firebase';
-import { Product, Sale, Store, UserAccount, ProductReturn, Expense } from '../types';
+import { Product, Sale, Store, UserAccount, ProductReturn, Expense, OnlineOrder } from '../types';
 import { cleanupExpiredReceipts, isSaleExpired } from '../lib/salesCleanup';
 import { ReturnSlipModal } from './ReturnSlipModal';
 import { ReceiptModal } from './ReceiptModal';
@@ -39,6 +39,7 @@ import { StaffAttendanceView } from './StaffAttendanceView';
 import { ManageCategoriesView } from './ManageCategoriesView';
 import { ComprehensiveReportsView } from './ComprehensiveReportsView';
 import { OnlineOrdersManagementView } from './OnlineOrdersManagementView';
+import { CustomerOnlineStoreModal } from './CustomerOnlineStoreModal';
 import { 
   TrendingUp, 
   Package, 
@@ -48,8 +49,7 @@ import {
   Search, 
   Calculator, 
   PackageCheck, 
-  Receipt,
-  Globe, 
+  Receipt, 
   ReceiptText,
   Scale,
   Activity,
@@ -95,7 +95,8 @@ import {
   PackagePlus,
   CheckCircle2,
   Trash2,
-  Mail
+  Mail,
+  Globe
 } from 'lucide-react';
 
 interface StoreAdminDashboardProps {
@@ -149,6 +150,8 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [expenseFilterMode, setExpenseFilterMode] = useState<ExpenseFilterMode>('month');
   const [storeUsers, setStoreUsers] = useState<UserAccount[]>([]);
+  const [onlineOrders, setOnlineOrders] = useState<OnlineOrder[]>([]);
+  const [isCustomerStoreModalOpen, setIsCustomerStoreModalOpen] = useState(false);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [receiptLogSearchTerm, setReceiptLogSearchTerm] = useState('');
@@ -177,10 +180,6 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
 
   // Selected date for deep inspection in Sales by Date tab
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
-
-  // Sales Channel Filter (POS Counter vs Online Orders)
-  const [channelFilter, setChannelFilter] = useState<'all' | 'pos' | 'online'>('all');
-  const [pendingOnlineOrdersCount, setPendingOnlineOrdersCount] = useState<number>(0);
 
   const mainContentRef = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -312,6 +311,21 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       handleFirestoreError(err, OperationType.GET, 'expenses');
     });
 
+    // 6. Subscribe to Online Orders
+    const onlineOrdersQuery = query(
+      collection(db, 'online_orders'),
+      where('storeId', '==', store.id)
+    );
+    const unsubOnlineOrders = onSnapshot(onlineOrdersQuery, (snapshot) => {
+      const list: OnlineOrder[] = [];
+      snapshot.forEach(docSnap => {
+        list.push({ id: docSnap.id, ...docSnap.data() } as OnlineOrder);
+      });
+      setOnlineOrders(list);
+    }, (err) => {
+      console.warn('Online orders sync warning:', err);
+    });
+
     return () => {
       unsubStore();
       unsubProducts();
@@ -319,6 +333,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       unsubReturns();
       unsubUsers();
       unsubExpenses();
+      unsubOnlineOrders();
     };
   }, [store?.id]);
 
@@ -960,8 +975,9 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
     onlinePaymentTotal: paymentMethodStats.onlinePaymentTotal,
     cashPercent: paymentMethodStats.cashPercent,
     onlinePercent: paymentMethodStats.onlinePercent,
-    totalTransactionsCount: paymentMethodStats.totalTransactionsCount
-  }), [dailySalesBreakdown.length, products.length, lowStockAlertCount, soldProductsSummary.length, products, filteredSalesByDate.length, filteredReturnsByDate.length, storeUsers.length, expenses.length, monthlyExpensesTotal, paymentMethodStats]);
+    totalTransactionsCount: paymentMethodStats.totalTransactionsCount,
+    pendingOnlineOrdersCount: onlineOrders.filter(o => o.status === 'pending').length
+  }), [dailySalesBreakdown.length, products.length, lowStockAlertCount, soldProductsSummary.length, products, filteredSalesByDate.length, filteredReturnsByDate.length, storeUsers.length, expenses.length, monthlyExpensesTotal, paymentMethodStats, onlineOrders]);
 
   // Promotions Memoized Calculations
   const promotionsCategories = useMemo(() => {
@@ -1143,11 +1159,6 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       subtitle: 'Set and manage percentage & flat rupee discounts, monitor customer savings and realized profit margins',
       icon: Percent
     },
-    online_mart: {
-      title: 'Online Store & Orders',
-      subtitle: 'Live online customer orders dispatch, storefront link & QR share, and API developer kit',
-      icon: Globe
-    },
     sales_history: {
       title: 'Receipts & Billing Log',
       subtitle: 'All customer checkout records, payment methods, cashier counter numbers, and slips',
@@ -1207,6 +1218,11 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       title: 'OmniMail Z-Sender Email Broadcast',
       subtitle: 'Dispatch automated e-receipts and promotional email broadcasts to store customers',
       icon: Mail
+    },
+    online_orders: {
+      title: 'Customer Online Store Orders',
+      subtitle: 'Manage and fulfill online orders placed by customers through your H A Mart e-commerce store website',
+      icon: Globe
     }
   };
 
@@ -2916,24 +2932,6 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
           </motion.div>
         )}
 
-        {/* TAB: ONLINE MART & E-COMMERCE ORDERS */}
-        {activeTab === 'online_mart' && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.25 }}
-          >
-            <OnlineOrdersManagementView
-              store={liveStore}
-              currentUser={currentUser}
-              onPreviewStorefront={() => {
-                const url = `/?onlineStore=${liveStore.onlineStoreId || liveStore.id}`;
-                window.open(url, '_blank');
-              }}
-            />
-          </motion.div>
-        )}
-
         {/* TAB: MANAGE CATEGORIES, COMPANIES & SIZES */}
         {activeTab === 'manage_categories' && (
           <motion.div 
@@ -3241,6 +3239,14 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
           </motion.div>
         )}
 
+        {/* TAB: ONLINE STORE ORDERS */}
+        {activeTab === 'online_orders' && (
+          <OnlineOrdersManagementView
+            store={liveStore}
+            onOpenCustomerStore={() => setIsCustomerStoreModalOpen(true)}
+          />
+        )}
+
         {/* RETURN SLIP MODAL */}
         {isReturnSlipOpen && viewingReturnSlip && (
           <ReturnSlipModal
@@ -3361,6 +3367,14 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             </div>
           </div>
         )}
+
+        {/* CUSTOMER ONLINE STORE WEBSITE MODAL */}
+        <CustomerOnlineStoreModal
+          store={liveStore}
+          isOpen={isCustomerStoreModalOpen}
+          onClose={() => setIsCustomerStoreModalOpen(false)}
+          products={products}
+        />
 
         </main>
       </div>

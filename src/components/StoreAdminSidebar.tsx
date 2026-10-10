@@ -48,7 +48,6 @@ export type StoreAdminTab =
   | 'stock_remaining' 
   | 'manage_categories'
   | 'promotions'
-  | 'online_mart'
   | 'sales_history' 
   | 'recent_receipts'
   | 'payment_methods'
@@ -58,6 +57,7 @@ export type StoreAdminTab =
   | 'attendance'
   | 'staff_operations'
   | 'omnimail'
+  | 'online_orders'
   | 'settings';
 
 export type ExpenseFilterMode = 'all' | 'date' | 'month' | 'year';
@@ -79,7 +79,6 @@ interface StoreAdminSidebarProps {
     receiptsCount: number;
     returnsCount: number;
     staffCount: number;
-    pendingOnlineOrdersCount?: number;
     expensesCount?: number;
     monthlyExpensesTotal?: number;
     cashPaymentTotal?: number;
@@ -87,6 +86,7 @@ interface StoreAdminSidebarProps {
     totalTransactionsCount?: number;
     cashPercent?: number;
     onlinePercent?: number;
+    pendingOnlineOrdersCount?: number;
   };
   expenseFilterMode?: ExpenseFilterMode;
   onSelectExpenseFilterMode?: (mode: ExpenseFilterMode) => void;
@@ -215,26 +215,13 @@ export const StoreAdminSidebar: React.FC<StoreAdminSidebarProps> = ({
           icon: Undo2,
           badge: stats.returnsCount > 0 ? `${stats.returnsCount}` : null,
           badgeColor: 'bg-red-500/80 text-white'
-        }
-      ]
-    },
-    {
-      group: 'Online Mart & E-Commerce',
-      items: [
+        },
         {
-          id: 'online_mart' as StoreAdminTab,
-          label: store.onlineStoreEnabled ? 'Online Store & Orders' : 'Online Store (Disabled)',
+          id: 'online_orders' as StoreAdminTab,
+          label: 'Online Store Orders',
           icon: Globe,
-          badge: !store.onlineStoreEnabled 
-            ? 'Super Admin Locked' 
-            : (stats.pendingOnlineOrdersCount && stats.pendingOnlineOrdersCount > 0 
-                ? `${stats.pendingOnlineOrdersCount} New` 
-                : 'Active'),
-          badgeColor: !store.onlineStoreEnabled 
-            ? 'bg-slate-800 text-slate-400 font-bold' 
-            : (stats.pendingOnlineOrdersCount && stats.pendingOnlineOrdersCount > 0 
-                ? 'bg-amber-500 text-slate-950 font-black animate-pulse' 
-                : 'bg-emerald-600 text-white font-bold')
+          badge: stats.pendingOnlineOrdersCount && stats.pendingOnlineOrdersCount > 0 ? `${stats.pendingOnlineOrdersCount} New` : null,
+          badgeColor: 'bg-indigo-600 text-white font-black animate-pulse'
         }
       ]
     },

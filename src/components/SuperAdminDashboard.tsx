@@ -59,7 +59,10 @@ import {
   Check,
   ScanLine,
   Users,
-  DollarSign
+  DollarSign,
+  Globe,
+  ExternalLink,
+  Copy
 } from 'lucide-react';
 
 interface SuperAdminProps {
@@ -163,6 +166,16 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
   const [userToDelete, setUserToDelete] = useState<UserAccount | null>(null);
   const [resetUserModal, setResetUserModal] = useState<UserAccount | null>(null);
   const [newUserPassword, setNewUserPassword] = useState('');
+
+  // Super Admin Online Store & ID Management Modal
+  const [onlineStoreModalStore, setOnlineStoreModalStore] = useState<Store | null>(null);
+  const [modalOnlineStoreId, setModalOnlineStoreId] = useState('');
+  const [modalOnlineStoreEnabled, setModalOnlineStoreEnabled] = useState(true);
+  const [modalOnlineDeliveryFee, setModalOnlineDeliveryFee] = useState('150');
+  const [modalOnlineMinOrder, setModalOnlineMinOrder] = useState('500');
+  const [modalOnlineNotice, setModalOnlineNotice] = useState('');
+  const [modalOnlinePhone, setModalOnlinePhone] = useState('');
+  const [copiedStorefrontLink, setCopiedStorefrontLink] = useState(false);
 
   // Notifications
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -437,6 +450,61 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
     } catch (err: any) {
       console.error(err);
       showNotification('error', 'Failed to delete store: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Open Online Store Configuration Modal for Super Admin
+  const openOnlineStoreConfigModal = (s: Store) => {
+    setOnlineStoreModalStore(s);
+    setModalOnlineStoreId(s.onlineStoreId || s.name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-'));
+    setModalOnlineStoreEnabled(s.onlineStoreEnabled !== false);
+    setModalOnlineDeliveryFee(s.onlineStoreDeliveryFee !== undefined ? String(s.onlineStoreDeliveryFee) : '150');
+    setModalOnlineMinOrder(s.onlineStoreMinOrder !== undefined ? String(s.onlineStoreMinOrder) : '500');
+    setModalOnlineNotice(s.onlineStoreNotice || 'Special Online Shopping Offers & Fast Home Delivery!');
+    setModalOnlinePhone(s.onlineStorePhone || s.phone || '');
+    setCopiedStorefrontLink(false);
+  };
+
+  // Save Online Store Configuration
+  const handleSaveOnlineStoreConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onlineStoreModalStore) return;
+
+    const cleanId = modalOnlineStoreId.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+    if (!cleanId) {
+      showNotification('error', 'Online Store ID cannot be empty.');
+      return;
+    }
+
+    // Check if ID is taken by another store
+    const duplicate = stores.find(s => s.id !== onlineStoreModalStore.id && (s.onlineStoreId || '').toLowerCase() === cleanId);
+    if (duplicate) {
+      showNotification('error', `Online Store ID "${cleanId}" is already used by "${duplicate.name}". Please pick a unique ID.`);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const storeRef = doc(db, 'stores', onlineStoreModalStore.id);
+      await updateDoc(storeRef, {
+        onlineStoreId: cleanId,
+        onlineStoreEnabled: modalOnlineStoreEnabled,
+        onlineStoreDeliveryFee: Number(modalOnlineDeliveryFee) || 0,
+        onlineStoreMinOrder: Number(modalOnlineMinOrder) || 0,
+        onlineStoreNotice: modalOnlineNotice.trim(),
+        onlineStorePhone: modalOnlinePhone.trim()
+      });
+
+      showNotification(
+        'success',
+        `Online Store ID "${cleanId}" has been set and Online Shopping is now ${modalOnlineStoreEnabled ? 'ENABLED' : 'DISABLED'} for "${onlineStoreModalStore.name}".`
+      );
+      setOnlineStoreModalStore(null);
+    } catch (err: any) {
+      console.error(err);
+      showNotification('error', 'Failed to update online store ID: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -1386,6 +1454,25 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                                       <span className="text-[11px] font-bold bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded-full border border-blue-200 flex items-center gap-1">
                                         <Building2 className="w-3 h-3" /> {childBranches.length} {childBranches.length === 1 ? 'Branch' : 'Branches'}
                                       </span>
+                                      {s.onlineStoreEnabled ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => openOnlineStoreConfigModal(s)}
+                                          className="text-[11px] font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1 cursor-pointer transition-colors"
+                                          title="Click to edit Online Store ID and parameters"
+                                        >
+                                          <Globe className="w-3 h-3 text-emerald-600" /> Online Mart: @{s.onlineStoreId || s.id}
+                                        </button>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => openOnlineStoreConfigModal(s)}
+                                          className="text-[11px] font-bold bg-slate-100 text-slate-500 hover:bg-slate-200 px-2.5 py-0.5 rounded-full border border-slate-200 flex items-center gap-1 cursor-pointer transition-colors"
+                                          title="Click to assign Online Store ID & enable"
+                                        >
+                                          <Globe className="w-3 h-3 text-slate-400" /> Online Mart: Disabled
+                                        </button>
+                                      )}
                                     </div>
                                     <p className="text-xs text-slate-500 mt-1 font-medium">
                                       Store Admin: <span className="text-slate-800 font-bold font-mono">@{s.adminUsername}</span> | ID: <span className="font-mono">{s.id.substring(0, 8)}</span>
@@ -1456,6 +1543,14 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                                       className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 font-bold rounded-xl flex items-center gap-1 cursor-pointer transition-all"
                                     >
                                       <KeyRound className="w-3.5 h-3.5" /> Reset Pass
+                                    </button>
+
+                                    <button
+                                      onClick={() => openOnlineStoreConfigModal(s)}
+                                      className="px-3 py-1.5 bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 font-bold rounded-xl flex items-center gap-1 cursor-pointer transition-all"
+                                      title="Configure Online Store ID & enable/disable online shopping"
+                                    >
+                                      <Globe className="w-3.5 h-3.5 text-purple-600" /> Online Store ID
                                     </button>
 
                                     {onSelectStoreToManage && (
@@ -3558,6 +3653,203 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                 >
                   <Plus className="w-4 h-4" />
                   <span>{loading ? 'Creating...' : 'Create Account'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 7: SUPER ADMIN ONLINE STORE ID & E-COMMERCE CONFIGURATION */}
+      {onlineStoreModalStore && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5 relative max-h-[92vh] overflow-y-auto text-left">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+              <div>
+                <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                  <Globe className="w-5 h-5 text-orange-600" />
+                  <span>Configure Online Store ID</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Store: <strong className="text-slate-800">{onlineStoreModalStore.name}</strong>
+                </p>
+              </div>
+              <button
+                onClick={() => setOnlineStoreModalStore(null)}
+                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-xl hover:bg-slate-100 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveOnlineStoreConfig} className="space-y-4">
+              {/* Enable / Disable Online Shopping Toggle */}
+              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-slate-800 block">
+                    Online Shopping Functionality
+                  </span>
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    {modalOnlineStoreEnabled 
+                      ? 'Enabled: Functionality visible in Store Admin & customers can order.' 
+                      : 'Disabled: Hidden / locked in Store Admin.'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setModalOnlineStoreEnabled(prev => !prev)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors ${
+                    modalOnlineStoreEnabled 
+                      ? 'bg-emerald-600 text-white shadow-xs' 
+                      : 'bg-slate-200 text-slate-600'
+                  }`}
+                >
+                  {modalOnlineStoreEnabled ? <Check className="w-3.5 h-3.5" /> : <Ban className="w-3.5 h-3.5" />}
+                  <span>{modalOnlineStoreEnabled ? 'Enabled' : 'Disabled'}</span>
+                </button>
+              </div>
+
+              {/* Online Store ID / Slug */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Online Store ID (Public Slug) *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const auto = onlineStoreModalStore.name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
+                      setModalOnlineStoreId(auto);
+                    }}
+                    className="text-[11px] font-bold text-orange-600 hover:text-orange-700 cursor-pointer"
+                  >
+                    Auto-Generate from Name
+                  </button>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-mono bg-slate-100 px-2.5 py-2 rounded-xl border border-slate-200 text-slate-500 font-bold">
+                    @
+                  </span>
+                  <input
+                    type="text"
+                    required
+                    value={modalOnlineStoreId}
+                    onChange={(e) => setModalOnlineStoreId(e.target.value.toLowerCase().replace(/\s+/g, '-'))}
+                    placeholder="e.g. ha-mart"
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs font-mono font-bold focus:outline-none focus:border-orange-500 focus:bg-white"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Unique ID for API endpoints and web links (e.g. <span className="font-mono text-slate-700 font-bold">ha-mart</span>).
+                </p>
+              </div>
+
+              {/* Delivery Fee & Min Order */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Delivery Fee (Rs.)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={modalOnlineDeliveryFee}
+                    onChange={(e) => setModalOnlineDeliveryFee(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Min Order (Rs.)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={modalOnlineMinOrder}
+                    onChange={(e) => setModalOnlineMinOrder(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs font-mono font-bold"
+                  />
+                </div>
+              </div>
+
+              {/* Support Phone & Promo Notice */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Support Phone / WhatsApp
+                </label>
+                <input
+                  type="text"
+                  value={modalOnlinePhone}
+                  onChange={(e) => setModalOnlinePhone(e.target.value)}
+                  placeholder="e.g. 0300 1234567"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Storefront Notice Banner
+                </label>
+                <input
+                  type="text"
+                  value={modalOnlineNotice}
+                  onChange={(e) => setModalOnlineNotice(e.target.value)}
+                  placeholder="e.g. 15% discount on all groceries!"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs font-medium"
+                />
+              </div>
+
+              {/* Direct Storefront URL Preview */}
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                  Storefront Live URL:
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    readOnly
+                    value={`${window.location.origin}/?onlineStore=${modalOnlineStoreId || 'store'}`}
+                    className="w-full font-mono text-[11px] bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}/?onlineStore=${modalOnlineStoreId || 'store'}`);
+                      setCopiedStorefrontLink(true);
+                      setTimeout(() => setCopiedStorefrontLink(false), 2000);
+                    }}
+                    className="p-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold cursor-pointer"
+                    title="Copy Link"
+                  >
+                    {copiedStorefrontLink ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                  <a
+                    href={`/?onlineStore=${modalOnlineStoreId || 'store'}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold"
+                    title="Open Storefront in New Tab"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setOnlineStoreModalStore(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold hover:bg-slate-200 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-5 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold shadow-md shadow-orange-600/20 transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{loading ? 'Saving...' : 'Save Online Store ID'}</span>
                 </button>
               </div>
             </form>

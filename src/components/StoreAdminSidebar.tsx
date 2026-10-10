@@ -32,7 +32,8 @@ import {
   Mail,
   FolderTree,
   FileBarChart,
-  FileText
+  FileText,
+  Globe
 } from 'lucide-react';
 
 export type StoreAdminTab = 
@@ -47,6 +48,7 @@ export type StoreAdminTab =
   | 'stock_remaining' 
   | 'manage_categories'
   | 'promotions'
+  | 'online_mart'
   | 'sales_history' 
   | 'recent_receipts'
   | 'payment_methods'
@@ -77,6 +79,7 @@ interface StoreAdminSidebarProps {
     receiptsCount: number;
     returnsCount: number;
     staffCount: number;
+    pendingOnlineOrdersCount?: number;
     expensesCount?: number;
     monthlyExpensesTotal?: number;
     cashPaymentTotal?: number;
@@ -212,6 +215,26 @@ export const StoreAdminSidebar: React.FC<StoreAdminSidebarProps> = ({
           icon: Undo2,
           badge: stats.returnsCount > 0 ? `${stats.returnsCount}` : null,
           badgeColor: 'bg-red-500/80 text-white'
+        }
+      ]
+    },
+    {
+      group: 'Online Mart & E-Commerce',
+      items: [
+        {
+          id: 'online_mart' as StoreAdminTab,
+          label: store.onlineStoreEnabled ? 'Online Store & Orders' : 'Online Store (Disabled)',
+          icon: Globe,
+          badge: !store.onlineStoreEnabled 
+            ? 'Super Admin Locked' 
+            : (stats.pendingOnlineOrdersCount && stats.pendingOnlineOrdersCount > 0 
+                ? `${stats.pendingOnlineOrdersCount} New` 
+                : 'Active'),
+          badgeColor: !store.onlineStoreEnabled 
+            ? 'bg-slate-800 text-slate-400 font-bold' 
+            : (stats.pendingOnlineOrdersCount && stats.pendingOnlineOrdersCount > 0 
+                ? 'bg-amber-500 text-slate-950 font-black animate-pulse' 
+                : 'bg-emerald-600 text-white font-bold')
         }
       ]
     },

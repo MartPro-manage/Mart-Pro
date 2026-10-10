@@ -38,6 +38,7 @@ import { StoreStaffTrackerView } from './StoreStaffTrackerView';
 import { StaffAttendanceView } from './StaffAttendanceView';
 import { ManageCategoriesView } from './ManageCategoriesView';
 import { ComprehensiveReportsView } from './ComprehensiveReportsView';
+import { OnlineOrdersManagementView } from './OnlineOrdersManagementView';
 import { 
   TrendingUp, 
   Package, 
@@ -47,7 +48,8 @@ import {
   Search, 
   Calculator, 
   PackageCheck, 
-  Receipt, 
+  Receipt,
+  Globe, 
   ReceiptText,
   Scale,
   Activity,
@@ -175,6 +177,10 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
 
   // Selected date for deep inspection in Sales by Date tab
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
+
+  // Sales Channel Filter (POS Counter vs Online Orders)
+  const [channelFilter, setChannelFilter] = useState<'all' | 'pos' | 'online'>('all');
+  const [pendingOnlineOrdersCount, setPendingOnlineOrdersCount] = useState<number>(0);
 
   const mainContentRef = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -1136,6 +1142,11 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       title: 'Item Discounts & Promotions',
       subtitle: 'Set and manage percentage & flat rupee discounts, monitor customer savings and realized profit margins',
       icon: Percent
+    },
+    online_mart: {
+      title: 'Online Store & Orders',
+      subtitle: 'Live online customer orders dispatch, storefront link & QR share, and API developer kit',
+      icon: Globe
     },
     sales_history: {
       title: 'Receipts & Billing Log',
@@ -2902,6 +2913,24 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                 })}
               </div>
             )}
+          </motion.div>
+        )}
+
+        {/* TAB: ONLINE MART & E-COMMERCE ORDERS */}
+        {activeTab === 'online_mart' && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25 }}
+          >
+            <OnlineOrdersManagementView
+              store={liveStore}
+              currentUser={currentUser}
+              onPreviewStorefront={() => {
+                const url = `/?onlineStore=${liveStore.onlineStoreId || liveStore.id}`;
+                window.open(url, '_blank');
+              }}
+            />
           </motion.div>
         )}
 

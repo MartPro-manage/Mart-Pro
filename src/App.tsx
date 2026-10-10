@@ -13,6 +13,7 @@ import { StaffSessionsView } from './components/StaffSessionsView';
 import { StaffAttendanceView } from './components/StaffAttendanceView';
 import { ReceiptModal } from './components/ReceiptModal';
 import { PublicReceiptView } from './components/PublicReceiptView';
+import { OnlineStorefrontView } from './components/OnlineStorefrontView';
 
 export default function App() {
   const [auth, setAuth] = useState<AuthState>({
@@ -40,6 +41,16 @@ export default function App() {
       console.warn('URL parsing error:', e);
     }
     return null;
+  });
+
+  // URL query param for Online Storefront (e.g. ?onlineStore=ha-mart)
+  const [onlineStoreTarget, setOnlineStoreTarget] = useState<string | null>(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('onlineStore') || params.get('store');
+    } catch {
+      return null;
+    }
   });
 
   // Dynamic Interface Switching state - Clicking any navbar button will instantly display only that interface
@@ -99,14 +110,20 @@ export default function App() {
     setPublicReceiptTarget(null);
   };
 
-  // If user scanned a QR code or navigated via ?receiptId=..., render Public E-Receipt View directly
-  if (publicReceiptTarget) {
+  // If user navigated via ?onlineStore=..., render Online Storefront View directly
+  if (onlineStoreTarget) {
     return (
-      <PublicReceiptView
-        receiptId={publicReceiptTarget.id}
-        receiptNumber={publicReceiptTarget.number}
-        encodedData={publicReceiptTarget.encodedData}
-        onExitToLogin={handleExitPublicReceipt}
+      <OnlineStorefrontView
+        storeIdOrSlug={onlineStoreTarget}
+        onExit={() => {
+          try {
+            const cleanUrl = window.location.origin + window.location.pathname;
+            window.history.pushState({}, document.title, cleanUrl);
+          } catch (e) {
+            console.warn(e);
+          }
+          setOnlineStoreTarget(null);
+        }}
       />
     );
   }

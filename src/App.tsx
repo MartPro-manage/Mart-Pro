@@ -284,6 +284,17 @@ export default function App() {
           <SupplierManagementView 
             store={activeStore} 
             currentUser={auth.user} 
+            initialTab="suppliers"
+            onBack={handleUniversalReturn}
+          />
+        )}
+
+        {/* 1b. ADD SUPPLIER OPTION */}
+        {activeNavView === 'add_supplier' && activeStore && (
+          <SupplierManagementView 
+            store={activeStore} 
+            currentUser={auth.user} 
+            initialTab="add_supplier"
             onBack={handleUniversalReturn}
           />
         )}

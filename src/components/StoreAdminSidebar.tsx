@@ -33,7 +33,8 @@ import {
   FolderTree,
   FileBarChart,
   FileText,
-  Globe
+  Truck,
+  UserPlus
 } from 'lucide-react';
 
 export type StoreAdminTab = 
@@ -53,11 +54,11 @@ export type StoreAdminTab =
   | 'payment_methods'
   | 'expenses'
   | 'suppliers'
+  | 'add_supplier'
   | 'staff' 
   | 'attendance'
   | 'staff_operations'
   | 'omnimail'
-  | 'online_orders'
   | 'settings';
 
 export type ExpenseFilterMode = 'all' | 'date' | 'month' | 'year';
@@ -86,7 +87,6 @@ interface StoreAdminSidebarProps {
     totalTransactionsCount?: number;
     cashPercent?: number;
     onlinePercent?: number;
-    pendingOnlineOrdersCount?: number;
   };
   expenseFilterMode?: ExpenseFilterMode;
   onSelectExpenseFilterMode?: (mode: ExpenseFilterMode) => void;
@@ -215,13 +215,6 @@ export const StoreAdminSidebar: React.FC<StoreAdminSidebarProps> = ({
           icon: Undo2,
           badge: stats.returnsCount > 0 ? `${stats.returnsCount}` : null,
           badgeColor: 'bg-red-500/80 text-white'
-        },
-        {
-          id: 'online_orders' as StoreAdminTab,
-          label: 'Online Store Orders',
-          icon: Globe,
-          badge: stats.pendingOnlineOrdersCount && stats.pendingOnlineOrdersCount > 0 ? `${stats.pendingOnlineOrdersCount} New` : null,
-          badgeColor: 'bg-indigo-600 text-white font-black animate-pulse'
         }
       ]
     },
@@ -248,6 +241,18 @@ export const StoreAdminSidebar: React.FC<StoreAdminSidebarProps> = ({
     {
       group: 'Store Management',
       items: [
+        {
+          id: 'suppliers' as StoreAdminTab,
+          label: 'Supplier Management',
+          icon: Truck,
+          badge: 'Directory'
+        },
+        {
+          id: 'add_supplier' as StoreAdminTab,
+          label: 'Add Supplier',
+          icon: UserPlus,
+          badge: 'New'
+        },
         {
           id: 'staff' as StoreAdminTab,
           label: 'Staff & Salaries',

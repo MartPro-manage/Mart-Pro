@@ -218,3 +218,6 @@ export function getEffectiveProductPrice(product: Product): number {
   return getProductDiscountInfo(product).effectivePrice;
 }
 
+export const computeDiscountInfo = getProductDiscountInfo;
+
+

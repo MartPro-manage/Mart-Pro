@@ -634,7 +634,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
         {/* STANDARD PRINTABLE RECEIPT CARD */}
             <div 
               id="printable-receipt" 
-              className={`text-slate-900 overflow-y-auto overscroll-contain max-h-[62vh] custom-scrollbar bg-white p-4 sm:p-5 rounded-2xl border-2 border-slate-800 font-mono text-xs space-y-3 shadow-lg ${
+              className={`text-slate-900 overflow-y-auto overscroll-contain max-h-[62vh] custom-scrollbar bg-white p-4 sm:p-5 rounded-2xl border-2 border-slate-800 font-mono text-xs space-y-4 shadow-lg ${
                 store?.receiptFormat === 'classic_detailed'
                   ? 'border-4 border-double border-slate-900'
                   : ''
@@ -711,7 +711,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               </div>
 
               {/* 3. All-Sides Bordered Items Table */}
-              <div className="border border-slate-400 rounded-xl overflow-hidden shadow-2xs">
+              <div className="border border-slate-400 rounded-xl overflow-hidden shadow-2xs my-2">
                 <table className="w-full border-collapse text-left">
                   <thead>
                     <tr className="bg-slate-100 text-[10px] font-black uppercase text-slate-800">
@@ -759,7 +759,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               {(() => {
                 const { totalDiscount, subtotal } = getDiscountMetrics();
                 return (
-                  <div className="border-2 border-slate-800 rounded-xl overflow-hidden bg-white shadow-2xs">
+                  <div className="border-2 border-slate-800 rounded-xl overflow-hidden bg-white shadow-2xs mt-2">
                     <div className="flex justify-between p-2 text-xs bg-slate-50/80 border-b border-slate-200 text-slate-700">
                       <span className="font-semibold">Subtotal:</span>
                       <span className="font-mono font-bold">{curr} {(subtotal || 0).toFixed(2)}</span>

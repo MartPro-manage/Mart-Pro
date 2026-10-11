@@ -14,10 +14,11 @@ import {
   Truck, 
   LayoutDashboard, 
   ScanLine, 
-  Users
+  Users,
+  UserPlus
 } from 'lucide-react';
 
-export type AppNavView = 'dashboard' | 'pos' | 'inventory' | 'suppliers' | 'staff' | 'price_checker' | 'attendance';
+export type AppNavView = 'dashboard' | 'pos' | 'inventory' | 'suppliers' | 'add_supplier' | 'staff' | 'price_checker' | 'attendance';
 
 interface NavbarProps {
   auth: AuthState;
@@ -114,10 +115,17 @@ export const Navbar: React.FC<NavbarProps> = ({
     },
     {
       id: 'suppliers' as AppNavView,
-      label: 'Supplier',
-      shortLabel: 'Supplier',
+      label: 'Supplier Management',
+      shortLabel: 'Suppliers',
       icon: Truck,
-      roles: ['branch_admin']
+      roles: ['store_admin', 'admin', 'branch_admin', 'product_register', 'cash_counter']
+    },
+    {
+      id: 'add_supplier' as AppNavView,
+      label: 'Add Supplier',
+      shortLabel: 'Add Supplier',
+      icon: UserPlus,
+      roles: ['store_admin', 'admin', 'branch_admin', 'product_register', 'cash_counter']
     },
     {
       id: 'staff' as AppNavView,

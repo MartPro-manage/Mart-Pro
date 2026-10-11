@@ -128,6 +128,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   const [sellBy, setSellBy] = useState<'unit' | 'weight'>('unit');
   const [unitType, setUnitType] = useState<'piece' | 'kg' | 'g' | 'liter' | 'dozen'>('piece');
   const [barcode, setBarcode] = useState('');
+  const [noBarcode, setNoBarcode] = useState(false);
   const [serialNumber, setSerialNumber] = useState('');
   const [name, setName] = useState('');
   const [imageUrl, setImageUrl] = useState('');
@@ -791,10 +792,13 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
       return;
     }
 
-    // Auto-generate full barcode if not entered
-    if (!trimmedBarcode) {
+    // Auto-generate full barcode if not entered and barcode is required
+    if (!trimmedBarcode && !noBarcode) {
       trimmedBarcode = generate5DigitBarcode();
       setBarcode(trimmedBarcode);
+    } else if (noBarcode) {
+      trimmedBarcode = '';
+      setBarcode('');
     }
 
     // Find if barcode already belongs to an existing product in catalog
@@ -2112,6 +2116,15 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                             }}
                             className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-blue-500 focus:bg-white font-mono transition-all font-bold tracking-wide shadow-2xs"
                           />
+                        </div>
+                        <div className="flex items-center gap-2 mt-2">
+                          <input
+                            type="checkbox"
+                            checked={noBarcode}
+                            onChange={(e) => setNoBarcode(e.target.checked)}
+                            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer"
+                          />
+                          <label className="text-xs text-slate-600 cursor-pointer">Do not use barcode</label>
                         </div>
                         {store.cameraScannerEnabled !== false && (
                           <button

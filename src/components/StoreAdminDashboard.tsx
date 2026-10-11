@@ -13,7 +13,7 @@ import {
   handleFirestoreError,
   OperationType 
 } from '../lib/firebase';
-import { Product, Sale, Store, UserAccount, ProductReturn, Expense, OnlineOrder } from '../types';
+import { Product, Sale, Store, UserAccount, ProductReturn, Expense } from '../types';
 import { cleanupExpiredReceipts, isSaleExpired } from '../lib/salesCleanup';
 import { ReturnSlipModal } from './ReturnSlipModal';
 import { ReceiptModal } from './ReceiptModal';
@@ -38,8 +38,6 @@ import { StoreStaffTrackerView } from './StoreStaffTrackerView';
 import { StaffAttendanceView } from './StaffAttendanceView';
 import { ManageCategoriesView } from './ManageCategoriesView';
 import { ComprehensiveReportsView } from './ComprehensiveReportsView';
-import { OnlineOrdersManagementView } from './OnlineOrdersManagementView';
-import { CustomerOnlineStoreModal } from './CustomerOnlineStoreModal';
 import { 
   TrendingUp, 
   Package, 
@@ -96,7 +94,7 @@ import {
   CheckCircle2,
   Trash2,
   Mail,
-  Globe
+  UserPlus
 } from 'lucide-react';
 
 interface StoreAdminDashboardProps {
@@ -150,8 +148,6 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [expenseFilterMode, setExpenseFilterMode] = useState<ExpenseFilterMode>('month');
   const [storeUsers, setStoreUsers] = useState<UserAccount[]>([]);
-  const [onlineOrders, setOnlineOrders] = useState<OnlineOrder[]>([]);
-  const [isCustomerStoreModalOpen, setIsCustomerStoreModalOpen] = useState(false);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [receiptLogSearchTerm, setReceiptLogSearchTerm] = useState('');
@@ -311,21 +307,6 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       handleFirestoreError(err, OperationType.GET, 'expenses');
     });
 
-    // 6. Subscribe to Online Orders
-    const onlineOrdersQuery = query(
-      collection(db, 'online_orders'),
-      where('storeId', '==', store.id)
-    );
-    const unsubOnlineOrders = onSnapshot(onlineOrdersQuery, (snapshot) => {
-      const list: OnlineOrder[] = [];
-      snapshot.forEach(docSnap => {
-        list.push({ id: docSnap.id, ...docSnap.data() } as OnlineOrder);
-      });
-      setOnlineOrders(list);
-    }, (err) => {
-      console.warn('Online orders sync warning:', err);
-    });
-
     return () => {
       unsubStore();
       unsubProducts();
@@ -333,7 +314,6 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       unsubReturns();
       unsubUsers();
       unsubExpenses();
-      unsubOnlineOrders();
     };
   }, [store?.id]);
 
@@ -975,9 +955,8 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
     onlinePaymentTotal: paymentMethodStats.onlinePaymentTotal,
     cashPercent: paymentMethodStats.cashPercent,
     onlinePercent: paymentMethodStats.onlinePercent,
-    totalTransactionsCount: paymentMethodStats.totalTransactionsCount,
-    pendingOnlineOrdersCount: onlineOrders.filter(o => o.status === 'pending').length
-  }), [dailySalesBreakdown.length, products.length, lowStockAlertCount, soldProductsSummary.length, products, filteredSalesByDate.length, filteredReturnsByDate.length, storeUsers.length, expenses.length, monthlyExpensesTotal, paymentMethodStats, onlineOrders]);
+    totalTransactionsCount: paymentMethodStats.totalTransactionsCount
+  }), [dailySalesBreakdown.length, products.length, lowStockAlertCount, soldProductsSummary.length, products, filteredSalesByDate.length, filteredReturnsByDate.length, storeUsers.length, expenses.length, monthlyExpensesTotal, paymentMethodStats]);
 
   // Promotions Memoized Calculations
   const promotionsCategories = useMemo(() => {
@@ -1179,6 +1158,11 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       subtitle: 'Create supplier purchase orders, receive inventory stock, and track supplier accounts',
       icon: Truck
     },
+    add_supplier: {
+      title: 'Add New Supplier Profile',
+      subtitle: 'Register vendors and wholesale suppliers with contact details, address, and credit terms',
+      icon: UserPlus
+    },
     staff: {
       title: 'Store Staff & Salaries',
       subtitle: 'Cashiers, inventory staff, salaries, payroll disbursements, and account management',
@@ -1218,11 +1202,6 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       title: 'OmniMail Z-Sender Email Broadcast',
       subtitle: 'Dispatch automated e-receipts and promotional email broadcasts to store customers',
       icon: Mail
-    },
-    online_orders: {
-      title: 'Customer Online Store Orders',
-      subtitle: 'Manage and fulfill online orders placed by customers through your H A Mart e-commerce store website',
-      icon: Globe
     }
   };
 
@@ -1703,31 +1682,6 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             transition={{ duration: 0.25 }}
             className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6"
           >
-            {/* Embedded Recharts Sales Trend with Collapse Toggle */}
-            <div className="space-y-3 pb-2 border-b border-slate-100">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                  <TrendingUp className="w-4 h-4 text-orange-600" /> Revenue & Profit Trend Chart
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowChartInSalesByDate(prev => !prev)}
-                  className="text-xs font-bold text-orange-600 hover:text-orange-700 bg-orange-50 hover:bg-orange-100 px-3 py-1.5 rounded-lg border border-orange-200 transition-all cursor-pointer flex items-center gap-1"
-                >
-                  <BarChart3 className="w-3.5 h-3.5" />
-                  {showChartInSalesByDate ? 'Collapse Chart' : 'Expand Revenue Chart'}
-                </button>
-              </div>
-
-              {showChartInSalesByDate && (
-                <SalesRevenueChart 
-                  sales={sales} 
-                  returns={returns} 
-                  products={products} 
-                />
-              )}
-            </div>
-
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
               <div>
                 <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -2197,17 +2151,17 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
               </div>
               <div className="bg-blue-50/60 p-3.5 rounded-xl border border-blue-200">
                 <span className="text-[10px] font-bold text-blue-800 uppercase tracking-wider block">Stock On Hand</span>
-                <span className="text-xl font-black text-blue-700 font-mono mt-1 block">{inventoryValuationStats.totalUnitsCount.toLocaleString()}</span>
+                <span className="text-xl font-black text-blue-700 font-mono mt-1 block">{(inventoryValuationStats?.totalUnitsCount || 0).toLocaleString()}</span>
                 <span className="text-[10px] text-blue-600 font-medium">Units in store</span>
               </div>
               <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Wholesale Cost</span>
-                <span className="text-lg font-black text-slate-900 font-mono mt-1 block truncate">Rs. {inventoryValuationStats.totalCostValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                <span className="text-lg font-black text-slate-900 font-mono mt-1 block truncate">Rs. {(inventoryValuationStats?.totalCostValue || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
                 <span className="text-[10px] text-slate-500 font-medium">Purchase cost</span>
               </div>
               <div className="bg-emerald-50/60 p-3.5 rounded-xl border border-emerald-200">
                 <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">Retail Value</span>
-                <span className="text-lg font-black text-emerald-700 font-mono mt-1 block truncate">Rs. {inventoryValuationStats.totalRetailValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                <span className="text-lg font-black text-emerald-700 font-mono mt-1 block truncate">Rs. {(inventoryValuationStats?.totalRetailValue || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
                 <span className="text-[10px] text-emerald-700 font-medium font-mono">{(inventoryValuationStats?.overallMargin || 0).toFixed(1)}% Gross Margin</span>
               </div>
               <div className={`p-3.5 rounded-xl border col-span-2 sm:col-span-1 ${
@@ -2416,7 +2370,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
               <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
                 <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Est. Customer Savings</span>
                 <span className="text-2xl font-black text-emerald-600 font-mono mt-1 block truncate">
-                  Rs. {promotionsStats.totalPotentialSavings.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  Rs. {(promotionsStats?.totalPotentialSavings || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </span>
                 <span className="text-[10px] text-emerald-700 font-medium">
                   Available on stock in store
@@ -2967,10 +2921,12 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25 }}
+            className="h-full w-full flex-1 flex flex-col"
           >
             <SupplierManagementView
               store={liveStore}
               currentUser={currentUser}
+              initialTab="suppliers"
               onBack={() => setActiveTab('sales_by_date')}
             />
           </motion.div>
@@ -3062,7 +3018,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
               </div>
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
                 <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Retail Stock Value</span>
-                <div className="text-2xl font-black text-emerald-600 font-mono mt-1">Rs. {inventoryValuationStats.totalRetailValue.toLocaleString('en-PK', { minimumFractionDigits: 2 })}</div>
+                <div className="text-2xl font-black text-emerald-600 font-mono mt-1">Rs. {(inventoryValuationStats?.totalRetailValue || 0).toLocaleString('en-PK', { minimumFractionDigits: 2 })}</div>
               </div>
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
                 <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Stock Health</span>
@@ -3239,12 +3195,17 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
           </motion.div>
         )}
 
-        {/* TAB: ONLINE STORE ORDERS */}
-        {activeTab === 'online_orders' && (
-          <OnlineOrdersManagementView
-            store={liveStore}
-            onOpenCustomerStore={() => setIsCustomerStoreModalOpen(true)}
-          />
+
+        {/* TAB: ADD SUPPLIER */}
+        {activeTab === 'add_supplier' && (
+          <div className="h-full w-full flex-1 flex flex-col">
+            <SupplierManagementView
+              store={liveStore}
+              currentUser={currentUser}
+              initialTab="add_supplier"
+              onBack={() => setActiveTab('sales_by_date')}
+            />
+          </div>
         )}
 
         {/* RETURN SLIP MODAL */}
@@ -3367,14 +3328,6 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             </div>
           </div>
         )}
-
-        {/* CUSTOMER ONLINE STORE WEBSITE MODAL */}
-        <CustomerOnlineStoreModal
-          store={liveStore}
-          isOpen={isCustomerStoreModalOpen}
-          onClose={() => setIsCustomerStoreModalOpen(false)}
-          products={products}
-        />
 
         </main>
       </div>

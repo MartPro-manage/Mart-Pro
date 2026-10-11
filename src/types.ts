@@ -53,6 +53,20 @@ export interface Store {
   digitalPaymentMethods?: DigitalPaymentMethodConfig[];
   bankAccount?: StoreBankAccount; // Store bank account entered by admin in payment method option
   bankAccounts?: StoreBankAccount[]; // All configured store bank accounts
+  onlineStoreEnabled?: boolean;
+  isOnlineStoreEnabled?: boolean;
+  onlineStoreId?: string;
+  onlineApiKey?: string;
+  onlineStorePhone?: string;
+  onlineStoreDeliveryFee?: number;
+  onlineStoreMinOrder?: number;
+  onlineMinOrderAmount?: number;
+  onlineStoreNotice?: string;
+  onlineEstimatedDeliveryTime?: string;
+  onlineEstimatedTime?: string;
+  onlineStoreEstimatedTime?: string;
+  onlineStoreAnnouncement?: string;
+  onlineDeliveryFee?: number;
   createdAt: string;
 }
 
@@ -254,30 +268,41 @@ export interface SupplierOrderItem {
   name: string;
   category?: string;
   barcode?: string;
+  sku?: string;
+  imageUrl?: string;
   shortcutCode?: string;
   currentStock?: number;
   orderQuantity: number;
+  previouslyReceivedQuantity?: number;
+  remainingQuantity?: number;
   unitType?: string;
-  costPrice?: number;
+  costPrice: number;
+  sellingPrice: number;
   estimatedTotal?: number;
+  deliveryStatus?: 'pending' | 'partially_received' | 'fully_received';
   checked?: boolean;
 }
 
 export interface SupplierOrder {
   id: string;
   storeId: string;
+  supplierId: string;
   supplierName: string;
+  orderNumber: string;
+  orderDate: string; // YYYY-MM-DD
   contactNumber: string;
   items: SupplierOrderItem[];
   status: 'pending' | 'ordered' | 'delivered';
-  paymentTerms?: 'advance' | 'cod';
-  advancePaidAmount?: number;
-  codPaidAmount?: number;
-  totalPaidAmount?: number;
+  deliveryStatus: 'pending' | 'partially_received' | 'fully_received';
+  paymentStatus: 'unpaid' | 'partially_paid' | 'paid';
+  advancePaidAmount: number;
+  totalPaidAmount: number;
+  totalOrderAmount: number;
+  notes?: string;
+  advancePaymentMethod?: string;
+  advanceNotes?: string;
   paymentExpenseId?: string;
   deliveryExpenseId?: string;
-  notes?: string;
-  totalEstimatedAmount?: number;
   createdAt: string;
   updatedAt: string;
   deliveredAt?: string;
@@ -390,19 +415,94 @@ export interface OnlineOrder {
   orderNumber: string;
   customerName: string;
   customerPhone: string;
-  deliveryAddress: string;
+  deliveryAddress?: string;
   city?: string;
-  deliveryType: 'delivery' | 'pickup';
-  paymentMethod: 'cod' | 'online' | 'card';
+  deliveryType?: 'delivery' | 'pickup';
+  paymentMethod: string;
   paymentProvider?: string;
   transactionId?: string;
   items: OnlineOrderItem[];
-  subtotalAmount: number;
+  subtotalAmount?: number;
   deliveryFee: number;
   totalAmount: number;
-  status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+  status: string;
   notes?: string;
+  deliveryNotes?: string;
+  cancelledReason?: string;
+  orderStatus?: string;
+  paymentStatus?: string;
+  storeName?: string;
+  customerAddress?: string;
+  customerEmail?: string;
+  subtotal?: number;
+  discountAmount?: number;
+  customerNotes?: string;
+  totalCost?: number;
+  netProfit?: number;
+  onlineStoreId?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface SupplierProfile {
+  id: string;
+  storeId: string;
+  name: string;
+  phone: string;
+  address: string;
+  businessName?: string;
+  email?: string;
+  notes?: string;
+  status: 'active' | 'inactive';
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SupplierPayment {
+  id: string;
+  storeId: string;
+  supplierId: string;
+  supplierName: string;
+  purchaseOrderId?: string;
+  orderNumber?: string;
+  amount: number;
+  paymentMethod: 'cash' | 'bank_transfer' | 'cheque' | 'online' | string;
+  paymentDate: string; // YYYY-MM-DD
+  reference?: string;
+  notes?: string;
+  expenseId?: string;
+  createdAt: string;
+}
+
+export interface GoodsReceiptItem {
+  productId?: string;
+  name: string;
+  barcode?: string;
+  sku?: string;
+  orderedQuantity: number;
+  previouslyReceived: number;
+  remainingQuantity: number;
+  receiveNow: number;
+  costPrice: number;
+  sellingPrice: number;
+  totalCost: number;
+  status: 'Complete' | 'Partially Received' | 'Pending';
+  verified?: boolean;
+}
+
+export interface GoodsReceipt {
+  id: string;
+  storeId: string;
+  purchaseOrderId: string;
+  orderNumber: string;
+  supplierId: string;
+  supplierName: string;
+  receiptNumber: string;
+  receivedDate: string;
+  items: GoodsReceiptItem[];
+  totalQuantityReceived: number;
+  totalPurchaseCost: number;
+  expenseId?: string;
+  createdAt: string;
 }
 

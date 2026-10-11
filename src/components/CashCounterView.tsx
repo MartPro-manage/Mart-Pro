@@ -1079,9 +1079,11 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
         heldAt: new Date().toISOString()
       };
 
-      await setDoc(doc(db, 'held_bills', heldId), payload);
+      // Optimistically clear cart
       setCart([]);
       localStorage.removeItem(draftStorageKey);
+
+      await setDoc(doc(db, 'held_bills', heldId), payload);
       playScanSuccessBeep();
       showNotification('success', `Bill held successfully (${payload.items.length} items)! Press A+S to resume.`);
       if (isVoiceAllowed && voiceEnabled) {
@@ -1090,8 +1092,10 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     } catch (err: any) {
       console.error('Error holding bill:', err);
       showNotification('error', 'Failed to hold bill: ' + err.message);
+      // Revert if failed
+      setCart(payload.items);
     }
-  }, [cart, cartSubtotal, cartTotal, store.id, currentUser, isVoiceAllowed, voiceEnabled, draftStorageKey]);
+  }, [cart, cartSubtotal, cartTotal, store.id, currentUser, draftStorageKey, isVoiceAllowed, voiceEnabled]);
 
   // Restore Parked Bill to Active Cart
   const handleRestoreBill = useCallback(async (bill: HeldBill) => {

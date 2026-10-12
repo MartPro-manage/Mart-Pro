@@ -524,7 +524,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
 
       d.netRevenue = Math.max(0, d.grossRevenue - d.totalRefunds - dayOrderCost);
       d.netCost = Math.max(0, d.grossCost - d.returnedCost);
-      d.netProfit = d.netRevenue - d.netCost;
+      d.netProfit = (d.grossRevenue - d.totalRefunds) - d.netCost;
       d.profitMargin = d.netRevenue > 0 ? (d.netProfit / d.netRevenue) * 100 : 0;
       d.netUnitsSold = d.grossUnitsSold - d.unitsReturned;
     });
@@ -615,7 +615,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
   }, [filteredSalesByDate, filteredReturnsByDate, products]);
 
   const filteredNetProfit = useMemo(() => {
-    return filteredNetRevenue - filteredCostOfGoods;
+    return (filteredGrossRevenue - filteredRefundsTotal) - filteredCostOfGoods;
   }, [filteredNetRevenue, filteredCostOfGoods]);
 
   const filteredTotalExpenses = useMemo(() => {

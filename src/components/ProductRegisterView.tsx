@@ -1935,7 +1935,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
 
             {/* Product Registration & Stock Terminal (Visible in 'form' mode) */}
             {activeTab === 'form' && (
-              <div className="max-w-4xl mx-auto w-full bg-white rounded-3xl border border-slate-200 shadow-md overflow-hidden transition-all">
+              <div className="max-w-screen-2xl mx-auto w-full bg-white rounded-3xl border border-slate-200 shadow-md overflow-hidden transition-all">
                 {/* Terminal Dark Header (Responsive Scaling with Screen Size) */}
                 <div className="bg-gradient-to-r from-slate-950 via-blue-950 to-indigo-950 text-white p-4 sm:p-6 lg:p-7 xl:p-8 border-b border-blue-900/60 relative overflow-hidden">
                   {/* Ambient Glow */}

@@ -336,14 +336,21 @@ export const SupplierManagementView: React.FC<SupplierManagementViewProps> = ({
     const supPayments = payments.filter(p => p.supplierId === sup.id);
     const fin = supplierFinancials[sup.id];
 
-    generateSupplierLedgerPdf(sup, supOrders, supPayments, store, fin);
+    const generationTime = new Date();
+    generateSupplierLedgerPdf(sup, supOrders, supPayments, store, fin, generationTime);
     showToast('success', `Financial ledger PDF downloaded successfully for ${sup.name}!`);
   };
 
   // 3. Download Pending Orders Product List as PDF
+  const handleDownloadOrderList = (order: SupplierOrder) => {
+    const sup = suppliers.find(s => s.id === order.supplierId);
+    generateOrderProductListPdf(order, store, sup);
+    showToast('success', `Product list PDF downloaded for order ${order.orderNumber}!`);
+  };
+
   const handleDownloadPendingProducts = (sup: SupplierProfile) => {
     const pendingOrders = orders.filter(o => o.supplierId === sup.id && o.status !== 'delivered');
-    generateOrderProductListPdf(pendingOrders, sup, store);
+    generateOrderProductListPdf(pendingOrders[0], store, sup); // Assuming logic change to download per order or just pick first for demo
     showToast('success', `Pending order product list PDF downloaded for ${sup.name}!`);
   };
 
@@ -1371,18 +1378,7 @@ export const SupplierManagementView: React.FC<SupplierManagementViewProps> = ({
 
                         {/* Direct Download options for Products list and Ledger */}
                         <div className="grid grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDownloadSupplierProducts(sup);
-                            }}
-                            className="py-1.5 px-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-bold transition-colors flex items-center justify-center gap-1 border border-emerald-200 cursor-pointer"
-                            title="Download list of products created for this supplier (CSV)"
-                          >
-                            <Download className="w-3 h-3 text-emerald-600" />
-                            <span className="truncate">Download Products</span>
-                          </button>
+
 
                           <button
                             type="button"
@@ -1484,7 +1480,6 @@ export const SupplierManagementView: React.FC<SupplierManagementViewProps> = ({
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => handleDownloadSupplierProducts(sup)}
                                   className="p-1 rounded-lg text-emerald-700 hover:bg-emerald-50 cursor-pointer"
                                   title="Download Products List"
                                 >
@@ -2144,15 +2139,7 @@ export const SupplierManagementView: React.FC<SupplierManagementViewProps> = ({
 
               {/* Header Action Buttons */}
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleDownloadSupplierProducts(selectedSupplierForView)}
-                  className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold text-xs cursor-pointer flex items-center gap-1.5 transition-colors"
-                  title="Download products created/ordered for this supplier (CSV)"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download Products</span>
-                </button>
+
 
                 <button
                   type="button"

@@ -503,7 +503,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
           setCategory(found.category || 'General');
           setCostPrice(found.costPrice !== undefined ? found.costPrice : '');
           setPrice(found.price);
-          setMinStockLevel(found.minStockLevel || 5);
+          setMinStockLevel(found.minStockLevel !== undefined ? found.minStockLevel : 5);
           setSellBy(found.sellBy || (found.unitType === 'kg' ? 'weight' : 'unit'));
           setUnitType((found.unitType as any) || (found.sellBy === 'weight' ? 'kg' : 'piece'));
           setWeightPerUnit(found.weightPerUnit !== undefined ? found.weightPerUnit : '');
@@ -539,7 +539,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: targetTitle,
+          name: `${targetTitle} ${brandName || ''} ${selectedSize || ''} ${category !== 'General' ? category : ''}`.trim(),
           category: category !== 'General' ? category : undefined,
           brand: brandName,
           size: selectedSize || undefined,
@@ -710,7 +710,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     setDiscountStartDate(p.discountStartDate || getTodayISO());
     setDiscountEndDate(p.discountEndDate || '');
     setHasDateLimit(Boolean(p.discountEndDate));
-    setMinStockLevel(p.minStockLevel || 5);
+    setMinStockLevel(p.minStockLevel !== undefined ? p.minStockLevel : 5);
     setSellBy(p.sellBy || (p.unitType === 'kg' ? 'weight' : 'unit'));
     setUnitType((p.unitType as any) || (p.sellBy === 'weight' ? 'kg' : 'piece'));
     setWeightPerUnit(p.weightPerUnit !== undefined ? p.weightPerUnit : '');
@@ -901,7 +901,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
           discountStartDate: finalStartDate || null,
           discountEndDate: finalEndDate || null,
           stockQuantity: finalTotalStock,
-          minStockLevel: minStockLevel || 5,
+          minStockLevel: minStockLevel !== undefined ? minStockLevel : 5,
           updatedAt: new Date().toISOString()
         }));
 
@@ -938,7 +938,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
           discountStartDate: finalStartDate,
           discountEndDate: finalEndDate,
           stockQuantity: finalTotalStock,
-          minStockLevel: minStockLevel || 5,
+          minStockLevel: minStockLevel !== undefined ? minStockLevel : 5,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         };
@@ -1002,7 +1002,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
         costPrice: productData.costPrice || 0,
         price: productData.price,
         stockQuantity: productData.stockQuantity || 50,
-        minStockLevel: 5,
+        minStockLevel: 0,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };

@@ -357,7 +357,8 @@ export function generateSupplierLedgerPdf(
   orders: SupplierOrder[],
   payments: SupplierPayment[],
   store: Store,
-  financials?: { totalPurchases: number; totalPaid: number; outstanding: number }
+  financials?: { totalPurchases: number; totalPaid: number; outstanding: number },
+  generationTime?: Date
 ): void {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -410,7 +411,7 @@ export function generateSupplierLedgerPdf(
   doc.setTextColor(71, 85, 105);
   doc.text(`Phone: ${supplier.phone || '-'} | Email: ${supplier.email || '-'}`, 18, currentY + 11);
   doc.text(`Address: ${supplier.address || '-'}`, 18, currentY + 16);
-  doc.text(`Statement Date & Time: ${new Date().toLocaleString()}`, 18, currentY + 21);
+  doc.text(`Statement Date & Time: ${(generationTime || new Date()).toLocaleString()}`, 18, currentY + 21);
 
   // Financial Cards Strip
   const totalPurchases = financials?.totalPurchases ?? orders.reduce((s, o) => s + (o.totalOrderAmount || 0), 0);
@@ -622,8 +623,8 @@ export function generateSupplierLedgerPdf(
   const pageHeight = doc.internal.pageSize.getHeight();
   doc.setFontSize(7);
   doc.setTextColor(148, 163, 184);
-  doc.text(`Supplier Ledger Statement | Generated on ${new Date().toLocaleString()} for ${supplier.name}`, 14, pageHeight - 6);
+  doc.text(`Supplier Ledger Statement | Generated on ${(generationTime || new Date()).toLocaleString()} for ${supplier.name}`, 14, pageHeight - 6);
 
   const cleanName = supplier.name.replace(/[^a-zA-Z0-9_-]/g, '_');
-  doc.save(`${cleanName}_Financial_Ledger_${new Date().toISOString().split('T')[0]}.pdf`);
+  doc.save(`${cleanName}_Financial_Ledger_${(generationTime || new Date()).toISOString().replace(/[:.]/g, '-').slice(0, 19)}.pdf`);
 }

@@ -9,6 +9,7 @@ import { ProductRegisterView } from './components/ProductRegisterView';
 import { CashCounterView } from './components/CashCounterView';
 import { CustomerPriceCheckerView } from './components/CustomerPriceCheckerView';
 import { SupplierManagementView } from './components/SupplierManagementView';
+import { AddSupplierView } from './components/AddSupplierView';
 import { StaffSessionsView } from './components/StaffSessionsView';
 import { StaffAttendanceView } from './components/StaffAttendanceView';
 import { ReceiptModal } from './components/ReceiptModal';
@@ -291,10 +292,9 @@ export default function App() {
 
         {/* 1b. ADD SUPPLIER OPTION */}
         {activeNavView === 'add_supplier' && activeStore && (
-          <SupplierManagementView 
+          <AddSupplierView 
             store={activeStore} 
             currentUser={auth.user} 
-            initialTab="add_supplier"
             onBack={handleUniversalReturn}
           />
         )}

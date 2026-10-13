@@ -32,6 +32,7 @@ import { BatchProductRow } from '../lib/excelParser';
 import { StoreAdminSidebar, StoreAdminTab, ExpenseFilterMode } from './StoreAdminSidebar';
 import { StoreAdminExpenses } from './StoreAdminExpenses';
 import { SupplierManagementView } from './SupplierManagementView';
+import { AddSupplierView } from './AddSupplierView';
 import { StaffSessionsView } from './StaffSessionsView';
 import { PaymentMethodsView } from './PaymentMethodsView';
 import { StoreStaffTrackerView } from './StoreStaffTrackerView';
@@ -3199,10 +3200,9 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
         {/* TAB: ADD SUPPLIER */}
         {activeTab === 'add_supplier' && (
           <div className="h-full w-full flex-1 flex flex-col">
-            <SupplierManagementView
+            <AddSupplierView
               store={liveStore}
               currentUser={currentUser}
-              initialTab="add_supplier"
               onBack={() => setActiveTab('sales_by_date')}
             />
           </div>

@@ -1064,6 +1064,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
       return;
     }
 
+    const currentItems = [...cart];
     try {
       const heldId = `held_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       const payload: HeldBill = {
@@ -1073,7 +1074,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
         counterName: `Counter #${currentUser.counterNumber || 1}`,
         cashierName: currentUser.name || currentUser.username,
         cashierUsername: currentUser.username,
-        items: [...cart],
+        items: currentItems,
         subtotal: cartSubtotal,
         total: cartTotal,
         heldAt: new Date().toISOString()
@@ -1093,7 +1094,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
       console.error('Error holding bill:', err);
       showNotification('error', 'Failed to hold bill: ' + err.message);
       // Revert if failed
-      setCart(payload.items);
+      setCart(currentItems);
     }
   }, [cart, cartSubtotal, cartTotal, store.id, currentUser, draftStorageKey, isVoiceAllowed, voiceEnabled]);
 

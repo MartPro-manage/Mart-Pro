@@ -42,7 +42,7 @@ export function generateOrderProductListPdf(
   const storeDetails = [
     store?.address || '',
     store?.phone ? `Phone: ${store.phone}` : '',
-    store?.email ? `Email: ${store.email}` : ''
+    (store as any)?.email ? `Email: ${(store as any).email}` : ''
   ].filter(Boolean).join(' | ');
   doc.text(storeDetails || 'Point of Sale & Inventory Management System', 14, 18);
 

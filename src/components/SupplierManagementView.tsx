@@ -43,7 +43,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { generateOrderProductListPdf, generateSupplierProductsCatalogPdf, generateSupplierLedgerPdf } from '../lib/pdfGenerator';
 
-export type SupplierMainTab = 'suppliers' | 'add_supplier' | 'orders' | 'payments' | 'new_order';
+export type SupplierMainTab = 'suppliers' | 'orders' | 'payments' | 'new_order';
 
 export const SUPPLIER_PAYMENT_METHODS = [
   'Cash',
@@ -402,8 +402,6 @@ export const SupplierManagementView: React.FC<SupplierManagementViewProps> = ({
       setSupBusiness('');
       setSupEmail('');
       setSupNotes('');
-      // Immediately switch to Suppliers directory tab to view the added/updated supplier
-      setMainTab('suppliers');
     } catch (err: any) {
       console.error(err);
       showToast('error', 'Failed to save supplier: ' + err.message);
@@ -420,7 +418,7 @@ export const SupplierManagementView: React.FC<SupplierManagementViewProps> = ({
     setSupBusiness(sup.businessName || '');
     setSupEmail(sup.email || '');
     setSupNotes(sup.notes || '');
-    setMainTab('add_supplier');
+    setIsSupplierModalOpen(true);
   };
 
   // Product Selection & Checklist Handlers for PO Creation
@@ -984,26 +982,6 @@ export const SupplierManagementView: React.FC<SupplierManagementViewProps> = ({
 
               <button
                 type="button"
-                onClick={() => {
-                  setEditingSupplier(null);
-                  setSupName('');
-                  setSupPhone('');
-                  setSupAddress('');
-                  setSupBusiness('');
-                  setSupEmail('');
-                  setSupNotes('');
-                  setMainTab('add_supplier');
-                }}
-                className={`px-3.5 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
-                  mainTab === 'add_supplier' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <UserPlus className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Add Supplier</span>
-              </button>
-
-              <button
-                type="button"
                 onClick={() => setMainTab('orders')}
                 className={`px-3.5 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
                   mainTab === 'orders' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
@@ -1024,24 +1002,6 @@ export const SupplierManagementView: React.FC<SupplierManagementViewProps> = ({
                 <span>Payments History</span>
               </button>
             </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                setEditingSupplier(null);
-                setSupName('');
-                setSupPhone('');
-                setSupAddress('');
-                setSupBusiness('');
-                setSupEmail('');
-                setSupNotes('');
-                setMainTab('add_supplier');
-              }}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-colors cursor-pointer shadow-xs"
-            >
-              <UserPlus className="w-4 h-4" />
-              <span>Add Supplier</span>
-            </button>
 
             <button
               type="button"
@@ -1181,24 +1141,6 @@ export const SupplierManagementView: React.FC<SupplierManagementViewProps> = ({
                     <span>Table</span>
                   </button>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingSupplier(null);
-                    setSupName('');
-                    setSupPhone('');
-                    setSupAddress('');
-                    setSupBusiness('');
-                    setSupEmail('');
-                    setSupNotes('');
-                    setMainTab('add_supplier');
-                  }}
-                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs shrink-0"
-                >
-                  <UserPlus className="w-4 h-4" />
-                  <span>Add Supplier</span>
-                </button>
               </div>
             </div>
 
@@ -1207,24 +1149,8 @@ export const SupplierManagementView: React.FC<SupplierManagementViewProps> = ({
                 <User className="w-12 h-12 mx-auto text-slate-300 mb-3" />
                 <h3 className="text-base font-bold text-slate-800">No Suppliers Found</h3>
                 <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                  {supplierSearch ? 'No suppliers match your search query.' : 'Create your first supplier profile to start placing purchase orders.'}
+                  {supplierSearch ? 'No suppliers match your search query.' : 'No suppliers registered in store directory yet.'}
                 </p>
-                <button
-                  onClick={() => {
-                    setEditingSupplier(null);
-                    setSupName('');
-                    setSupPhone('');
-                    setSupAddress('');
-                    setSupBusiness('');
-                    setSupEmail('');
-                    setSupNotes('');
-                    setMainTab('add_supplier');
-                  }}
-                  className="mt-4 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer inline-flex items-center gap-1.5"
-                >
-                  <UserPlus className="w-4 h-4" />
-                  <span>Create Supplier Profile</span>
-                </button>
               </div>
             ) : supplierViewLayout === 'blocks' ? (
               /* SUPPLIER BLOCKS (CARDS GRID VIEW) */
@@ -1511,175 +1437,6 @@ export const SupplierManagementView: React.FC<SupplierManagementViewProps> = ({
                 </div>
               </div>
             )}
-          </div>
-        )}
-
-        {/* 1b. ADD SUPPLIER OPTION & FUNCTION */}
-        {mainTab === 'add_supplier' && (
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden max-w-4xl mx-auto">
-            <div className="p-6 border-b border-slate-200 bg-gradient-to-r from-emerald-50/60 to-teal-50/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-md shadow-emerald-600/20 shrink-0">
-                  <UserPlus className="w-6 h-6" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-black text-slate-900">
-                    {editingSupplier ? 'Edit Supplier Profile' : 'Add New Supplier Profile'}
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Enter supplier details below. Once saved, this supplier will immediately appear in Supplier Management and will be available for purchase orders.
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setMainTab('suppliers')}
-                className="px-4 py-2 rounded-xl text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 text-xs font-bold transition-colors cursor-pointer self-start sm:self-auto shadow-2xs"
-              >
-                ← View Suppliers Directory
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveSupplier} className="p-6 sm:p-8 space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-xs font-extrabold text-slate-800 uppercase tracking-wider mb-1.5">
-                    Supplier Full Name <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      required
-                      value={supName}
-                      onChange={(e) => setSupName(e.target.value)}
-                      placeholder="e.g. National Foods Distributors"
-                      className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:outline-hidden focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-extrabold text-slate-800 uppercase tracking-wider mb-1.5">
-                    Phone Number <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      required
-                      value={supPhone}
-                      onChange={(e) => setSupPhone(e.target.value)}
-                      placeholder="e.g. +92 300 1234567"
-                      className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:outline-hidden focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-extrabold text-slate-800 uppercase tracking-wider mb-1.5">
-                    Business / Company Name <span className="text-slate-400 text-[10px] font-normal">(Optional)</span>
-                  </label>
-                  <div className="relative">
-                    <Building className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      value={supBusiness}
-                      onChange={(e) => setSupBusiness(e.target.value)}
-                      placeholder="e.g. National Foods Pvt Ltd"
-                      className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:outline-hidden focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-extrabold text-slate-800 uppercase tracking-wider mb-1.5">
-                    Email Address <span className="text-slate-400 text-[10px] font-normal">(Optional)</span>
-                  </label>
-                  <div className="relative">
-                    <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="email"
-                      value={supEmail}
-                      onChange={(e) => setSupEmail(e.target.value)}
-                      placeholder="e.g. orders@nationalfoods.com"
-                      className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:outline-hidden focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-extrabold text-slate-800 uppercase tracking-wider mb-1.5">
-                  Complete Address / Location <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                  <textarea
-                    required
-                    rows={2}
-                    value={supAddress}
-                    onChange={(e) => setSupAddress(e.target.value)}
-                    placeholder="Enter physical address, city, warehouse or market stall number..."
-                    className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:outline-hidden focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 resize-none"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-extrabold text-slate-800 uppercase tracking-wider mb-1.5">
-                  Supplier Notes & Delivery Terms <span className="text-slate-400 text-[10px] font-normal">(Optional)</span>
-                </label>
-                <div className="relative">
-                  <FileText className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    value={supNotes}
-                    onChange={(e) => setSupNotes(e.target.value)}
-                    placeholder="e.g. Delivers every Monday, 15 days credit terms"
-                    className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:outline-hidden focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-                  />
-                </div>
-              </div>
-
-              <div className="p-4 rounded-xl bg-emerald-50/70 border border-emerald-200/80 text-emerald-950 text-xs flex items-start gap-3">
-                <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-                <div className="space-y-0.5">
-                  <p className="font-extrabold">Instant Supplier Directory Sync</p>
-                  <p className="text-emerald-900/80 text-[11px]">
-                    Once saved, this supplier will immediately show in the Supplier Management directory table, purchase order creation dropdown, and ledger tracking.
-                  </p>
-                </div>
-              </div>
-
-              <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingSupplier(null);
-                    setSupName('');
-                    setSupPhone('');
-                    setSupAddress('');
-                    setSupBusiness('');
-                    setSupEmail('');
-                    setSupNotes('');
-                    setMainTab('suppliers');
-                  }}
-                  className="px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-7 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md shadow-emerald-600/20 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2"
-                >
-                  <UserPlus className="w-4 h-4" />
-                  <span>{isSubmitting ? 'Saving Supplier...' : editingSupplier ? 'Update Supplier Profile' : 'Save Supplier & View in Directory'}</span>
-                </button>
-              </div>
-            </form>
           </div>
         )}
 

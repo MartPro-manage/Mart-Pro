@@ -29,6 +29,8 @@ import { playScanSuccessBeep } from '../lib/sound';
 import { ScannableBarcodePreview } from './ScannableBarcodePreview';
 import { db, doc, setDoc, cleanFirestoreData } from '../lib/firebase';
 import { generateNextShortcutCode } from '../utils/productShortcuts';
+import { fetchProductImageUrl } from '../lib/imageFetcher';
+
 
 export interface SpreadsheetRowItem {
   id: string;
@@ -457,7 +459,7 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
   };
 
   // Handle "Send to AI" button click with MANDATORY COST & SELL PRICE VALIDATION
-  const handleSendToAi = () => {
+  const handleSendToAi = async () => {
     setHasAttemptedSubmit(true);
     setUploadError(null);
 
@@ -492,54 +494,44 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
       return;
     }
 
-    const batchProducts: BatchProductRow[] = rowsWithData.map((r, idx) => {
-      const pCost = typeof r.costPrice === 'number' ? r.costPrice : parseFloat(String(r.costPrice)) || 0;
-      const pPrice = typeof r.price === 'number' ? r.price : parseFloat(String(r.price)) || 0;
-      
-      const qtyValStr = String(r.quantity || '').toLowerCase();
-      let sellBy: 'unit' | 'weight' = 'unit';
-      let unitType: 'piece' | 'kg' | 'g' | 'liter' | 'dozen' = 'piece';
-      let pQty = 1;
+      const batchProducts = await Promise.all(rowsWithData.map(async (r, idx) => {
+        const pCost = typeof r.costPrice === 'number' ? r.costPrice : parseFloat(String(r.costPrice)) || 0;
+        const pPrice = typeof r.price === 'number' ? r.price : parseFloat(String(r.price)) || 0;
+        const qtyValStr = String(r.quantity || '').toLowerCase();
+        let sellBy: 'unit' | 'weight' = 'unit';
+        let unitType: 'piece' | 'kg' | 'g' | 'liter' | 'dozen' = 'piece';
+        let pQty = 1;
+        if (qtyValStr.includes('kg') || qtyValStr.includes('kilo')) { sellBy = 'weight'; unitType = 'kg'; }
+        else if (qtyValStr.includes('liter') || qtyValStr.includes('litre') || qtyValStr.includes(' l') || qtyValStr.includes('ml')) { sellBy = 'weight'; unitType = 'liter'; }
+        else if (qtyValStr.includes('g') || qtyValStr.includes('gram')) { sellBy = 'weight'; unitType = 'g'; }
+        else if (qtyValStr.includes('doz') || qtyValStr.includes('dozen')) { sellBy = 'unit'; unitType = 'dozen'; }
+        const numParsedQty = parseFloat(qtyValStr.replace(/[^0-9.]/g, ''));
+        if (!isNaN(numParsedQty) && numParsedQty >= 0) pQty = numParsedQty;
 
-      if (qtyValStr.includes('kg') || qtyValStr.includes('kilo')) {
-        sellBy = 'weight';
-        unitType = 'kg';
-      } else if (qtyValStr.includes('liter') || qtyValStr.includes('litre') || qtyValStr.includes(' l') || qtyValStr.includes('ml')) {
-        sellBy = 'weight';
-        unitType = 'liter';
-      } else if (qtyValStr.includes('g') || qtyValStr.includes('gram')) {
-        sellBy = 'weight';
-        unitType = 'g';
-      } else if (qtyValStr.includes('doz') || qtyValStr.includes('dozen')) {
-        sellBy = 'unit';
-        unitType = 'dozen';
-      }
+        const rowCategory = r.category.trim() || 'General';
+        // Auto persist new category to store customCategories in Firestore
+        if (rowCategory && store?.id) {
+          saveNewCategoryToStore(store.id, store.customCategories || [], rowCategory).catch(() => {});
+        }
 
-      const numParsedQty = parseFloat(qtyValStr.replace(/[^0-9.]/g, ''));
-      if (!isNaN(numParsedQty) && numParsedQty >= 0) {
-        pQty = numParsedQty;
-      }
+        let imageUrl = r.imageUrl?.trim() || '';
+        if (!imageUrl) {
+            imageUrl = await fetchProductImageUrl(r.name.trim());
+        }
 
-      const rowCategory = r.category.trim() || 'General';
-
-      // Auto persist new category to store customCategories in Firestore
-      if (rowCategory && store?.id) {
-        saveNewCategoryToStore(store.id, store.customCategories || [], rowCategory).catch(() => {});
-      }
-
-      return {
-        id: r.id || `batch-${idx}`,
-        name: r.name.trim(),
-        costPrice: pCost,
-        price: pPrice,
-        category: rowCategory,
-        barcode: r.barcode.trim(),
-        sellBy,
-        unitType,
-        quantity: pQty,
-        imageUrl: r.imageUrl?.trim() || ''
-      };
-    });
+        return {
+          id: r.id || `batch-${idx}`,
+          name: r.name.trim(),
+          costPrice: pCost,
+          price: pPrice,
+          category: rowCategory,
+          barcode: r.barcode.trim(),
+          sellBy,
+          unitType,
+          quantity: pQty,
+          imageUrl
+        };
+      }));
 
     playScanSuccessBeep();
     onClose();

@@ -26,6 +26,7 @@ import { StoreAiAssistantModal } from './StoreAiAssistantModal';
 import { ExcelManagerModal } from './ExcelManagerModal';
 import { DiscountManagerModal } from './DiscountManagerModal';
 import { ItemDiscountModal } from './ItemDiscountModal';
+import { ProductShortcutsModal } from './ProductShortcutsModal';
 import { getProductDiscountInfo, getEffectiveProductPrice } from '../utils/discountUtils';
 import { syncMissingShortcutCodesInFirestore } from '../utils/productShortcuts';
 import { playScanSuccessBeep } from '../lib/sound';
@@ -58,6 +59,7 @@ import {
   ArrowUpRight, 
   RefreshCw,
   Layers,
+  Hash,
   Calendar,
   CalendarDays,
   Clock,
@@ -160,6 +162,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
   const [showChartInSalesByDate, setShowChartInSalesByDate] = useState<boolean>(true);
   const [isAiAssistantOpen, setIsAiAssistantOpen] = useState(false);
   const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
+  const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   const [spreadsheetProductsForAi, setSpreadsheetProductsForAi] = useState<BatchProductRow[] | null>(null);
 
   // Return Voucher Modal State
@@ -2154,7 +2157,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             transition={{ duration: 0.25 }}
             className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-5"
           >
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 pb-3 gap-3">
               <div>
                 <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                   <Package className="w-5 h-5 text-blue-600" /> Realtime Stock Available & Remaining
@@ -2163,6 +2166,15 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
                   Live inventory levels. When cashiers make sales or product registers add stock, numbers update automatically.
                 </p>
               </div>
+              <button
+                type="button"
+                onClick={() => setIsShortcutsModalOpen(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-extrabold text-xs transition-all cursor-pointer shadow-xs border border-orange-500 shrink-0 self-start sm:self-auto"
+                title="View 4-Digit Product Short Codes Directory and Download PDF"
+              >
+                <Hash className="w-3.5 h-3.5 text-white" />
+                <span>Short Codes Directory (PDF)</span>
+              </button>
             </div>
 
             {/* Inventory Valuation & Health KPI Cards */}
@@ -3268,6 +3280,14 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             // Live Firestore subscription automatically refreshes products
           }}
           onOpenBatchModal={onNavigateToInventory}
+        />
+
+        {/* 4-DIGIT PRODUCT SHORT CODES DIRECTORY MODAL */}
+        <ProductShortcutsModal
+          isOpen={isShortcutsModalOpen}
+          onClose={() => setIsShortcutsModalOpen(false)}
+          products={products}
+          store={liveStore}
         />
 
         {/* STORE AI ASSISTANT MODAL */}

@@ -46,6 +46,7 @@ import { AiProductEditorCard, ProductEditDraft } from './AiProductEditorCard';
 import { processStoreAiQuery } from '../lib/storeAiEngine';
 import { generateNextShortcutCode } from '../utils/productShortcuts';
 import { playScanSuccessBeep } from '../lib/sound';
+import { fetchProductImageUrl } from '../lib/imageFetcher';
 
 interface Message {
   id: string;
@@ -1663,6 +1664,13 @@ export const StoreAiAssistantModal: React.FC<StoreAiAssistantModalProps> = ({
         if (!existing) {
           assignedPool.push({ shortcutCode } as Product);
         }
+        
+        // Fetch image if new product and no image provided
+        let imageUrl = p.imageUrl?.trim() || existing?.imageUrl || '';
+        if (!existing && !imageUrl) {
+            imageUrl = await fetchProductImageUrl(p.name.trim());
+        }
+
         savedShortcuts.push({ name: p.name || existing?.name || 'Product', code: shortcutCode, isUpdate: !!existing });
 
         // Update stock: add new quantity to existing stock quantity, and update cost price & selling price
@@ -1683,6 +1691,7 @@ export const StoreAiAssistantModal: React.FC<StoreAiAssistantModalProps> = ({
           price: updatedSellingPrice,
           costPrice: updatedCostPrice,
           stockQuantity: updatedQty,
+          imageUrl: imageUrl,
           minStockLevel: existing?.minStockLevel || 5,
           weight: p.sellBy === 'weight' ? (p.unitType === 'kg' ? '1 kg' : '1 Liter') : existing?.weight,
           createdAt: existing?.createdAt || new Date().toISOString(),

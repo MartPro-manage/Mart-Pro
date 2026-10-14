@@ -2503,6 +2503,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           onClose={() => setIsShortcutsModalOpen(false)}
           products={products}
           onSelectProduct={handleAddProductClick}
+          store={store}
         />
 
         {/* FULL SCREEN CART OVERLAY */}
@@ -2802,19 +2803,19 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                       {/* Search in Quick Shortcuts */}
                       <div className="flex items-center gap-2">
                         <div className="relative">
-                          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                           <input
                             type="text"
-                            placeholder="Filter by code or name..."
+                            placeholder="Filter 4-digit code or name..."
                             value={fullScreenShortcutSearch}
                             onChange={(e) => setFullScreenShortcutSearch(e.target.value)}
-                            className="pl-8 pr-3 py-1 bg-slate-800 border border-slate-700 focus:border-orange-500 rounded-lg text-xs font-medium text-white placeholder-slate-500 focus:outline-none w-48 sm:w-64"
+                            className="pl-9 pr-8 py-1.5 sm:py-2 bg-slate-800 border-2 border-slate-700 focus:border-orange-500 rounded-xl text-xs sm:text-sm font-medium text-white placeholder-slate-400 focus:outline-none w-56 sm:w-80 md:w-96 transition-all"
                           />
                           {fullScreenShortcutSearch && (
                             <button
                               type="button"
                               onClick={() => setFullScreenShortcutSearch('')}
-                              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs"
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs p-1"
                             >
                               ✕
                             </button>

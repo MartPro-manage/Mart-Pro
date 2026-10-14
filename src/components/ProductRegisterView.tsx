@@ -25,6 +25,7 @@ import { UniversalBackButton } from './UniversalBackButton';
 import { DiscountManagerModal } from './DiscountManagerModal';
 import { ItemDiscountModal } from './ItemDiscountModal';
 import { ManageCategoriesView } from './ManageCategoriesView';
+import { ProductShortcutsModal } from './ProductShortcutsModal';
 import { downloadBarcodeForProduct } from '../lib/barcodeDownload';
 import { BatchProductRow } from '../lib/excelParser';
 import { 
@@ -108,6 +109,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   const [aiEditTargetProduct, setAiEditTargetProduct] = useState<Product | null>(null);
   const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false);
   const [quickDiscountProduct, setQuickDiscountProduct] = useState<Product | null>(null);
+  const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
 
   // Category addition states
   const [isAddCategoryModalOpen, setIsAddCategoryModalOpen] = useState(false);
@@ -1220,6 +1222,18 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
               >
                 <FileSpreadsheet className="w-3.5 h-3.5 text-blue-300" />
                 <span>Excel / Spreadsheet</span>
+              </motion.button>
+
+              {/* 4-Digit Short Codes Directory & PDF */}
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setIsShortcutsModalOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs uppercase tracking-wider shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-orange-400/40"
+                title="Open Product Short Codes Directory and Download PDF or Excel"
+              >
+                <Hash className="w-3.5 h-3.5 text-orange-200" />
+                <span>Short Codes (PDF)</span>
               </motion.button>
 
               {/* AI Assistant Button */}
@@ -3392,6 +3406,14 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
           onSuccess={(updated) => {
             showNotification('success', `Updated discount on "${updated.name}"!`);
           }}
+        />
+
+        {/* 4-DIGIT PRODUCT SHORT CODES DIRECTORY MODAL */}
+        <ProductShortcutsModal
+          isOpen={isShortcutsModalOpen}
+          onClose={() => setIsShortcutsModalOpen(false)}
+          products={products}
+          store={store}
         />
 
         {/* MANAGE CATEGORIES, BRANDS & SIZES MODAL */}

@@ -689,15 +689,52 @@ export function generateProductShortcodesPdf(
 
   const startY = 28;
 
-  // Table Data - STRICTLY ONLY Product Name and Short Code (nothing else)
-  const tableHead = [['Product Name', 'Short Code']];
-  const tableRows = sorted.map((p) => {
-    const code = p.shortcutCode || p.serialNumber || '----';
-    return [
-      p.name || 'Unnamed Item',
-      code
-    ];
-  });
+  // STRICTLY ONLY Short Code and Product Name (nothing else)
+  // If > 20 products, use a side-by-side 2-column layout (Short Code | Product Name | Short Code | Product Name)
+  // so the cashier sheet prints compactly on 1-2 pages!
+  const isDualColumn = sorted.length > 20;
+
+  let tableHead: string[][];
+  let tableRows: string[][];
+  let columnStyles: any;
+
+  if (isDualColumn) {
+    const half = Math.ceil(sorted.length / 2);
+    const leftList = sorted.slice(0, half);
+    const rightList = sorted.slice(half);
+
+    tableHead = [['Short Code', 'Product Name', 'Short Code', 'Product Name']];
+    tableRows = [];
+
+    for (let i = 0; i < half; i++) {
+      const p1 = leftList[i];
+      const p2 = rightList[i];
+      tableRows.push([
+        p1 ? (p1.shortcutCode || p1.serialNumber || '----') : '',
+        p1 ? (p1.name || 'Unnamed Item') : '',
+        p2 ? (p2.shortcutCode || p2.serialNumber || '----') : '',
+        p2 ? (p2.name || 'Unnamed Item') : ''
+      ]);
+    }
+
+    columnStyles = {
+      0: { cellWidth: 26, font: 'courier', fontStyle: 'bold', halign: 'center', fontSize: 10, textColor: [194, 65, 12] },
+      1: { cellWidth: 65, fontStyle: 'bold', fontSize: 8.5 },
+      2: { cellWidth: 26, font: 'courier', fontStyle: 'bold', halign: 'center', fontSize: 10, textColor: [194, 65, 12] },
+      3: { cellWidth: 65, fontStyle: 'bold', fontSize: 8.5 }
+    };
+  } else {
+    tableHead = [['Short Code', 'Product Name']];
+    tableRows = sorted.map((p) => {
+      const code = p.shortcutCode || p.serialNumber || '----';
+      return [code, p.name || 'Unnamed Item'];
+    });
+
+    columnStyles = {
+      0: { cellWidth: 45, font: 'courier', fontStyle: 'bold', halign: 'center', fontSize: 11, textColor: [194, 65, 12] },
+      1: { cellWidth: 137, fontStyle: 'bold', fontSize: 9.5 }
+    };
+  }
 
   autoTable(doc, {
     startY,
@@ -707,18 +744,15 @@ export function generateProductShortcodesPdf(
     headStyles: {
       fillColor: [234, 88, 12], // orange-600
       textColor: [255, 255, 255],
-      fontSize: 10,
+      fontSize: 9.5,
       fontStyle: 'bold',
       halign: 'left'
     },
     bodyStyles: {
-      fontSize: 9,
+      fontSize: 8.5,
       textColor: [15, 23, 42]
     },
-    columnStyles: {
-      0: { cellWidth: 135, fontStyle: 'bold' },
-      1: { cellWidth: 47, font: 'courier', fontStyle: 'bold', halign: 'center', fontSize: 11, textColor: [194, 65, 12] }
-    },
+    columnStyles,
     alternateRowStyles: {
       fillColor: [255, 247, 237] // warm orange tint
     },
@@ -730,7 +764,7 @@ export function generateProductShortcodesPdf(
       doc.setFontSize(7.5);
       doc.setTextColor(148, 163, 184); // slate-400
       doc.text(
-        `${store?.name || 'Store'} • Product Short Codes • Page ${currentPage} of ${totalPages}`,
+        `${store?.name || 'Store'} • Short Codes Directory • Page ${currentPage} of ${totalPages}`,
         14,
         pageHeight - 6
       );

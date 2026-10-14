@@ -1513,55 +1513,72 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     });
   }, [products, searchTerm, activeCategoryFilter]);
 
-  // Related search results dropdown for standard POS search
-  const standardDropdownResults = useMemo(() => {
-    const q = searchTerm.trim().toLowerCase();
+  // Helper to match and rank products when user types product name or code
+  const getProductSearchResults = useCallback((query: string, allProducts: Product[], limit: number = 14) => {
+    const q = query.trim().toLowerCase();
     if (!q) return [];
-    return products
+
+    const tokens = q.split(/\s+/).filter(Boolean);
+
+    return allProducts
       .filter((p) => {
         const name = (p.name || '').toLowerCase();
         const code = (p.shortcutCode || '').toLowerCase();
         const barcode = (p.barcode || '').toLowerCase();
         const serial = (p.serialNumber || '').toLowerCase();
         const cat = (p.category || '').toLowerCase();
-        return name.includes(q) || code.includes(q) || barcode.includes(q) || serial.includes(q) || cat.includes(q);
+
+        // Exact shortcut code, barcode, or serial match
+        if (code === q || barcode === q || serial === q) return true;
+        // Prefix match on code or barcode
+        if (code.startsWith(q) || barcode.startsWith(q)) return true;
+
+        // All typed words/tokens must match somewhere in product info
+        return tokens.every(t => 
+          name.includes(t) || 
+          code.includes(t) || 
+          barcode.includes(t) || 
+          cat.includes(t) || 
+          serial.includes(t)
+        );
       })
       .sort((a, b) => {
         const aName = (a.name || '').toLowerCase();
         const bName = (b.name || '').toLowerCase();
-        const aStarts = aName.startsWith(q);
-        const bStarts = bName.startsWith(q);
-        if (aStarts && !bStarts) return -1;
-        if (!aStarts && bStarts) return 1;
+        const aCode = (a.shortcutCode || '').toLowerCase();
+        const bCode = (b.shortcutCode || '').toLowerCase();
+
+        // 1. Exact shortcut match
+        if (aCode === q && bCode !== q) return -1;
+        if (bCode === q && aCode !== q) return 1;
+
+        // 2. Name starts with query
+        const aNameStarts = aName.startsWith(q);
+        const bNameStarts = bName.startsWith(q);
+        if (aNameStarts && !bNameStarts) return -1;
+        if (!aNameStarts && bNameStarts) return 1;
+
+        // 3. Name contains full query
+        const aContains = aName.includes(q);
+        const bContains = bName.includes(q);
+        if (aContains && !bContains) return -1;
+        if (!aContains && bContains) return 1;
+
+        // 4. Alphabetical
         return aName.localeCompare(bName);
       })
-      .slice(0, 8);
-  }, [products, searchTerm]);
+      .slice(0, limit);
+  }, []);
+
+  // Related search results dropdown for standard POS search
+  const standardDropdownResults = useMemo(() => {
+    return getProductSearchResults(searchTerm, products, 14);
+  }, [products, searchTerm, getProductSearchResults]);
 
   // Related search results dropdown for full screen POS scan/search bar
   const fullScreenDropdownResults = useMemo(() => {
-    const q = fullScreenScanInput.trim().toLowerCase();
-    if (!q) return [];
-    return products
-      .filter((p) => {
-        const name = (p.name || '').toLowerCase();
-        const code = (p.shortcutCode || '').toLowerCase();
-        const barcode = (p.barcode || '').toLowerCase();
-        const serial = (p.serialNumber || '').toLowerCase();
-        const cat = (p.category || '').toLowerCase();
-        return name.includes(q) || code.includes(q) || barcode.includes(q) || serial.includes(q) || cat.includes(q);
-      })
-      .sort((a, b) => {
-        const aName = (a.name || '').toLowerCase();
-        const bName = (b.name || '').toLowerCase();
-        const aStarts = aName.startsWith(q);
-        const bStarts = bName.startsWith(q);
-        if (aStarts && !bStarts) return -1;
-        if (!aStarts && bStarts) return 1;
-        return aName.localeCompare(bName);
-      })
-      .slice(0, 8);
-  }, [products, fullScreenScanInput]);
+    return getProductSearchResults(fullScreenScanInput, products, 14);
+  }, [products, fullScreenScanInput, getProductSearchResults]);
 
   const handleSelectDropdownProduct = useCallback((product: Product, isFullScreen = false) => {
     if (product.stockQuantity <= 0) {
@@ -2881,7 +2898,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
             </div>
 
             {/* Pinned Laser Barcode & 4-Digit Shortcut Scanner Bar */}
-            <div className="bg-white px-4 sm:px-6 py-2.5 border-b border-slate-200 shadow-xs shrink-0">
+            <div className="bg-white px-4 sm:px-6 py-2.5 border-b border-slate-200 shadow-xs shrink-0 relative z-30">
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -2890,7 +2907,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                 className="flex items-center gap-2 max-w-5xl mx-auto"
               >
                 <div className="relative flex-1">
-                  <BarcodeIcon className="w-6 h-6 text-orange-600 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <Search className="w-5 h-5 text-orange-600 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     ref={fullScreenScanInputRef}
                     id="fullscreen-barcode-input"
@@ -2899,16 +2916,15 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                     autoComplete="off"
                     autoCorrect="off"
                     spellCheck={false}
-                    placeholder="Scan barcode with reader or type product name / 4-digit code (e.g. 1001)..."
+                    placeholder="Type product name (e.g. Milk, Rice), 4-digit code (e.g. 1001), or scan barcode..."
                     value={fullScreenScanInput}
                     onChange={(e) => {
                       const cleaned = e.target.value.replace(/[\r\n\t]/g, '');
                       setFullScreenScanInput(cleaned);
-                      setIsFullScreenDropdownOpen(true);
+                      setIsFullScreenDropdownOpen(cleaned.trim().length > 0);
                       setFullScreenHighlightedIndex(0);
                     }}
-                    onFocus={(e) => {
-                      e.target.select();
+                    onFocus={() => {
                       if (fullScreenScanInput.trim().length > 0) {
                         setIsFullScreenDropdownOpen(true);
                       }
@@ -2967,18 +2983,29 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                         }
                       }
                     }}
-                    onBlur={(e) => {
-                      setTimeout(() => setIsFullScreenDropdownOpen(false), 200);
-                      const related = e.relatedTarget as HTMLElement | null;
-                      const isInteractive = related?.tagName === 'BUTTON' || related?.tagName === 'INPUT' || related?.tagName === 'SELECT' || related?.tagName === 'TEXTAREA' || related?.tagName === 'A';
-                      const isAnyModalOpen = isScannerOpen || isReceiptOpen || isChangeModalOpen || isReturnModalOpen || isReturnSlipOpen || isCashModalOpen || isPaymentSummaryOpen || isWeightModalOpen || isHeldBillsModalOpen || isShortcutsModalOpen || Boolean(viewingDigitalQr) || Boolean(viewingBankQr);
-                      if (!isInteractive && !isAnyModalOpen && isCartFullScreen) {
-                        setTimeout(focusActiveScanner, 20);
-                      }
+                    onBlur={() => {
+                      setTimeout(() => setIsFullScreenDropdownOpen(false), 250);
                     }}
-                    className="w-full pl-12 pr-44 py-3.5 bg-slate-50 border-2 border-orange-400 focus:border-orange-600 focus:bg-white rounded-2xl text-slate-900 font-mono text-base sm:text-lg font-black shadow-inner focus:outline-none transition-all"
+                    className="w-full pl-12 pr-48 py-3.5 bg-slate-50 border-2 border-orange-400 focus:border-orange-600 focus:bg-white rounded-2xl text-slate-900 font-sans text-base sm:text-lg font-bold shadow-inner focus:outline-none transition-all placeholder:font-normal placeholder:text-sm sm:placeholder:text-base placeholder:text-slate-400"
                   />
                   <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                    {fullScreenScanInput && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFullScreenScanInput('');
+                          setIsFullScreenDropdownOpen(false);
+                          if (fullScreenScanInputRef.current) {
+                            fullScreenScanInputRef.current.value = '';
+                            fullScreenScanInputRef.current.focus();
+                          }
+                        }}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-colors cursor-pointer"
+                        title="Clear input"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => setIsScannerOpen(true)}
@@ -2994,7 +3021,8 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                   {isFullScreenDropdownOpen && fullScreenScanInput.trim().length > 0 && (
                     <div 
                       id="fullscreen-pos-search-dropdown"
-                      className="absolute left-0 right-0 top-full mt-2 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-50 divide-y divide-slate-100 max-h-[380px] overflow-y-auto overscroll-contain custom-scrollbar animate-fade-in text-left"
+                      onMouseDown={(e) => e.preventDefault()}
+                      className="absolute left-0 right-0 top-full mt-2 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-50 divide-y divide-slate-100 max-h-[420px] overflow-y-auto overscroll-contain custom-scrollbar animate-fade-in text-left"
                     >
                       <div className="px-4 py-2 bg-slate-50 flex items-center justify-between text-[11px] font-bold text-slate-500 sticky top-0 bg-slate-50/95 backdrop-blur-xs z-10 border-b border-slate-100">
                         <span className="flex items-center gap-1.5 text-slate-800">

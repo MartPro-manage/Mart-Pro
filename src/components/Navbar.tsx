@@ -101,10 +101,10 @@ export const Navbar: React.FC<NavbarProps> = ({
     },
     {
       id: 'pos' as AppNavView,
-      label: 'Cash Counter POS',
-      shortLabel: 'POS',
+      label: 'POS Counter',
+      shortLabel: 'POS Counter',
       icon: Calculator,
-      roles: ['branch_admin', 'cash_counter']
+      roles: ['store_admin', 'admin', 'branch_admin', 'cash_counter', 'product_register', 'customer_price_checker']
     },
     {
       id: 'inventory' as AppNavView,

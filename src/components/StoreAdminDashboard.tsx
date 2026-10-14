@@ -1291,6 +1291,19 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
 
           {/* Quick Header Actions */}
           <div className="flex items-center gap-2 shrink-0">
+            {onNavigateToPOS && (
+              <button
+                type="button"
+                onClick={onNavigateToPOS}
+                id="header-btn-pos-counter"
+                className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-extrabold text-xs flex items-center gap-1.5 cursor-pointer shadow-sm shadow-emerald-600/30 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                title="Open POS Counter"
+              >
+                <Calculator className="w-3.5 h-3.5 text-white" />
+                <span>POS Counter</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={() => setIsExcelModalOpen(true)}

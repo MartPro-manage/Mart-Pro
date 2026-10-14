@@ -159,7 +159,7 @@ export const OnlineStorefrontView: React.FC<OnlineStorefrontProps> = ({
           snapshot.forEach(d => {
             list.push({ id: d.id, ...d.data() } as Product);
           });
-          setProducts(list);
+          setProducts(list.sort((a, b) => a.name.localeCompare(b.name)));
           setLoading(false);
         }, (err) => {
           console.error(err);

@@ -755,7 +755,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
       snapshot.forEach((docSnap) => {
         list.push({ id: docSnap.id, ...docSnap.data() } as Product);
       });
-      setProducts(list);
+      setProducts(list.sort((a, b) => a.name.localeCompare(b.name)));
     }, (err) => {
       handleFirestoreError(err, OperationType.GET, 'products');
     });

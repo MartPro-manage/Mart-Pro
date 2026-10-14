@@ -112,8 +112,17 @@ export const StoreStaffTrackerView: React.FC<StoreStaffTrackerViewProps> = ({
 
     const seenKeys = new Set<string>();
 
-    // 1. Process all registered storeUsers
+    // 1. Process all registered staff members (excluding store admin / super admin)
     (storeUsers || []).forEach(u => {
+      const isAdmin = 
+        u.role === 'super_admin' || 
+        u.role === 'store_admin' || 
+        u.role === 'admin' || 
+        (store.adminUsername && u.username?.toLowerCase() === store.adminUsername?.toLowerCase()) ||
+        u.id === 'user_hamartadmin';
+
+      if (isAdmin) return;
+
       const key = u.id || u.username.toLowerCase();
       if (seenKeys.has(key)) return;
       seenKeys.add(key);
@@ -138,9 +147,17 @@ export const StoreStaffTrackerView: React.FC<StoreStaffTrackerViewProps> = ({
       });
     });
 
-    // 2. Also include any currently online session that might not be in storeUsers yet
+    // 2. Also include any currently online session that might not be in storeUsers yet (excluding admin)
     sessions.forEach(s => {
       if (s.status === 'online') {
+        const isAdmin = 
+          s.role === 'super_admin' || 
+          s.role === 'store_admin' || 
+          s.role === 'admin' || 
+          (store.adminUsername && s.username?.toLowerCase() === store.adminUsername?.toLowerCase());
+
+        if (isAdmin) return;
+
         const key = s.userId || (s.username ? s.username.toLowerCase() : s.id);
         if (!seenKeys.has(key)) {
           seenKeys.add(key);

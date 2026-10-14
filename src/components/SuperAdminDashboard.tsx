@@ -411,17 +411,27 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
   const handleToggleStoreStatus = async (store: Store) => {
     setLoading(true);
     try {
-      const newStatus = store.status === 'disabled' ? 'active' : 'disabled';
+      const isCurrentlyDisabled = store.status === 'disabled' || store.status === 'inactive';
+      const newStatus = isCurrentlyDisabled ? 'active' : 'disabled';
       const storeRef = doc(db, 'stores', store.id);
-      await updateDoc(storeRef, { status: newStatus });
+      
+      await setDoc(storeRef, cleanFirestoreData({ status: newStatus }), { merge: true });
+
+      // Optimistically update stores in local state immediately
+      setStores(prev => prev.map(s => s.id === store.id ? { ...s, status: newStatus } : s));
+
+      // Also update furtherDetailsStore if modal is open
+      if (furtherDetailsStore && furtherDetailsStore.id === store.id) {
+        setFurtherDetailsStore(prev => prev ? { ...prev, status: newStatus } : null);
+      }
 
       showNotification(
         'success', 
-        `Store "${store.name}" is now ${newStatus.toUpperCase()}.${newStatus === 'disabled' ? ' Login access for this store is blocked.' : ''}`
+        `Store "${store.name}" is now ${newStatus.toUpperCase()}.${newStatus === 'disabled' ? ' Login access for this store is blocked. All store data is safely preserved.' : ' Login access for staff and cashier counters is restored.'}`
       );
     } catch (err: any) {
       console.error(err);
-      showNotification('error', 'Failed to update store status: ' + err.message);
+      showNotification('error', 'Failed to update store status: ' + (err?.message || 'Unknown error'));
     } finally {
       setLoading(false);
     }
@@ -2920,20 +2930,20 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
               </button>
             </div>
 
-            {/* SUPER ADMIN HARDWARE & CAMERA SCANNER CONFIGURATION */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Inbuilt Camera Barcode Scanner Policy */}
+            {/* SUPER ADMIN HARDWARE, AUDIO & STORE OPERATING STATUS CONFIGURATION */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* Card 1: Inbuilt Camera Barcode Scanner Policy */}
               <div className="p-4 bg-purple-50/50 border border-purple-200 rounded-2xl flex flex-col justify-between gap-4">
                 <div className="flex items-start gap-3">
                   <div className="p-2.5 bg-purple-100 text-purple-700 rounded-xl shrink-0">
                     <Camera className="w-5 h-5" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-extrabold text-purple-950">Inbuilt Barcode Camera Scanner</h4>
+                    <h4 className="text-sm font-extrabold text-purple-950">Inbuilt Barcode Camera</h4>
                     <p className="text-xs text-purple-800/80 font-medium mt-0.5">
                       {furtherDetailsStore.cameraScannerEnabled !== false 
-                        ? 'Camera scanning is ENABLED for checkout cashiers in this store.' 
-                        : 'Camera scanning is DISABLED for this store (External hardware scanner only).'}
+                        ? 'Camera scanning is ENABLED for checkout cashiers.' 
+                        : 'Camera scanning is DISABLED (Hardware scanner only).'}
                     </p>
                   </div>
                 </div>
@@ -2951,29 +2961,29 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                   {furtherDetailsStore.cameraScannerEnabled !== false ? (
                     <>
                       <ToggleRight className="w-4 h-4 text-white" />
-                      <span>Camera: Enabled (Click to Disable)</span>
+                      <span>Camera: Enabled</span>
                     </>
                   ) : (
                     <>
                       <ToggleLeft className="w-4 h-4 text-purple-400" />
-                      <span>Camera: Disabled (Click to Enable)</span>
+                      <span>Camera: Disabled</span>
                     </>
                   )}
                 </button>
               </div>
 
-              {/* Super Admin Voice Generation Policy */}
+              {/* Card 2: Super Admin Voice Generation Policy */}
               <div className="p-4 bg-emerald-50/50 border border-emerald-200 rounded-2xl flex flex-col justify-between gap-4">
                 <div className="flex items-start gap-3">
                   <div className="p-2.5 bg-emerald-100 text-emerald-700 rounded-xl shrink-0">
                     <Volume2 className="w-5 h-5" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-extrabold text-emerald-950">Audio Voice Generation Policy</h4>
+                    <h4 className="text-sm font-extrabold text-emerald-950">Audio Voice Generation</h4>
                     <p className="text-xs text-emerald-800/80 font-medium mt-0.5">
                       {furtherDetailsStore.voiceAnnouncementEnabled !== false 
-                        ? 'Speech announcements for checkout bill amounts & greetings are ALLOWED.' 
-                        : 'Voice generation is DISALLOWED & MUTED for all counters in this store.'}
+                        ? 'Speech announcements for checkout bill amounts are ALLOWED.' 
+                        : 'Voice generation is DISALLOWED & MUTED.'}
                     </p>
                   </div>
                 </div>
@@ -2991,16 +3001,67 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                   {furtherDetailsStore.voiceAnnouncementEnabled !== false ? (
                     <>
                       <ToggleRight className="w-4 h-4 text-white" />
-                      <span>Voice: Allowed (Click to Disallow)</span>
+                      <span>Voice: Allowed</span>
                     </>
                   ) : (
                     <>
                       <ToggleLeft className="w-4 h-4 text-rose-400" />
-                      <span>Voice: Disallowed (Click to Allow)</span>
+                      <span>Voice: Disallowed</span>
                     </>
                   )}
                 </button>
               </div>
+
+              {/* Card 3: Store Operating Status (Active / Disabled) */}
+              {(() => {
+                const isCurrentlyDisabled = furtherDetailsStore.status === 'disabled' || furtherDetailsStore.status === 'inactive';
+                return (
+                  <div className={`p-4 rounded-2xl flex flex-col justify-between gap-4 border transition-all ${
+                    isCurrentlyDisabled
+                      ? 'bg-red-50/60 border-red-200'
+                      : 'bg-blue-50/50 border-blue-200'
+                  }`}>
+                    <div className="flex items-start gap-3">
+                      <div className={`p-2.5 rounded-xl shrink-0 ${
+                        isCurrentlyDisabled ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                      }`}>
+                        <Power className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-extrabold text-slate-900">Store Operating Status</h4>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${
+                            isCurrentlyDisabled
+                              ? 'bg-red-100 text-red-800 border-red-300'
+                              : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                          }`}>
+                            {isCurrentlyDisabled ? 'DISABLED' : 'ACTIVE'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-600 font-medium mt-0.5">
+                          {isCurrentlyDisabled
+                            ? 'Login access for cashiers, staff and POS counters is currently BLOCKED.'
+                            : 'Store is fully active and accessible for all authorized staff.'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleToggleStoreStatus(furtherDetailsStore)}
+                      disabled={loading}
+                      className={`w-full py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border transition-all cursor-pointer ${
+                        isCurrentlyDisabled
+                          ? 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-500 shadow-sm'
+                          : 'bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200'
+                      }`}
+                    >
+                      <Power className="w-4 h-4" />
+                      <span>{isCurrentlyDisabled ? 'Enable Store (Activate Now)' : 'Disable Store (Block Access)'}</span>
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* SECTION A: ALL PRODUCT REGISTERS */}

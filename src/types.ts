@@ -15,7 +15,7 @@ export interface Store {
   isLinked?: boolean; // Interconnected status
   adminUsername: string;
   adminPassword?: string;
-  status?: 'active' | 'disabled';
+  status?: 'active' | 'disabled' | 'inactive';
   parentStoreId?: string; // If this is a branch of a parent chain/store
   storeAdminId?: string; // Store Admin user ID who owns/manages this chain
   storeAdminUsername?: string; // Store Admin username
@@ -119,9 +119,14 @@ export interface SalaryPayment {
   staffUsername: string;
   month: string; // "YYYY-MM" e.g. "2026-03"
   monthName?: string; // e.g. "March 2026"
+  salaryType?: 'monthly' | 'daily';
+  dailyWage?: number; // Daily salary rate (Rs./day) if daily
+  daysWorked?: number; // Number of days worked if daily
   baseSalary: number;
   bonusAmount?: number;
   deductionAmount?: number;
+  advanceAmount?: number; // Advance pay disbursed to staff
+  advanceDeductionAmount?: number; // Value deducted from salary for advance repayment/recovery
   amountPaid: number;
   paymentMethod: 'cash' | 'online';
   paymentDate: string; // YYYY-MM-DD
@@ -130,6 +135,22 @@ export interface SalaryPayment {
   paidByName: string;
   expenseId?: string; // Linked ID in 'expenses' collection
   createdAt: string; // ISO string
+}
+
+export interface StaffAdvance {
+  id: string;
+  storeId: string;
+  staffId: string;
+  staffName: string;
+  staffUsername: string;
+  totalAdvance: number;
+  numberOfMonths: number;
+  monthlyDeduction: number;
+  remainingBalance: number;
+  monthsPaidCount: number;
+  status: 'active' | 'completed';
+  createdAt: string;
+  notes?: string;
 }
 
 export interface StaffSessionLog {
@@ -182,11 +203,17 @@ export interface UserAccount {
   password?: string;
   name: string;
   counterNumber?: string; // for cash counter
-  salary?: number; // Monthly base salary set by branch admin / store admin
-  salaryFrequency?: 'monthly' | 'weekly';
+  salary?: number; // Base salary amount set by branch admin / store admin
+  salaryFrequency?: 'monthly' | 'weekly' | 'daily';
+  salaryType?: 'monthly' | 'daily'; // 'daily' (per day) or 'monthly' (per month)
+  dailyWage?: number; // Daily salary rate (Rs./day)
+  monthlySalary?: number; // Monthly salary rate (Rs./month)
   phone?: string;
+  cnic?: string;
+  address?: string;
   designation?: string;
   hireDate?: string;
+  notes?: string;
   status?: 'active' | 'inactive';
   createdAt: string;
 }

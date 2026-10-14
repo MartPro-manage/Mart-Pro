@@ -11,7 +11,8 @@ import {
   writeBatch,
   cleanFirestoreData,
   handleFirestoreError,
-  OperationType 
+  OperationType,
+  seedStoreCatalog
 } from '../lib/firebase';
 import { Product, Sale, Store, UserAccount, ProductReturn, Expense } from '../types';
 import { cleanupExpiredReceipts, isSaleExpired } from '../lib/salesCleanup';
@@ -95,7 +96,8 @@ import {
   CheckCircle2,
   Trash2,
   Mail,
-  UserPlus
+  UserPlus,
+  Power
 } from 'lucide-react';
 
 interface StoreAdminDashboardProps {
@@ -193,6 +195,20 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
   const [promotionsCategory, setPromotionsCategory] = useState<string>('All');
   const [isClearingAllDiscounts, setIsClearingAllDiscounts] = useState(false);
   const [isConfirmClearDiscountsOpen, setIsConfirmClearDiscountsOpen] = useState(false);
+  const [isSeedingCatalog, setIsSeedingCatalog] = useState(false);
+
+  const handleSeedCatalog = async () => {
+    if (!liveStore?.id) return;
+    setIsSeedingCatalog(true);
+    try {
+      await seedStoreCatalog(liveStore.id);
+      console.log('Sample supermarket catalog and inventory loaded successfully!');
+    } catch (err: any) {
+      console.error('Failed to load catalog:', err);
+    } finally {
+      setIsSeedingCatalog(false);
+    }
+  };
 
   // Real-time synchronization of Store, Products, Sales, Returns, and Staff for this store
   useEffect(() => {
@@ -226,7 +242,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
       snapshot.forEach((doc) => {
         prodList.push({ id: doc.id, ...doc.data() } as Product);
       });
-      setProducts(prodList);
+      setProducts(prodList.sort((a, b) => a.name.localeCompare(b.name)));
 
       // Auto-sync 4-digit shortcut codes for any legacy products missing one
       const hasMissingShortcuts = prodList.some(p => !p.shortcutCode || !/^\d{4}$/.test(p.shortcutCode));
@@ -949,7 +965,13 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
     discountedCount: products.filter(p => p.discountActive && (p.discountValue || 0) > 0).length,
     receiptsCount: filteredSalesByDate.length,
     returnsCount: filteredReturnsByDate.length,
-    staffCount: storeUsers.length,
+    staffCount: storeUsers.filter(u => 
+      u.role !== 'store_admin' && 
+      u.role !== 'admin' && 
+      u.role !== 'super_admin' && 
+      (!liveStore.adminUsername || u.username?.toLowerCase() !== liveStore.adminUsername?.toLowerCase()) &&
+      u.id !== 'user_hamartadmin'
+    ).length,
     expensesCount: expenses.length,
     monthlyExpensesTotal,
     cashPaymentTotal: paymentMethodStats.cashPaymentTotal,
@@ -1166,7 +1188,7 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
     },
     staff: {
       title: 'Store Staff & Salaries',
-      subtitle: 'Cashiers, inventory staff, salaries, payroll disbursements, and account management',
+      subtitle: 'Create staff profiles, set salaries by Day or Month, and disburse official payroll',
       icon: Users
     },
     settings: {
@@ -2181,8 +2203,18 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
             </div>
 
             {filteredProducts.length === 0 ? (
-              <div className="p-10 text-center text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-300">
-                No products found in inventory. Product Registers can scan barcodes and add stock.
+              <div className="p-12 text-center text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-300 space-y-3">
+                <p className="font-bold text-slate-700 text-sm">No products found in inventory.</p>
+                <p className="text-xs text-slate-500">You can add products using Product Registers or instantly load our default supermarket product catalog.</p>
+                <button
+                  type="button"
+                  onClick={handleSeedCatalog}
+                  disabled={isSeedingCatalog}
+                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md cursor-pointer transition-all inline-flex items-center gap-2 disabled:opacity-50"
+                >
+                  <Sparkles className="w-4 h-4 text-emerald-200" />
+                  <span>{isSeedingCatalog ? 'Loading Catalog...' : '📥 Load Sample Catalog & Inventory'}</span>
+                </button>
               </div>
             ) : (
               <div className="overflow-x-auto overflow-y-auto max-h-[580px] overscroll-contain custom-scrollbar border border-slate-200 rounded-xl">

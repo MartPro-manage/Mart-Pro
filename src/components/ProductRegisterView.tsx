@@ -369,7 +369,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
       snapshot.forEach((docSnap) => {
         list.push({ id: docSnap.id, ...docSnap.data() } as Product);
       });
-      setProducts(list);
+      setProducts(list.sort((a, b) => a.name.localeCompare(b.name)));
     }, (err) => {
       handleFirestoreError(err, OperationType.GET, 'products');
     });

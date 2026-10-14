@@ -8,6 +8,7 @@ import {
   where, 
   doc, 
   getDoc,
+  setDoc,
   addDoc,
   SUPER_ADMIN_USERNAME,
   SUPER_ADMIN_PASSWORD,
@@ -38,7 +39,8 @@ import {
   Wifi,
   Flame,
   KeyRound,
-  ShieldAlert
+  ShieldAlert,
+  Power
 } from 'lucide-react';
 
 interface LoginProps {
@@ -52,6 +54,50 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [focusedField, setFocusedField] = useState<'username' | 'password' | null>(null);
+  const [disabledStorePrompt, setDisabledStorePrompt] = useState<{
+    store: Store;
+    user: UserAccount;
+  } | null>(null);
+  const [isReEnabling, setIsReEnabling] = useState(false);
+
+  const handleReEnableStoreAndLogin = async () => {
+    if (!disabledStorePrompt) return;
+    setIsReEnabling(true);
+    try {
+      const storeRef = doc(db, 'stores', disabledStorePrompt.store.id);
+      await setDoc(storeRef, { status: 'active' }, { merge: true });
+      const updatedStore: Store = { ...disabledStorePrompt.store, status: 'active' };
+
+      // Record real-time staff login activity
+      try {
+        const sessionRef = await addDoc(collection(db, 'staff_sessions'), {
+          storeId: disabledStorePrompt.user.storeId,
+          userId: disabledStorePrompt.user.id,
+          userName: disabledStorePrompt.user.name || disabledStorePrompt.user.username,
+          username: disabledStorePrompt.user.username,
+          role: disabledStorePrompt.user.role,
+          counterNumber: disabledStorePrompt.user.counterNumber || '',
+          loginTime: new Date().toISOString(),
+          logoutTime: null,
+          status: 'online'
+        });
+        safeStorage.setItem('martpro_current_session_id', sessionRef.id);
+      } catch (sessErr) {
+        console.warn('Could not record staff session:', sessErr);
+      }
+
+      onLoginSuccess({
+        user: disabledStorePrompt.user,
+        store: updatedStore
+      });
+    } catch (err: any) {
+      console.error('Failed to re-enable store:', err);
+      setError('Failed to re-enable store: ' + (err?.message || 'Check connection'));
+      setDisabledStorePrompt(null);
+    } finally {
+      setIsReEnabling(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -136,10 +182,25 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         const storeSnap = await getDoc(storeDocRef);
         if (storeSnap.exists()) {
           storeDetails = { id: storeSnap.id, ...storeSnap.data() } as Store;
-          if (storeDetails.status === 'disabled') {
-            setError('This store has been disabled by the Super Admin. Login access is disabled.');
-            setLoading(false);
-            return;
+          const isStoreDisabled = storeDetails.status === 'disabled' || storeDetails.status === 'inactive';
+          if (isStoreDisabled) {
+            const isStoreAdminUser = 
+              targetUser.role === 'store_admin' || 
+              targetUser.role === 'admin' || 
+              (storeDetails.adminUsername && targetUser.username.toLowerCase() === storeDetails.adminUsername.toLowerCase());
+
+            if (isStoreAdminUser) {
+              setDisabledStorePrompt({
+                store: storeDetails,
+                user: targetUser
+              });
+              setLoading(false);
+              return;
+            } else {
+              setError(`Store "${storeDetails.name}" is currently disabled. Login access for staff is blocked. Please contact your Store Admin or Super Admin to re-enable it.`);
+              setLoading(false);
+              return;
+            }
           }
         }
       }
@@ -333,6 +394,45 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
           </div>
         </div>
+
+        {/* Modal: Store Admin Re-Enable Store & Log In */}
+        {disabledStorePrompt && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+              <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto border border-amber-200">
+                <Power className="w-7 h-7" />
+              </div>
+              <div className="text-center space-y-1.5">
+                <h3 className="text-lg font-black text-slate-900">Store is Currently Disabled</h3>
+                <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                  Store <strong className="text-slate-800">"{disabledStorePrompt.store.name}"</strong> is currently set to <span className="font-bold text-rose-600">DISABLED</span>.
+                </p>
+                <p className="text-xs text-slate-600 font-medium">
+                  As the verified Store Administrator (<span className="font-mono font-bold text-slate-900">{disabledStorePrompt.user.username}</span>), would you like to re-enable this store and activate all POS cashier & staff accounts now?
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={handleReEnableStoreAndLogin}
+                  disabled={isReEnabling}
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
+                >
+                  <Power className="w-4 h-4" />
+                  <span>{isReEnabling ? 'Re-Enabling Store...' : 'Re-Enable Store & Log In Now'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDisabledStorePrompt(null)}
+                  disabled={isReEnabling}
+                  className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
     </div>

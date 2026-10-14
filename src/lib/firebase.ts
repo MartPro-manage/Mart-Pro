@@ -349,6 +349,111 @@ export async function ensureHAMartExists(): Promise<void> {
   }
 }
 
+export async function seedStoreCatalog(storeId: string): Promise<void> {
+  const sampleProducts: Partial<Product>[] = [
+    {
+      id: `prod_${storeId}_01`,
+      storeId,
+      barcode: '89640001001',
+      shortcutCode: '1001',
+      name: 'Super Basmati Rice 5kg',
+      category: 'Grocery & Staples',
+      price: 1650,
+      costPrice: 1380,
+      stockQuantity: 50,
+      unitType: 'piece',
+      sellBy: 'unit',
+      discountActive: true,
+      discountType: 'fixed',
+      discountValue: 150,
+      imageUrl: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=500&auto=format&fit=crop&q=80'
+    },
+    {
+      id: `prod_${storeId}_02`,
+      storeId,
+      barcode: '89640001002',
+      shortcutCode: '1002',
+      name: 'Habib Cooking Oil 5 Liter',
+      category: 'Cooking & Oil',
+      price: 2850,
+      costPrice: 2450,
+      stockQuantity: 35,
+      unitType: 'liter',
+      sellBy: 'unit',
+      discountActive: true,
+      discountType: 'percentage',
+      discountValue: 10,
+      imageUrl: 'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=500&auto=format&fit=crop&q=80'
+    },
+    {
+      id: `prod_${storeId}_03`,
+      storeId,
+      barcode: '89640001003',
+      shortcutCode: '1003',
+      name: 'National Iodized Salt 800g',
+      category: 'Grocery & Staples',
+      price: 120,
+      costPrice: 95,
+      stockQuantity: 120,
+      unitType: 'piece',
+      sellBy: 'unit',
+      imageUrl: 'https://images.unsplash.com/photo-1518110992388-755f148b51d4?w=500&auto=format&fit=crop&q=80'
+    },
+    {
+      id: `prod_${storeId}_04`,
+      storeId,
+      barcode: '89640001004',
+      shortcutCode: '1004',
+      name: 'Nestle Milkpak UHT 1 Liter',
+      category: 'Dairy & Eggs',
+      price: 360,
+      costPrice: 320,
+      stockQuantity: 80,
+      unitType: 'liter',
+      sellBy: 'unit',
+      imageUrl: 'https://images.unsplash.com/photo-1550583724-b2692b85b150?w=500&auto=format&fit=crop&q=80'
+    },
+    {
+      id: `prod_${storeId}_05`,
+      storeId,
+      barcode: '89640001005',
+      shortcutCode: '1005',
+      name: 'Colgate MaxFresh Red Gel Toothpaste 150g',
+      category: 'Personal Care',
+      price: 340,
+      costPrice: 280,
+      stockQuantity: 45,
+      unitType: 'piece',
+      sellBy: 'unit',
+      imageUrl: 'https://images.unsplash.com/photo-1556228720-195a672e8a03?w=500&auto=format&fit=crop&q=80'
+    },
+    {
+      id: `prod_${storeId}_06`,
+      storeId,
+      barcode: '89640001006',
+      shortcutCode: '1006',
+      name: 'Coca Cola 1.5 Liter PET',
+      category: 'Beverages',
+      price: 240,
+      costPrice: 200,
+      stockQuantity: 100,
+      unitType: 'liter',
+      sellBy: 'unit',
+      imageUrl: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=500&auto=format&fit=crop&q=80'
+    }
+  ];
+
+  for (const p of sampleProducts) {
+    const pRef = doc(db, 'products', p.id!);
+    await setDoc(pRef, cleanFirestoreData({
+      ...p,
+      storeId,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }), { merge: true });
+  }
+}
+
 export {
   collection,
   doc,

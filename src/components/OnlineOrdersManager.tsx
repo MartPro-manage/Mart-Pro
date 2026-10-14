@@ -612,7 +612,7 @@ export const OnlineOrdersManager: React.FC<OnlineOrdersManagerProps> = ({
               </button>
             </div>
 
-            <div className="border border-slate-300 rounded-2xl p-4 font-mono text-xs space-y-3 bg-slate-50">
+            <div id="printable-receipt" className="border border-slate-300 rounded-2xl p-4 font-mono text-xs space-y-3 bg-slate-50">
               <div className="text-center pb-2 border-b border-dashed border-slate-300">
                 <div className="font-black text-sm text-slate-900 uppercase">{store.name}</div>
                 <div className="text-[10px] text-slate-500">ONLINE ORDER DISPATCH TICKET</div>

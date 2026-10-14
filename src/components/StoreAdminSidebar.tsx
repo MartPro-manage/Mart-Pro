@@ -257,7 +257,7 @@ export const StoreAdminSidebar: React.FC<StoreAdminSidebarProps> = ({
           id: 'staff' as StoreAdminTab,
           label: 'Staff & Salaries',
           icon: Users,
-          badge: `${stats.staffCount}`
+          badge: stats.staffCount > 0 ? `${stats.staffCount}` : undefined
         },
         {
           id: 'settings' as StoreAdminTab,

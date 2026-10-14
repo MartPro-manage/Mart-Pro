@@ -630,8 +630,8 @@ export function generateSupplierLedgerPdf(
 }
 
 /**
- * 4. Generate & Download 4-Digit Product Short Codes Directory as PDF
- * Formatted for A4 printing, cashier counter reference sheets, and shelf organization.
+ * 4. Generate & Download Product Short Codes as PDF
+ * STRICTLY ONLY Product Name & Short Code (nothing else).
  */
 export function generateProductShortcodesPdf(
   products: Product[],
@@ -651,127 +651,78 @@ export function generateProductShortcodesPdf(
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
 
-  // Sort alphabetically by product name for easy reference
+  // Sort alphabetically by product name for crisp, organized lookup
   const sorted = [...products].sort((a, b) => {
     return (a.name || '').localeCompare(b.name || '');
   });
 
-  // Top Header Banner
+  // Clean Header Banner
   doc.setFillColor(30, 41, 59); // slate-800
-  doc.rect(0, 0, pageWidth, 26, 'F');
+  doc.rect(0, 0, pageWidth, 22, 'F');
 
   // Orange brand accent line
   doc.setFillColor(234, 88, 12); // orange-600
-  doc.rect(0, 26, pageWidth, 2.5, 'F');
+  doc.rect(0, 22, pageWidth, 2, 'F');
 
   // Store Title
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(15);
-  doc.text((store?.name || 'SUPERMARKET STORE POS').toUpperCase(), 14, 11);
+  doc.setFontSize(14);
+  doc.text((store?.name || 'SUPERMARKET').toUpperCase(), 14, 11);
 
-  // Store metadata
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(203, 213, 225); // slate-300
-  const storeMeta = [
-    store?.address || '',
-    store?.phone ? `Phone: ${store.phone}` : '',
-    (store as any)?.email ? `Email: ${(store as any).email}` : ''
-  ].filter(Boolean).join(' | ');
-  doc.text(storeMeta || 'Point of Sale & Inventory Management System', 14, 17);
+  doc.text('Product Short Codes Directory', 14, 17);
 
   // Right Header Label
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10.5);
+  doc.setFontSize(11);
   doc.setTextColor(251, 146, 60); // orange-400
-  doc.text('PRODUCT SHORT CODES DIRECTORY', pageWidth - 14, 11, { align: 'right' });
+  doc.text('PRODUCT SHORT CODES', pageWidth - 14, 11, { align: 'right' });
 
+  const now = new Date();
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(255, 255, 255);
-  doc.text('POS 4-Digit Quick Reference Sheet', pageWidth - 14, 17, { align: 'right' });
+  doc.text(`Total: ${sorted.length} Products • ${now.toLocaleDateString()}`, pageWidth - 14, 17, { align: 'right' });
 
-  let currentY = 33;
+  const startY = 28;
 
-  // Overview Information Box
-  doc.setFillColor(248, 250, 252);
-  doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(14, currentY, pageWidth - 28, 16, 2, 2, 'FD');
-
-  const now = new Date();
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.setTextColor(15, 23, 42);
-  doc.text(`Total Products Listed: ${sorted.length}`, 18, currentY + 6);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(71, 85, 105);
-  doc.text(`Generated: ${now.toLocaleDateString()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, 18, currentY + 11.5);
-
-  // Cashier Quick Tip on right
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.setTextColor(194, 65, 12); // orange-700
-  doc.text('Quick Checkout: Type 4-digit code in cashier scanner & press ENTER', pageWidth - 18, currentY + 6, { align: 'right' });
-
-  if (options?.filterCategory && options.filterCategory !== 'all') {
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(100, 116, 139);
-    doc.text(`Category: ${options.filterCategory}${options.searchTerm ? ` • Search: "${options.searchTerm}"` : ''}`, pageWidth - 18, currentY + 11.5, { align: 'right' });
-  } else if (options?.searchTerm) {
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(100, 116, 139);
-    doc.text(`Search Query: "${options.searchTerm}"`, pageWidth - 18, currentY + 11.5, { align: 'right' });
-  }
-
-  currentY += 20;
-
-  // Table Data
-  const tableHead = [['Short Code', 'Product Name', 'Category', 'Price (Rs.)', 'Barcode', 'Stock Status']];
+  // Table Data - STRICTLY ONLY Product Name and Short Code (nothing else)
+  const tableHead = [['Product Name', 'Short Code']];
   const tableRows = sorted.map((p) => {
-    const code = p.shortcutCode ? `#${p.shortcutCode}` : (p.serialNumber ? `#${p.serialNumber}` : '----');
-    const priceStr = formatNum(p.price || 0);
-    const stockStr = `${p.stockQuantity ?? 0}${p.unitType ? ` ${p.unitType}` : ''}`;
+    const code = p.shortcutCode || p.serialNumber || '----';
     return [
-      code,
       p.name || 'Unnamed Item',
-      p.category || 'General',
-      priceStr,
-      p.barcode || '-',
-      stockStr
+      code
     ];
   });
 
   autoTable(doc, {
-    startY: currentY,
+    startY,
     head: tableHead,
     body: tableRows,
     theme: 'grid',
     headStyles: {
       fillColor: [234, 88, 12], // orange-600
       textColor: [255, 255, 255],
-      fontSize: 8.5,
+      fontSize: 10,
       fontStyle: 'bold',
       halign: 'left'
     },
     bodyStyles: {
-      fontSize: 8,
-      textColor: [30, 41, 59]
+      fontSize: 9,
+      textColor: [15, 23, 42]
     },
     columnStyles: {
-      0: { cellWidth: 26, font: 'courier', fontStyle: 'bold', halign: 'center', textColor: [194, 65, 12] },
-      1: { cellWidth: 'auto', fontStyle: 'bold' },
-      2: { cellWidth: 32, textColor: [71, 85, 105] },
-      3: { cellWidth: 26, halign: 'right', fontStyle: 'bold', textColor: [5, 150, 105] },
-      4: { cellWidth: 34, font: 'courier', halign: 'center', fontSize: 7.5 },
-      5: { cellWidth: 22, halign: 'center' }
+      0: { cellWidth: 135, fontStyle: 'bold' },
+      1: { cellWidth: 47, font: 'courier', fontStyle: 'bold', halign: 'center', fontSize: 11, textColor: [194, 65, 12] }
     },
     alternateRowStyles: {
       fillColor: [255, 247, 237] // warm orange tint
     },
-    margin: { left: 14, right: 14, bottom: 16 },
+    margin: { left: 14, right: 14, bottom: 14 },
     didDrawPage: () => {
       const totalPages = (doc as any).internal.getNumberOfPages();
       const currentPage = (doc as any).internal.getCurrentPageInfo().pageNumber;
@@ -779,7 +730,7 @@ export function generateProductShortcodesPdf(
       doc.setFontSize(7.5);
       doc.setTextColor(148, 163, 184); // slate-400
       doc.text(
-        `${store?.name || 'Store'} • 4-Digit Product Short Codes Directory • Page ${currentPage} of ${totalPages}`,
+        `${store?.name || 'Store'} • Product Short Codes • Page ${currentPage} of ${totalPages}`,
         14,
         pageHeight - 6
       );

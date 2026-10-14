@@ -116,17 +116,13 @@ export const ProductShortcutsModal: React.FC<ProductShortcutsModalProps> = ({
     );
   };
 
-  // Export shortcuts list as .xlsx spreadsheet
+  // Export shortcuts list as .xlsx spreadsheet (Product Name & Short Code only)
   const handleDownloadXlsx = () => {
     const listToExport = filteredProducts.length > 0 ? filteredProducts : products;
-    const data = listToExport.map(p => ({
-      'Short Code': p.shortcutCode ? `#${p.shortcutCode}` : (p.serialNumber ? `#${p.serialNumber}` : '----'),
+    const sorted = [...listToExport].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    const data = sorted.map(p => ({
       'Product Name': p.name || '',
-      'Category': p.category || 'General',
-      'Price (Rs.)': Number(p.price || 0),
-      'Barcode': p.barcode || '',
-      'Stock Quantity': p.stockQuantity ?? 0,
-      'Unit': p.unitType || 'pcs'
+      'Short Code': p.shortcutCode || p.serialNumber || '----'
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(data);
@@ -135,13 +131,8 @@ export const ProductShortcutsModal: React.FC<ProductShortcutsModalProps> = ({
 
     // Auto-fit column widths for crisp reading
     worksheet['!cols'] = [
-      { wch: 14 }, // Short Code
-      { wch: 40 }, // Product Name
-      { wch: 22 }, // Category
-      { wch: 14 }, // Price
-      { wch: 22 }, // Barcode
-      { wch: 15 }, // Stock
-      { wch: 10 }  // Unit
+      { wch: 45 }, // Product Name
+      { wch: 18 }  // Short Code
     ];
 
     const cleanStore = (store?.name || storeName || 'Store').replace(/[^a-zA-Z0-9_-]/g, '_');

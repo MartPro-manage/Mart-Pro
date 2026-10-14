@@ -122,6 +122,11 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
   const [viewingDigitalQr, setViewingDigitalQr] = useState<DigitalPaymentMethodConfig | null>(null);
   const [viewingBankQr, setViewingBankQr] = useState<StoreBankAccount | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  // Product Search Dropdown states
+  const [isStandardDropdownOpen, setIsStandardDropdownOpen] = useState(false);
+  const [standardHighlightedIndex, setStandardHighlightedIndex] = useState(0);
+  const [isFullScreenDropdownOpen, setIsFullScreenDropdownOpen] = useState(false);
+  const [fullScreenHighlightedIndex, setFullScreenHighlightedIndex] = useState(0);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [isCashModalOpen, setIsCashModalOpen] = useState(false);
   const [isPaymentSummaryOpen, setIsPaymentSummaryOpen] = useState(false);
@@ -1508,6 +1513,81 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     });
   }, [products, searchTerm, activeCategoryFilter]);
 
+  // Related search results dropdown for standard POS search
+  const standardDropdownResults = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return [];
+    return products
+      .filter((p) => {
+        const name = (p.name || '').toLowerCase();
+        const code = (p.shortcutCode || '').toLowerCase();
+        const barcode = (p.barcode || '').toLowerCase();
+        const serial = (p.serialNumber || '').toLowerCase();
+        const cat = (p.category || '').toLowerCase();
+        return name.includes(q) || code.includes(q) || barcode.includes(q) || serial.includes(q) || cat.includes(q);
+      })
+      .sort((a, b) => {
+        const aName = (a.name || '').toLowerCase();
+        const bName = (b.name || '').toLowerCase();
+        const aStarts = aName.startsWith(q);
+        const bStarts = bName.startsWith(q);
+        if (aStarts && !bStarts) return -1;
+        if (!aStarts && bStarts) return 1;
+        return aName.localeCompare(bName);
+      })
+      .slice(0, 8);
+  }, [products, searchTerm]);
+
+  // Related search results dropdown for full screen POS scan/search bar
+  const fullScreenDropdownResults = useMemo(() => {
+    const q = fullScreenScanInput.trim().toLowerCase();
+    if (!q) return [];
+    return products
+      .filter((p) => {
+        const name = (p.name || '').toLowerCase();
+        const code = (p.shortcutCode || '').toLowerCase();
+        const barcode = (p.barcode || '').toLowerCase();
+        const serial = (p.serialNumber || '').toLowerCase();
+        const cat = (p.category || '').toLowerCase();
+        return name.includes(q) || code.includes(q) || barcode.includes(q) || serial.includes(q) || cat.includes(q);
+      })
+      .sort((a, b) => {
+        const aName = (a.name || '').toLowerCase();
+        const bName = (b.name || '').toLowerCase();
+        const aStarts = aName.startsWith(q);
+        const bStarts = bName.startsWith(q);
+        if (aStarts && !bStarts) return -1;
+        if (!aStarts && bStarts) return 1;
+        return aName.localeCompare(bName);
+      })
+      .slice(0, 8);
+  }, [products, fullScreenScanInput]);
+
+  const handleSelectDropdownProduct = useCallback((product: Product, isFullScreen = false) => {
+    if (product.stockQuantity <= 0) {
+      playScanErrorBeep();
+      showNotification('error', `"${product.name}" is OUT OF STOCK!`);
+      return;
+    }
+    handleAddProductClick(product);
+    if (isFullScreen) {
+      setFullScreenScanInput('');
+      if (fullScreenScanInputRef.current) {
+        fullScreenScanInputRef.current.value = '';
+        fullScreenScanInputRef.current.focus();
+      }
+      setIsFullScreenDropdownOpen(false);
+      setFullScreenHighlightedIndex(0);
+    } else {
+      setSearchTerm('');
+      setIsStandardDropdownOpen(false);
+      setStandardHighlightedIndex(0);
+      if (barcodeInputRef.current) {
+        barcodeInputRef.current.focus();
+      }
+    }
+  }, [handleAddProductClick]);
+
   return (
     <div className="min-h-screen h-full bg-slate-50 text-slate-900 p-3 sm:p-5 lg:p-6 overflow-y-auto overscroll-contain custom-scrollbar touch-pan-y">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -1789,41 +1869,182 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">Quick Product Catalog</h3>
                 </div>
 
-                {/* Search Bar */}
-                <div className="relative">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                {/* Search Bar with Autocomplete Dropdown */}
+                <div className="relative w-full sm:w-72 md:w-80">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
+                    ref={barcodeInputRef}
                     id="product-search-input"
                     type="text"
-                    placeholder="Search name, barcode..."
+                    autoComplete="off"
+                    placeholder="Type product name, code, or scan..."
                     value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onChange={(e) => {
+                      setSearchTerm(e.target.value);
+                      setIsStandardDropdownOpen(true);
+                      setStandardHighlightedIndex(0);
+                    }}
+                    onFocus={() => {
+                      if (searchTerm.trim().length > 0) {
+                        setIsStandardDropdownOpen(true);
+                      }
+                    }}
+                    onBlur={() => {
+                      setTimeout(() => setIsStandardDropdownOpen(false), 200);
+                    }}
                     onKeyDown={(e) => {
+                      if (isStandardDropdownOpen && standardDropdownResults.length > 0) {
+                        if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          setStandardHighlightedIndex((prev) => (prev + 1) % standardDropdownResults.length);
+                          return;
+                        }
+                        if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          setStandardHighlightedIndex((prev) => (prev - 1 + standardDropdownResults.length) % standardDropdownResults.length);
+                          return;
+                        }
+                        if (e.key === 'Escape') {
+                          e.preventDefault();
+                          setIsStandardDropdownOpen(false);
+                          return;
+                        }
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const targetProduct = standardDropdownResults[standardHighlightedIndex] || standardDropdownResults[0];
+                          handleSelectDropdownProduct(targetProduct, false);
+                          return;
+                        }
+                      }
+
                       if (e.key === 'Enter') {
                         e.preventDefault();
                         const term = searchTerm.trim();
                         if (!term) return;
 
-                        if (filteredQuickProducts.length > 0) {
-                          const targetProduct = filteredQuickProducts[0];
-                          if (targetProduct.stockQuantity <= 0) {
-                            playScanErrorBeep();
-                            showNotification('error', `"${targetProduct.name}" is OUT OF STOCK!`);
-                          } else {
-                            handleAddProductClick(targetProduct);
-                            setSearchTerm('');
-                            if (barcodeInputRef.current) {
-                              barcodeInputRef.current.focus();
-                            }
-                          }
+                        if (standardDropdownResults.length > 0) {
+                          handleSelectDropdownProduct(standardDropdownResults[0], false);
                         } else {
                           handleAddByBarcode(term);
                           setSearchTerm('');
+                          setIsStandardDropdownOpen(false);
                         }
                       }
                     }}
-                    className="pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-orange-500 font-medium w-48 sm:w-56"
+                    className="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl text-slate-900 focus:outline-none focus:bg-white font-medium transition-all shadow-inner"
                   />
+                  {searchTerm && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchTerm('');
+                        setIsStandardDropdownOpen(false);
+                      }}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                      title="Clear search"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+
+                  {/* Dropdown Menu */}
+                  {isStandardDropdownOpen && searchTerm.trim().length > 0 && (
+                    <div 
+                      id="standard-pos-search-dropdown"
+                      className="absolute left-0 right-0 sm:right-auto sm:w-[420px] top-full mt-2 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-50 divide-y divide-slate-100 max-h-[360px] overflow-y-auto overscroll-contain custom-scrollbar animate-fade-in"
+                    >
+                      <div className="px-3.5 py-1.5 bg-slate-50 flex items-center justify-between text-[11px] font-bold text-slate-500 sticky top-0 bg-slate-50/95 backdrop-blur-xs z-10 border-b border-slate-100">
+                        <span className="flex items-center gap-1.5 text-slate-700">
+                          <Sparkles className="w-3.5 h-3.5 text-orange-600" />
+                          <span>{standardDropdownResults.length} matching {standardDropdownResults.length === 1 ? 'item' : 'items'}</span>
+                        </span>
+                        <span className="text-[10px] text-slate-400">↑↓ to navigate • ↵ Enter to add</span>
+                      </div>
+
+                      {standardDropdownResults.length === 0 ? (
+                        <div className="p-4 text-center text-xs text-slate-500">
+                          No products found matching &quot;{searchTerm}&quot;
+                        </div>
+                      ) : (
+                        standardDropdownResults.map((product, idx) => {
+                          const isHighlighted = idx === standardHighlightedIndex;
+                          const isOut = product.stockQuantity <= 0;
+                          const isWeightItem = product.sellBy === 'weight' || product.unitType === 'kg' || Boolean(product.pricePerKg);
+
+                          return (
+                            <div
+                              key={product.id}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                handleSelectDropdownProduct(product, false);
+                              }}
+                              onMouseEnter={() => setStandardHighlightedIndex(idx)}
+                              className={`px-3.5 py-2.5 flex items-center justify-between gap-3 cursor-pointer transition-colors ${
+                                isHighlighted ? 'bg-orange-50/90 text-orange-950' : 'hover:bg-slate-50 text-slate-900'
+                              } ${isOut ? 'opacity-40 cursor-not-allowed bg-slate-50' : ''}`}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                {product.imageUrl ? (
+                                  <img src={product.imageUrl} alt={product.name} className="w-9 h-9 rounded-lg object-cover border border-slate-200 shrink-0" />
+                                ) : (
+                                  <div className="w-9 h-9 rounded-lg bg-orange-100 text-orange-700 font-bold flex items-center justify-center shrink-0">
+                                    {isWeightItem ? <Scale className="w-4 h-4" /> : <Package className="w-4 h-4" />}
+                                  </div>
+                                )}
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-bold text-xs sm:text-sm text-slate-900 truncate" title={product.name}>
+                                      {product.name}
+                                    </span>
+                                    {product.shortcutCode && (
+                                      <span className="px-1.5 py-0.2 rounded-md bg-amber-100 text-amber-900 font-mono font-black text-[10px] border border-amber-300">
+                                        #{product.shortcutCode}
+                                      </span>
+                                    )}
+                                    {isWeightItem && (
+                                      <span className="px-1.5 py-0.2 rounded-md bg-blue-100 text-blue-900 font-bold text-[10px]">
+                                        ⚖️ Weight
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
+                                    <span>{product.category || 'General'}</span>
+                                    {product.barcode && (
+                                      <>
+                                        <span>•</span>
+                                        <span className="font-mono text-[10px]">{product.barcode}</span>
+                                      </>
+                                    )}
+                                    <span>•</span>
+                                    <span className={isOut ? 'text-red-600 font-bold' : product.stockQuantity <= 5 ? 'text-amber-600 font-bold' : 'text-slate-500'}>
+                                      {isOut ? 'Out of Stock' : `${product.stockQuantity} in stock`}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 shrink-0">
+                                <div className="text-right">
+                                  <div className="font-black font-mono text-sm sm:text-base text-emerald-700">
+                                    Rs. {Number(product.price || 0).toFixed(2)}
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  className={`p-1.5 rounded-lg text-xs font-bold transition-all ${
+                                    isHighlighted ? 'bg-orange-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-orange-600 hover:text-white'
+                                  }`}
+                                  title="Add to cart"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -2669,7 +2890,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                 className="flex items-center gap-2 max-w-5xl mx-auto"
               >
                 <div className="relative flex-1">
-                  <BarcodeIcon className="w-6 h-6 text-orange-600 absolute left-4 top-1/2 -translate-y-1/2" />
+                  <BarcodeIcon className="w-6 h-6 text-orange-600 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     ref={fullScreenScanInputRef}
                     id="fullscreen-barcode-input"
@@ -2678,16 +2899,50 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                     autoComplete="off"
                     autoCorrect="off"
                     spellCheck={false}
-                    placeholder="Scan barcode with laser reader or type Barcode / 4-digit code (e.g. 1001)..."
+                    placeholder="Scan barcode with reader or type product name / 4-digit code (e.g. 1001)..."
                     value={fullScreenScanInput}
                     onChange={(e) => {
                       const cleaned = e.target.value.replace(/[\r\n\t]/g, '');
                       setFullScreenScanInput(cleaned);
+                      setIsFullScreenDropdownOpen(true);
+                      setFullScreenHighlightedIndex(0);
                     }}
                     onFocus={(e) => {
                       e.target.select();
+                      if (fullScreenScanInput.trim().length > 0) {
+                        setIsFullScreenDropdownOpen(true);
+                      }
                     }}
                     onKeyDown={(e) => {
+                      if (isFullScreenDropdownOpen && fullScreenDropdownResults.length > 0) {
+                        if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          setFullScreenHighlightedIndex((prev) => (prev + 1) % fullScreenDropdownResults.length);
+                          return;
+                        }
+                        if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          setFullScreenHighlightedIndex((prev) => (prev - 1 + fullScreenDropdownResults.length) % fullScreenDropdownResults.length);
+                          return;
+                        }
+                        if (e.key === 'Escape') {
+                          e.preventDefault();
+                          setIsFullScreenDropdownOpen(false);
+                          return;
+                        }
+                        if (e.key === 'Enter') {
+                          const val = (fullScreenScanInput || '').trim();
+                          const isExactBarcode = /^\d{8,14}$/.test(val) && products.some(p => p.barcode && p.barcode.trim() === val);
+                          if (!isExactBarcode || fullScreenHighlightedIndex > 0 || !/^\d+$/.test(val)) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const target = fullScreenDropdownResults[fullScreenHighlightedIndex] || fullScreenDropdownResults[0];
+                            handleSelectDropdownProduct(target, true);
+                            return;
+                          }
+                        }
+                      }
+
                       if (e.key === 'Escape') {
                         e.preventDefault();
                         if (onBack) {
@@ -2700,7 +2955,11 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                         e.stopPropagation();
                         const val = (fullScreenScanInput || fullScreenScanInputRef.current?.value || '').trim();
                         if (val) {
-                          handleProcessFullScreenScan(val);
+                          if (fullScreenDropdownResults.length > 0 && !/^\d{11,14}$/.test(val)) {
+                            handleSelectDropdownProduct(fullScreenDropdownResults[0], true);
+                          } else {
+                            handleProcessFullScreenScan(val);
+                          }
                         } else {
                           setFullScreenScanInput('');
                           if (fullScreenScanInputRef.current) fullScreenScanInputRef.current.value = '';
@@ -2709,6 +2968,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                       }
                     }}
                     onBlur={(e) => {
+                      setTimeout(() => setIsFullScreenDropdownOpen(false), 200);
                       const related = e.relatedTarget as HTMLElement | null;
                       const isInteractive = related?.tagName === 'BUTTON' || related?.tagName === 'INPUT' || related?.tagName === 'SELECT' || related?.tagName === 'TEXTAREA' || related?.tagName === 'A';
                       const isAnyModalOpen = isScannerOpen || isReceiptOpen || isChangeModalOpen || isReturnModalOpen || isReturnSlipOpen || isCashModalOpen || isPaymentSummaryOpen || isWeightModalOpen || isHeldBillsModalOpen || isShortcutsModalOpen || Boolean(viewingDigitalQr) || Boolean(viewingBankQr);
@@ -2729,6 +2989,105 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                     </button>
                     <span className="text-xs sm:text-sm font-mono px-2 py-1 rounded bg-slate-200 text-slate-800 font-bold hidden sm:inline">↵ ENTER</span>
                   </div>
+
+                  {/* Dropdown Menu for Full-Screen Mode */}
+                  {isFullScreenDropdownOpen && fullScreenScanInput.trim().length > 0 && (
+                    <div 
+                      id="fullscreen-pos-search-dropdown"
+                      className="absolute left-0 right-0 top-full mt-2 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-50 divide-y divide-slate-100 max-h-[380px] overflow-y-auto overscroll-contain custom-scrollbar animate-fade-in text-left"
+                    >
+                      <div className="px-4 py-2 bg-slate-50 flex items-center justify-between text-[11px] font-bold text-slate-500 sticky top-0 bg-slate-50/95 backdrop-blur-xs z-10 border-b border-slate-100">
+                        <span className="flex items-center gap-1.5 text-slate-800">
+                          <Sparkles className="w-3.5 h-3.5 text-orange-600" />
+                          <span>{fullScreenDropdownResults.length} matching {fullScreenDropdownResults.length === 1 ? 'product' : 'products'} for &quot;{fullScreenScanInput}&quot;</span>
+                        </span>
+                        <span className="text-[10px] text-slate-400">↑↓ to navigate • ↵ Enter to add</span>
+                      </div>
+
+                      {fullScreenDropdownResults.length === 0 ? (
+                        <div className="p-5 text-center text-xs text-slate-500">
+                          No products found matching &quot;{fullScreenScanInput}&quot;
+                        </div>
+                      ) : (
+                        fullScreenDropdownResults.map((product, idx) => {
+                          const isHighlighted = idx === fullScreenHighlightedIndex;
+                          const isOut = product.stockQuantity <= 0;
+                          const isWeightItem = product.sellBy === 'weight' || product.unitType === 'kg' || Boolean(product.pricePerKg);
+
+                          return (
+                            <div
+                              key={product.id}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                handleSelectDropdownProduct(product, true);
+                              }}
+                              onMouseEnter={() => setFullScreenHighlightedIndex(idx)}
+                              className={`px-4 py-3 flex items-center justify-between gap-3 cursor-pointer transition-colors ${
+                                isHighlighted ? 'bg-orange-50/90 text-orange-950' : 'hover:bg-slate-50 text-slate-900'
+                              } ${isOut ? 'opacity-40 cursor-not-allowed bg-slate-50' : ''}`}
+                            >
+                              <div className="flex items-center gap-3 min-w-0 flex-1">
+                                {product.imageUrl ? (
+                                  <img src={product.imageUrl} alt={product.name} className="w-10 h-10 rounded-xl object-cover border border-slate-200 shrink-0" />
+                                ) : (
+                                  <div className="w-10 h-10 rounded-xl bg-orange-100 text-orange-700 font-bold flex items-center justify-center shrink-0">
+                                    {isWeightItem ? <Scale className="w-5 h-5" /> : <Package className="w-5 h-5" />}
+                                  </div>
+                                )}
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-bold text-sm text-slate-900 truncate" title={product.name}>
+                                      {product.name}
+                                    </span>
+                                    {product.shortcutCode && (
+                                      <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-950 font-mono font-black text-xs border border-amber-300">
+                                        #{product.shortcutCode}
+                                      </span>
+                                    )}
+                                    {isWeightItem && (
+                                      <span className="px-2 py-0.5 rounded-md bg-blue-100 text-blue-900 font-bold text-xs">
+                                        ⚖️ By Weight
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
+                                    <span className="font-medium">{product.category || 'General'}</span>
+                                    {product.barcode && (
+                                      <>
+                                        <span>•</span>
+                                        <span className="font-mono text-[11px] text-slate-400">{product.barcode}</span>
+                                      </>
+                                    )}
+                                    <span>•</span>
+                                    <span className={isOut ? 'text-red-600 font-bold' : product.stockQuantity <= 5 ? 'text-amber-600 font-bold' : 'text-slate-500'}>
+                                      {isOut ? 'Out of Stock' : `${product.stockQuantity} in stock`}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-3 shrink-0">
+                                <div className="text-right">
+                                  <div className="font-black font-mono text-base text-emerald-700">
+                                    Rs. {Number(product.price || 0).toFixed(2)}
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1 ${
+                                    isHighlighted ? 'bg-orange-600 text-white shadow-xs' : 'bg-slate-100 text-slate-700 hover:bg-orange-600 hover:text-white'
+                                  }`}
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                  <span>Add</span>
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
                 </div>
               </form>
 

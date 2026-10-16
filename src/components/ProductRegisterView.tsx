@@ -27,6 +27,7 @@ import { ItemDiscountModal } from './ItemDiscountModal';
 import { ManageCategoriesView } from './ManageCategoriesView';
 import { ProductShortcutsModal } from './ProductShortcutsModal';
 import { downloadBarcodeForProduct } from '../lib/barcodeDownload';
+import { fetchProductImageUrl } from '../lib/imageFetcher';
 import { BatchProductRow } from '../lib/excelParser';
 import { 
   getAllCategories, 
@@ -203,9 +204,15 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   const [catalogFilter, setCatalogFilter] = useState<'all' | 'weight' | 'unit'>('all');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
-  const [activeTab, setActiveTab] = useState<'catalog' | 'form'>('catalog');
+  const [activeTab, setActiveTab] = useState<'catalog' | 'form'>('form');
 
-  const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [msg, setMsg] = useState<{ type: string; text: string } | null>(null);
+  const showNotification = (type: 'success' | 'error' | 'info', text: string) => {
+    setMsg({ type: type === 'info' ? 'success' : type, text });
+    setTimeout(() => {
+      setMsg(prev => (prev?.text === text ? null : prev));
+    }, 4000);
+  };
   const [loading, setLoading] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [showHardwareBar, setShowHardwareBar] = useState(false);
@@ -371,7 +378,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
       snapshot.forEach((docSnap) => {
         list.push({ id: docSnap.id, ...docSnap.data() } as Product);
       });
-      setProducts(list.sort((a, b) => a.name.localeCompare(b.name)));
+      setProducts(list.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
     }, (err) => {
       handleFirestoreError(err, OperationType.GET, 'products');
     });
@@ -399,7 +406,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
           setManagedCategories(seeded);
         });
       } else {
-        setManagedCategories(list.sort((a, b) => a.name.localeCompare(b.name)));
+        setManagedCategories(list.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
       }
     }, (err) => {
       console.warn('Categories subscription notice:', err);
@@ -407,6 +414,36 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
 
     return () => unsubCat();
   }, [store?.id]);
+
+  const handleSelectProductToEdit = (p: Product) => {
+    setBarcode(p.barcode || '');
+    setSerialNumber(p.serialNumber || '');
+    setExistingProduct(p);
+    setName(p.name);
+    setImageUrl(p.imageUrl || '');
+    setWeight(p.weight || '');
+    setCategory(p.category || 'General');
+    const cPrice = p.costPrice !== undefined ? p.costPrice : '';
+    setCostPrice(cPrice);
+    setPrice(p.price);
+    if (typeof cPrice === 'number' && cPrice > 0 && typeof p.price === 'number' && p.price > 0) {
+      setMarginPercent(Math.round(((p.price - cPrice) / cPrice) * 100 * 10) / 10);
+    } else {
+      setMarginPercent('');
+    }
+    setDiscountActive(p.discountActive || false);
+    setDiscountType(p.discountType || 'percentage');
+    setDiscountValue(p.discountValue !== undefined ? p.discountValue : '');
+    setDiscountStartDate(p.discountStartDate || getTodayISO());
+    setDiscountEndDate(p.discountEndDate || '');
+    setHasDateLimit(!!p.discountEndDate);
+    setMinStockLevel(p.minStockLevel !== undefined ? p.minStockLevel : 5);
+    setSellBy(p.sellBy || (p.unitType === 'kg' ? 'weight' : 'unit'));
+    setUnitType((p.unitType as any) || (p.sellBy === 'weight' ? 'kg' : 'piece'));
+    setWeightPerUnit(p.weightPerUnit !== undefined ? p.weightPerUnit : '');
+    setStockAdjustmentMode('keep');
+    setStockQuantityToAdd('');
+  };
 
   // Helper to find a registered product by Barcode, Serial Number, Short Code (1001-9999), or ID
   const findRegisteredProduct = (queryCode: string): Product | undefined => {
@@ -590,7 +627,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
       if (!imageUrl || aiImageSource) {
         handleAutoGenerateProductPicture(trimmed, false);
       }
-    }, 750);
+    }, 400);
 
     return () => {
       if (aiImageFetchDebounceRef.current) {
@@ -650,10 +687,6 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     showNotification('success', `Selected size "${trimmed}"!`);
   };
 
-  const showNotification = (type: 'success' | 'error', text: string) => {
-    setMsg({ type, text });
-    setTimeout(() => setMsg(null), 5000);
-  };
 
   const handleResetForm = () => {
     setBarcode('');
@@ -688,37 +721,6 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     if (barcodeInputRef.current) {
       barcodeInputRef.current.focus();
     }
-  };
-
-  const handleSelectProductToEdit = (p: Product) => {
-    setBarcode(p.barcode || '');
-    setSerialNumber(p.serialNumber || '');
-    setExistingProduct(p);
-    setName(p.name);
-    setImageUrl(p.imageUrl || '');
-    setWeight(p.weight || '');
-    setCategory(p.category || 'General');
-    const cPrice = p.costPrice !== undefined ? p.costPrice : '';
-    setCostPrice(cPrice);
-    setPrice(p.price);
-    if (typeof cPrice === 'number' && cPrice > 0 && typeof p.price === 'number' && p.price > 0) {
-      setMarginPercent(Math.round(((p.price - cPrice) / cPrice) * 100 * 10) / 10);
-    } else {
-      setMarginPercent('');
-    }
-    setDiscountActive(p.discountActive || false);
-    setDiscountType(p.discountType || 'percentage');
-    setDiscountValue(p.discountValue !== undefined && p.discountValue > 0 ? p.discountValue : '');
-    setDiscountStartDate(p.discountStartDate || getTodayISO());
-    setDiscountEndDate(p.discountEndDate || '');
-    setHasDateLimit(Boolean(p.discountEndDate));
-    setMinStockLevel(p.minStockLevel !== undefined ? p.minStockLevel : 5);
-    setSellBy(p.sellBy || (p.unitType === 'kg' ? 'weight' : 'unit'));
-    setUnitType((p.unitType as any) || (p.sellBy === 'weight' ? 'kg' : 'piece'));
-    setWeightPerUnit(p.weightPerUnit !== undefined ? p.weightPerUnit : '');
-    setStockAdjustmentMode('keep');
-    setStockQuantityToAdd('');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleOpenGeneratorForProduct = (p?: Product) => {
@@ -875,6 +877,22 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
         sellBy === 'weight' ? 'Sell By Weight (kg)' : null
       ].filter(Boolean).join(', ');
 
+      let finalImageUrl = imageUrl.trim();
+      // When user enters any new product, automatically search and add the pic address from Google by name
+      if (!finalImageUrl && trimmedName) {
+        try {
+          setIsGeneratingAiImage(true);
+          finalImageUrl = await fetchProductImageUrl(trimmedName);
+          if (finalImageUrl) {
+            setImageUrl(finalImageUrl);
+          }
+        } catch (e) {
+          console.warn('Auto image fetch on save error:', e);
+        } finally {
+          setIsGeneratingAiImage(false);
+        }
+      }
+
       if (targetProduct) {
         // UPDATE EXISTING PRODUCT
         const productDocRef = doc(db, 'products', targetProduct.id);
@@ -888,7 +906,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
           shortcutCode: assignedShortcutCode,
           serialNumber: assigned4DigitSerial,
           name: trimmedName,
-          imageUrl: imageUrl.trim() || undefined,
+          imageUrl: finalImageUrl || undefined,
           weight: trimmedWeight || (sellBy === 'weight' ? `${finalTotalStock} kg` : ''),
           category: category.trim() || 'General',
           costPrice: numericCostPrice !== undefined && !isNaN(numericCostPrice) ? numericCostPrice : 0,
@@ -925,7 +943,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
           shortcutCode: assignedShortcutCode,
           serialNumber: assigned4DigitSerial,
           name: trimmedName,
-          imageUrl: imageUrl.trim() || undefined,
+          imageUrl: finalImageUrl || undefined,
           weight: trimmedWeight || (sellBy === 'weight' ? `${finalTotalStock} kg` : ''),
           category: category.trim() || 'General',
           costPrice: numericCostPrice !== undefined && !isNaN(numericCostPrice) ? numericCostPrice : 0,
@@ -993,12 +1011,19 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     } else {
       const newDocRef = doc(collection(db, 'products'));
       const shortcutCode = generateNextShortcutCode(products);
+      let genImg = '';
+      try {
+        genImg = await fetchProductImageUrl(productData.name);
+      } catch (e) {
+        console.warn('Auto image fetch error for generator product:', e);
+      }
       const newProd: Product = {
         id: newDocRef.id,
         storeId: store.id,
         barcode: productData.uniqueNumber || '',
         shortcutCode,
         name: productData.name,
+        imageUrl: genImg || undefined,
         weight: productData.weight || '',
         category: productData.category || 'General',
         costPrice: productData.costPrice || 0,
@@ -1158,12 +1183,12 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     if (!searchTerm.trim()) return true;
     const term = searchTerm.toLowerCase();
     return (
-      p.name.toLowerCase().includes(term) ||
-      p.barcode.toLowerCase().includes(term) ||
+      (p.name || '').toLowerCase().includes(term) ||
+      (p.barcode || '').toLowerCase().includes(term) ||
       (p.serialNumber && p.serialNumber.toLowerCase().includes(term)) ||
       (p.shortcutCode && p.shortcutCode.toLowerCase().includes(term)) ||
       (p.weight && p.weight.toLowerCase().includes(term)) ||
-      p.category.toLowerCase().includes(term)
+      (p.category || '').toLowerCase().includes(term)
     );
   });
 
@@ -1338,6 +1363,52 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
             <span>{msg.text}</span>
           </div>
         )}
+
+        {/* Primary View Switcher: Product Registration Terminal vs Full Stock Catalog */}
+        <div className="flex items-center gap-2 sm:gap-3 bg-white p-2 rounded-2xl border border-slate-200 shadow-xs">
+          <button
+            type="button"
+            id="tab-btn-product-register"
+            onClick={() => {
+              if (activeTab !== 'form') {
+                handleResetForm();
+                setActiveTab('form');
+              }
+            }}
+            className={`flex-1 py-3 px-4 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'form'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 ring-2 ring-blue-500/20'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900'
+            }`}
+          >
+            <PackagePlus className={`w-4 h-4 ${activeTab === 'form' ? 'text-white' : 'text-blue-600'}`} />
+            <span>Product Register & Stock In</span>
+            {existingProduct && (
+              <span className="text-[10px] bg-amber-400 text-slate-950 px-2 py-0.5 rounded-full font-black uppercase">
+                Editing
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            id="tab-btn-stock-catalog"
+            onClick={() => setActiveTab('catalog')}
+            className={`flex-1 py-3 px-4 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'catalog'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 ring-2 ring-blue-500/20'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900'
+            }`}
+          >
+            <LayoutGrid className={`w-4 h-4 ${activeTab === 'catalog' ? 'text-white' : 'text-blue-600'}`} />
+            <span>View Stock Catalog</span>
+            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+              activeTab === 'catalog' ? 'bg-white text-blue-700' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {products.length} Products
+            </span>
+          </button>
+        </div>
 
         {/* Animated View Container with Changing Transition Animation */}
         <AnimatePresence mode="wait">
@@ -1576,10 +1647,23 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
 
                 {/* Catalog Content: Grid View or Table View */}
                 {filteredCatalog.length === 0 ? (
-                  <div className="text-sm text-slate-500 p-12 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50 space-y-2">
-                    <PackagePlus className="w-10 h-10 text-slate-400 mx-auto" />
-                    <p className="font-bold text-slate-700">No products found</p>
-                    <p className="text-xs text-slate-500">Try adjusting your search or category filter, or register a new product using the terminal on the right.</p>
+                  <div className="text-sm text-slate-500 p-12 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50 space-y-3">
+                    <PackagePlus className="w-12 h-12 text-blue-500 mx-auto" />
+                    <p className="font-bold text-slate-800 text-base">No products found in catalog</p>
+                    <p className="text-xs text-slate-500 max-w-md mx-auto">
+                      Search filter didn't match any items, or no products have been registered yet. Click below to register your product!
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleResetForm();
+                        setActiveTab('form');
+                      }}
+                      className="mt-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs sm:text-sm inline-flex items-center gap-2 shadow-sm cursor-pointer transition-all"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Register New Product & Stock In</span>
+                    </button>
                   </div>
                 ) : viewMode === 'grid' ? (
                   /* POS Counter Card Grid */

@@ -22,6 +22,7 @@ import { saveNewCategoryToStore, getAllCategories } from '../lib/categories';
 import { Product, Store } from '../types';
 import { db, collection, setDoc, doc } from '../lib/firebase';
 import { generateNextShortcutCode } from '../utils/productShortcuts';
+import { fetchProductImageUrl } from '../lib/imageFetcher';
 
 const generateRandomBarcode = (): string => {
   return Math.floor(10000 + Math.random() * 90000).toString();
@@ -239,6 +240,14 @@ export const MultiProductBatchModal: React.FC<MultiProductBatchModalProps> = ({
 
         if (!existing) {
           productPayload.createdAt = new Date().toISOString();
+          try {
+            const autoImg = await fetchProductImageUrl(row.name.trim());
+            if (autoImg) {
+              productPayload.imageUrl = autoImg;
+            }
+          } catch {
+            // Ignore error
+          }
         }
 
         const productDocRef = doc(db, 'products', productId);

@@ -35,6 +35,8 @@ import { speakMessage } from '../lib/speech';
 import { playScanSuccessBeep, playScanErrorBeep } from '../lib/sound';
 import { cleanupExpiredReceipts, isSaleExpired, getReceiptRemainingDays } from '../lib/salesCleanup';
 import { DownloadAppButton } from './DownloadAppButton';
+import { PosLineDiscountModal } from './PosLineDiscountModal';
+import { PosDiscountEntryScreen } from './PosDiscountEntryScreen';
 import { 
   Calculator, 
   Barcode as BarcodeIcon, 
@@ -82,7 +84,8 @@ import {
   ShieldCheck,
   LogOut,
   Coins,
-  Tag
+  Tag,
+  Percent
 } from 'lucide-react';
 
 interface CashCounterViewProps {
@@ -131,13 +134,93 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
   const [isCashModalOpen, setIsCashModalOpen] = useState(false);
   const [isPaymentSummaryOpen, setIsPaymentSummaryOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<'catalog' | 'cart'>('catalog');
+  const [isDiscountEntryScreenOpen, setIsDiscountEntryScreenOpen] = useState(false);
+
+  const handleInitiateCheckout = () => {
+    if (isPosDiscountAllowed && cart.length > 0) {
+      setIsDiscountEntryScreenOpen(true);
+    } else {
+      setIsPaymentSummaryOpen(true);
+    }
+  };
+
+
+  // POS Item & Bill Discount states & handlers
+  const isPosDiscountAllowed = store?.posProductDiscountEnabled === true;
+  const [isLineDiscountModalOpen, setIsLineDiscountModalOpen] = useState(false);
+  const [selectedCartItemForDiscount, setSelectedCartItemForDiscount] = useState<CartItem | null>(null);
+  const [billDiscountType, setBillDiscountType] = useState<'percentage' | 'fixed'>('fixed');
+  const [billDiscountValue, setBillDiscountValue] = useState<number | ''>(0);
+
+  const handleApplyItemDiscount = (productId: string, discountType: 'percentage' | 'fixed', discountValue: number, discountScope: 'total' | 'perUnit', discountReason?: string) => {
+    if (!isPosDiscountAllowed) return;
+    setCart(prev => prev.map(item => {
+      if (item.product.id === productId) {
+        const rawCatalogPrice = item.product.price || item.product.pricePerKg || 0;
+        const baseEffective = getEffectiveProductPrice(item.product) || rawCatalogPrice;
+        let itemDiscAmount = 0;
+        
+        if (discountType === 'percentage') {
+          const pct = Math.min(100, Math.max(0, discountValue));
+          const unitDisc = Math.round(((baseEffective * pct) / 100) * 100) / 100;
+          if (discountScope === 'total') {
+            itemDiscAmount = Math.round(unitDisc * item.quantity * 100) / 100;
+          } else {
+            itemDiscAmount = unitDisc; // Only one unit
+          }
+        } else {
+          // Fixed
+          if (discountScope === 'total') {
+            itemDiscAmount = Math.min(baseEffective * item.quantity, Math.max(0, discountValue));
+          } else {
+            itemDiscAmount = Math.min(baseEffective, Math.max(0, discountValue));
+          }
+        }
+
+        const totalItemPrice = Math.round((baseEffective * item.quantity - itemDiscAmount) * 100) / 100;
+
+        return {
+          ...item,
+          customDiscountType: discountType,
+          customDiscountValue: discountValue,
+          customDiscountAmount: itemDiscAmount,
+          customUnitPrice: totalItemPrice / item.quantity,
+          totalPrice: totalItemPrice,
+          discountScope: discountScope,
+          discountReason
+        };
+      }
+      return item;
+    }));
+    showNotification('success', 'Applied item discount successfully!');
+  };
+
+  const handleRemoveItemDiscount = (productId: string) => {
+    setCart(prev => prev.map(item => {
+      if (item.product.id === productId) {
+        const rawCatalogPrice = item.product.price || item.product.pricePerKg || 0;
+        const baseEffective = getEffectiveProductPrice(item.product) || rawCatalogPrice;
+        return {
+          ...item,
+          customDiscountType: undefined,
+          customDiscountValue: undefined,
+          customDiscountAmount: undefined,
+          customUnitPrice: undefined,
+          totalPrice: Math.round(item.quantity * baseEffective * 100) / 100,
+          discountReason: undefined
+        };
+      }
+      return item;
+    }));
+    showNotification('success', 'Removed item discount.');
+  };
 
   // Shift + P listener to open Payment & Bill Summary modal
   useEffect(() => {
     const handleShiftP = (e: KeyboardEvent) => {
       if (e.shiftKey && (e.key === 'p' || e.key === 'P')) {
         e.preventDefault();
-        setIsPaymentSummaryOpen(true);
+        handleInitiateCheckout();
       }
     };
     window.addEventListener('keydown', handleShiftP);
@@ -883,14 +966,25 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     setCart((prev) => prev.filter(c => c.product.id !== productId));
   };
 
-  // Calculate Subtotal & Payable Grand Total
+  // Calculate Subtotal & Payable Grand Total with Bill Discount
   const cartSubtotal = useMemo(() => {
     return cart.reduce((sum, item) => sum + item.totalPrice, 0);
   }, [cart]);
 
+  const numBillDiscount = typeof billDiscountValue === 'number' && !isNaN(billDiscountValue) ? Math.max(0, billDiscountValue) : 0;
+  const billDiscountAmount = useMemo(() => {
+    if (numBillDiscount <= 0) return 0;
+    if (billDiscountType === 'percentage') {
+      const pct = Math.min(100, numBillDiscount);
+      return Math.round((cartSubtotal * pct) / 100 * 100) / 100;
+    } else {
+      return Math.min(cartSubtotal, numBillDiscount);
+    }
+  }, [cartSubtotal, billDiscountType, numBillDiscount]);
+
   const cartTotal = useMemo(() => {
-    return cartSubtotal;
-  }, [cartSubtotal]);
+    return Math.max(0, Math.round((cartSubtotal - billDiscountAmount) * 100) / 100);
+  }, [cartSubtotal, billDiscountAmount]);
 
   const cartRef = useRef(cart);
   cartRef.current = cart;
@@ -1322,7 +1416,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
       });
 
       const finalCalculatedSubtotal = Math.round(grossSubtotal * 100) / 100;
-      const finalDiscountAmount = Math.round(totalItemDiscount * 100) / 100;
+      const combinedTotalDiscount = Math.round((totalItemDiscount + billDiscountAmount) * 100) / 100;
       const finalDigitalProvider = isCustomDigitalSelected
         ? (customDigitalProviderInput.trim() || 'Other Digital')
         : (selectedDigitalProvider || (configuredDigitalMethods[0]?.name || 'Card'));
@@ -1340,7 +1434,10 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
         cashierUsername: currentUser.username,
         items: saleItems,
         subtotalAmount: finalCalculatedSubtotal,
-        discountAmount: finalDiscountAmount,
+        discountAmount: combinedTotalDiscount,
+        billDiscountAmount: billDiscountAmount > 0 ? billDiscountAmount : undefined,
+        billDiscountType: billDiscountAmount > 0 ? billDiscountType : undefined,
+        billDiscountValue: billDiscountAmount > 0 ? numBillDiscount : undefined,
         totalAmount: cartTotal,
         paymentMethod: paymentMethod,
         onlinePaymentProvider: paymentMethod === 'online' ? finalDigitalProvider : undefined,
@@ -1424,7 +1521,10 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
               cashierUsername: currentUser.username || '',
               items: saleItems,
               subtotalAmount: finalCalculatedSubtotal,
-              discountAmount: finalDiscountAmount,
+              discountAmount: combinedTotalDiscount,
+              billDiscountAmount: billDiscountAmount > 0 ? billDiscountAmount : undefined,
+              billDiscountType: billDiscountAmount > 0 ? billDiscountType : undefined,
+              billDiscountValue: billDiscountAmount > 0 ? numBillDiscount : undefined,
               totalAmount: cartTotal || 0,
               paymentMethod: paymentMethod || 'cash',
               receiptNumber: receiptNum,
@@ -1887,18 +1987,18 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                 </div>
 
                 {/* Search Bar with Autocomplete Dropdown */}
-                <div className="relative w-full sm:w-72 md:w-80">
+                <div className="relative w-full sm:w-80 md:w-96">
                   <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     ref={barcodeInputRef}
                     id="product-search-input"
                     type="text"
                     autoComplete="off"
-                    placeholder="Type product name, code, or scan..."
+                    placeholder="Type product name, 4-digit code, or scan..."
                     value={searchTerm}
                     onChange={(e) => {
                       setSearchTerm(e.target.value);
-                      setIsStandardDropdownOpen(true);
+                      setIsStandardDropdownOpen(e.target.value.trim().length > 0);
                       setStandardHighlightedIndex(0);
                     }}
                     onFocus={() => {
@@ -1907,7 +2007,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                       }
                     }}
                     onBlur={() => {
-                      setTimeout(() => setIsStandardDropdownOpen(false), 200);
+                      setTimeout(() => setIsStandardDropdownOpen(false), 250);
                     }}
                     onKeyDown={(e) => {
                       if (isStandardDropdownOpen && standardDropdownResults.length > 0) {
@@ -1948,7 +2048,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                         }
                       }
                     }}
-                    className="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl text-slate-900 focus:outline-none focus:bg-white font-medium transition-all shadow-inner"
+                    className="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl text-slate-900 focus:outline-none focus:bg-white font-medium transition-all shadow-inner placeholder:text-slate-400"
                   />
                   {searchTerm && (
                     <button
@@ -1968,7 +2068,8 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
                   {isStandardDropdownOpen && searchTerm.trim().length > 0 && (
                     <div 
                       id="standard-pos-search-dropdown"
-                      className="absolute left-0 right-0 sm:right-auto sm:w-[420px] top-full mt-2 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-50 divide-y divide-slate-100 max-h-[360px] overflow-y-auto overscroll-contain custom-scrollbar animate-fade-in"
+                      onMouseDown={(e) => e.preventDefault()}
+                      className="absolute left-0 right-0 sm:right-auto sm:w-[440px] top-full mt-2 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-50 divide-y divide-slate-100 max-h-[380px] overflow-y-auto overscroll-contain custom-scrollbar animate-fade-in"
                     >
                       <div className="px-3.5 py-1.5 bg-slate-50 flex items-center justify-between text-[11px] font-bold text-slate-500 sticky top-0 bg-slate-50/95 backdrop-blur-xs z-10 border-b border-slate-100">
                         <span className="flex items-center gap-1.5 text-slate-700">
@@ -2396,13 +2497,29 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
 
                             {/* 6. Discount */}
                             <td className="p-3 sm:p-3.5 text-center font-mono text-xs sm:text-sm whitespace-nowrap border border-slate-300">
-                              {discInfo.hasDiscount ? (
-                                <span className="px-2.5 py-1 rounded-md bg-rose-100 text-rose-800 font-bold text-xs sm:text-sm border border-rose-200 inline-block">
-                                  {discountDisplay}
-                                </span>
-                              ) : (
-                                <span className="text-slate-400 font-medium">Rs. 0.00</span>
-                              )}
+                              <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                                {discInfo.hasDiscount || item.customDiscountAmount ? (
+                                  <span className="px-2.5 py-1 rounded-md bg-rose-100 text-rose-800 font-bold text-xs sm:text-sm border border-rose-200 inline-block">
+                                    {item.customDiscountAmount ? `Rs. ${item.customDiscountAmount.toFixed(2)}` : discountDisplay}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400 font-medium">Rs. 0.00</span>
+                                )}
+                                {isPosDiscountAllowed && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedCartItemForDiscount(item);
+                                      setIsLineDiscountModalOpen(true);
+                                    }}
+                                    className="px-2 py-1 rounded-lg bg-orange-100 hover:bg-orange-200 text-orange-900 font-bold text-xs flex items-center gap-1 border border-orange-300 cursor-pointer transition-colors"
+                                    title="Add / Edit Product Discount"
+                                  >
+                                    <Percent className="w-3.5 h-3.5 text-orange-700" />
+                                    <span>Discount</span>
+                                  </button>
+                                )}
+                              </div>
                             </td>
 
                             {/* 7. Action / Delete */}
@@ -2427,6 +2544,55 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
 
             {/* Bottom Checkout Action Area */}
             <div className="pt-3 border-t border-slate-200 space-y-3 shrink-0">
+              {/* Overall Bill Discount Section */}
+              {isPosDiscountAllowed && (
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                    <span className="flex items-center gap-1">
+                      <Tag className="w-3.5 h-3.5 text-orange-600" /> Overall Bill Discount:
+                    </span>
+                    {billDiscountAmount > 0 && (
+                      <span className="text-rose-600 font-mono font-black">
+                        - Rs. {billDiscountAmount.toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={billDiscountType}
+                      onChange={(e) => setBillDiscountType(e.target.value as 'percentage' | 'fixed')}
+                      className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:border-orange-500 cursor-pointer"
+                    >
+                      <option value="fixed">Fixed (Rs.)</option>
+                      <option value="percentage">Percentage (%)</option>
+                    </select>
+                    <input
+                      type="number"
+                      min="0"
+                      max={billDiscountType === 'percentage' ? 100 : cartSubtotal}
+                      step={billDiscountType === 'percentage' ? "1" : "10"}
+                      value={billDiscountValue === 0 ? '' : billDiscountValue}
+                      placeholder={billDiscountType === 'percentage' ? "Enter % off" : "Enter Rs. off"}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setBillDiscountValue(val === '' ? '' : parseFloat(val) || 0);
+                      }}
+                      className="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-orange-500"
+                    />
+                    {billDiscountValue !== '' && billDiscountValue > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setBillDiscountValue(0)}
+                        className="px-2 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-lg text-xs cursor-pointer transition-colors"
+                        title="Clear Bill Discount"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center justify-between text-slate-900">
                 <span className="text-sm font-bold text-slate-500 uppercase tracking-wider">Payable Total</span>
                 <span className="text-2xl sm:text-3xl font-black text-orange-600 font-mono">
@@ -2436,7 +2602,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
 
               <button
                 type="button"
-                onClick={() => setIsPaymentSummaryOpen(true)}
+                onClick={() => handleInitiateCheckout()}
                 disabled={cart.length === 0}
                 className="w-full py-3 sm:py-3.5 bg-orange-600 hover:bg-orange-500 active:bg-orange-700 text-white font-black text-sm sm:text-base rounded-xl shadow-md transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed uppercase tracking-wider"
               >
@@ -3556,7 +3722,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
 
                   <button
                     type="button"
-                    onClick={() => setIsPaymentSummaryOpen(true)}
+                    onClick={() => handleInitiateCheckout()}
                     disabled={cart.length === 0}
                     className="w-full sm:w-auto px-7 py-3 sm:py-3.5 bg-orange-600 hover:bg-orange-500 active:bg-orange-700 text-white font-black text-sm sm:text-base rounded-xl shadow-md transition-all flex items-center justify-center gap-3 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed uppercase tracking-wider"
                   >
@@ -3710,7 +3876,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
 
                 <button
                   type="button"
-                  onClick={() => setIsPaymentSummaryOpen(true)}
+                  onClick={() => handleInitiateCheckout()}
                   className="px-4 py-3 bg-orange-600 hover:bg-orange-500 active:bg-orange-700 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
                 >
                   <span>Proceed to Payment</span>
@@ -3720,6 +3886,31 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
             </div>
           </motion.div>
         )}
+
+        {/* POS Line Item Discount Modal */}
+        <PosLineDiscountModal
+          isOpen={isLineDiscountModalOpen}
+          onClose={() => {
+            setIsLineDiscountModalOpen(false);
+            setSelectedCartItemForDiscount(null);
+          }}
+          cartItem={selectedCartItemForDiscount}
+          store={store}
+          onApplyDiscount={handleApplyItemDiscount}
+          onRemoveDiscount={handleRemoveItemDiscount}
+        />
+
+        <PosDiscountEntryScreen
+          isOpen={isDiscountEntryScreenOpen}
+          onClose={() => setIsDiscountEntryScreenOpen(false)}
+          onCheckout={() => {
+            setIsDiscountEntryScreenOpen(false);
+            setIsPaymentSummaryOpen(true);
+          }}
+          cart={cart}
+          store={store}
+          onUpdateItemDiscount={(pId, type, val, scope) => handleApplyItemDiscount(pId, type, val, scope)}
+        />
 
       </div>
     </div>

@@ -27,6 +27,7 @@ export interface Store {
   administrativeExpenses?: number; // Additional monthly administrative overhead
   cameraScannerEnabled?: boolean; // Super admin can enable/disable inbuilt barcode camera for each store
   voiceAnnouncementEnabled?: boolean; // Super admin can allow/disallow audio voice generation for each store
+  allowPosItemDiscount?: boolean; // Super admin switch: allows cashiers to give discounts on every product during billing in POS Counter
   phone?: string;
   address?: string;
   receiptHeader?: string;
@@ -57,6 +58,7 @@ export interface Store {
   isOnlineStoreEnabled?: boolean;
   onlineStoreId?: string;
   onlineApiKey?: string;
+  posProductDiscountEnabled?: boolean; // Store admin setting: allows discount entry screen for cashier during POS checkout
   onlineStorePhone?: string;
   onlineStoreDeliveryFee?: number;
   onlineStoreMinOrder?: number;
@@ -251,6 +253,13 @@ export interface CartItem {
   totalPrice: number;
   enteredWeight?: number;
   weightMultiplier?: number;
+  // Per-item billing discount applied at checkout / POS counter
+  customDiscountType?: 'percentage' | 'fixed';
+  customDiscountValue?: number;
+  customDiscountAmount?: number;
+  customUnitPrice?: number;
+  customDiscountReason?: string;
+  discountScope?: 'total' | 'perUnit';
 }
 
 export interface SaleItem {
@@ -268,6 +277,7 @@ export interface SaleItem {
   sellBy?: 'unit' | 'weight';
   unitType?: string;
   weightInfo?: string;
+  discountReason?: string;
 }
 
 export interface HeldBill {
@@ -348,6 +358,9 @@ export interface Sale {
   discountType?: 'percentage' | 'fixed';
   discountValue?: number;
   discountAmount?: number;
+  billDiscountAmount?: number;
+  billDiscountType?: 'percentage' | 'fixed';
+  billDiscountValue?: number;
   totalAmount: number;
   paymentMethod: 'cash' | 'online';
   onlinePaymentProvider?: string; // e.g. "EasyPaisa", "JazzCash", "SadaPay", "Bank Transfer", etc.

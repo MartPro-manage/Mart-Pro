@@ -94,24 +94,24 @@ export const Navbar: React.FC<NavbarProps> = ({
   const navItems = [
     {
       id: 'dashboard' as AppNavView,
-      label: isStoreAdmin ? 'Executive Analytics' : 'Dashboard',
-      shortLabel: isStoreAdmin ? 'Analytics' : 'Dashboard',
+      label: isStoreAdmin ? 'Executive Analytics' : isSuperAdmin ? 'Master Control' : 'Dashboard',
+      shortLabel: isStoreAdmin ? 'Analytics' : isSuperAdmin ? 'Control' : 'Dashboard',
       icon: LayoutDashboard,
-      roles: ['store_admin', 'admin', 'branch_admin']
+      roles: ['super_admin', 'store_admin', 'admin', 'branch_admin']
     },
     {
       id: 'pos' as AppNavView,
       label: 'POS Counter',
       shortLabel: 'POS Counter',
       icon: Calculator,
-      roles: ['store_admin', 'admin', 'branch_admin', 'cash_counter', 'product_register', 'customer_price_checker']
+      roles: ['super_admin', 'store_admin', 'admin', 'branch_admin', 'cash_counter', 'product_register', 'customer_price_checker']
     },
     {
       id: 'inventory' as AppNavView,
       label: 'Product Register',
       shortLabel: 'Register',
       icon: PackagePlus,
-      roles: ['branch_admin', 'product_register']
+      roles: ['super_admin', 'store_admin', 'admin', 'branch_admin', 'product_register']
     },
     {
       id: 'suppliers' as AppNavView,
@@ -143,7 +143,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     }
   ];
 
-  const visibleNavItems = isSuperAdmin ? [] : navItems.filter(item => 
+  const visibleNavItems = navItems.filter(item => 
     !user?.role || item.roles.includes(user.role)
   );
 

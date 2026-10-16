@@ -62,7 +62,9 @@ import {
   DollarSign,
   Globe,
   ExternalLink,
-  Copy
+  Copy,
+  Percent,
+  Tag
 } from 'lucide-react';
 
 interface SuperAdminProps {
@@ -107,6 +109,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
   const [newStoreAdminPassword, setNewStoreAdminPassword] = useState('');
   const [newStoreCameraScannerEnabled, setNewStoreCameraScannerEnabled] = useState(true);
   const [newStoreVoiceAnnouncementEnabled, setNewStoreVoiceAnnouncementEnabled] = useState(true);
+  const [newStorePosItemDiscountEnabled, setNewStorePosItemDiscountEnabled] = useState(true);
 
   // Form states - Create Cash Counter
   const [selectedStoreIdForCounter, setSelectedStoreIdForCounter] = useState('');
@@ -288,6 +291,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
           receiptFormat: parentStore?.receiptFormat || 'standard',
           cameraScannerEnabled: newStoreCameraScannerEnabled,
           voiceAnnouncementEnabled: newStoreVoiceAnnouncementEnabled,
+          allowPosItemDiscount: newStorePosItemDiscountEnabled,
           createdAt: new Date().toISOString()
         };
         await setDoc(storeDocRef, cleanFirestoreData(newBranchData));
@@ -319,6 +323,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
           status: 'active',
           cameraScannerEnabled: newStoreCameraScannerEnabled,
           voiceAnnouncementEnabled: newStoreVoiceAnnouncementEnabled,
+          allowPosItemDiscount: newStorePosItemDiscountEnabled,
           createdAt: new Date().toISOString()
         };
         await setDoc(storeDocRef, cleanFirestoreData(newStoreData));
@@ -402,6 +407,32 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
     } catch (err: any) {
       console.error(err);
       showNotification('error', 'Failed to toggle voice generation permission: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Toggle Checkout Per-Product Line Discount on Billing per Store (Super Admin Exclusive)
+  const handleTogglePosItemDiscount = async (store: Store) => {
+    setLoading(true);
+    try {
+      const currentVal = store.allowPosItemDiscount === true;
+      const nextVal = !currentVal;
+      const storeRef = doc(db, 'stores', store.id);
+      await updateDoc(storeRef, { allowPosItemDiscount: nextVal });
+
+      showNotification(
+        'success',
+        `Per-Product Discount in POS Counter ${nextVal ? 'ALLOWED & ENABLED' : 'DISALLOWED & DISABLED'} for store "${store.name}".`
+      );
+
+      // Also update local modal state if open
+      if (furtherDetailsStore && furtherDetailsStore.id === store.id) {
+        setFurtherDetailsStore({ ...furtherDetailsStore, allowPosItemDiscount: nextVal });
+      }
+    } catch (err: any) {
+      console.error(err);
+      showNotification('error', 'Failed to toggle POS item discount permission: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -942,6 +973,25 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
     }
   };
 
+  // Batch toggle per-product POS discount for all stores
+  const handleBatchPosItemDiscountToggle = async (enabled: boolean) => {
+    if (stores.length === 0) {
+      showNotification('error', 'No stores registered yet to update.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const promises = stores.map((s) => updateDoc(doc(db, 'stores', s.id), { allowPosItemDiscount: enabled }));
+      await Promise.all(promises);
+      showNotification('success', `Per-product POS discount has been ${enabled ? 'ENABLED' : 'DISABLED'} across all ${stores.length} store(s)!`);
+    } catch (err: any) {
+      console.error(err);
+      showNotification('error', 'Failed to update POS item discount policy: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Master SuperAdmin password update
   const handleUpdateMasterAdminPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1376,6 +1426,38 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                     {newStoreVoiceAnnouncementEnabled ? (
                       <>
                         <ToggleRight className="w-4 h-4 text-emerald-600" />
+                        <span>Allowed</span>
+                      </>
+                    ) : (
+                      <>
+                        <ToggleLeft className="w-4 h-4 text-slate-400" />
+                        <span>Disallowed</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Per-Product Line Discount on Billing Super Admin Setting */}
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <Percent className="w-4 h-4 text-rose-600 shrink-0" />
+                    <div>
+                      <div className="text-xs font-bold text-slate-800">POS Per-Product Discount on Billing</div>
+                      <div className="text-[11px] text-slate-500 font-medium">Allow cashiers to give item-level discounts during billing</div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setNewStorePosItemDiscountEnabled(!newStorePosItemDiscountEnabled)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 border transition-all cursor-pointer ${
+                      newStorePosItemDiscountEnabled
+                        ? 'bg-rose-50 border-rose-300 text-rose-800 hover:bg-rose-100'
+                        : 'bg-slate-200 border-slate-300 text-slate-600 hover:bg-slate-300'
+                    }`}
+                  >
+                    {newStorePosItemDiscountEnabled ? (
+                      <>
+                        <ToggleRight className="w-4 h-4 text-rose-600" />
                         <span>Allowed</span>
                       </>
                     ) : (
@@ -2458,6 +2540,19 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                               <Camera className="w-3.5 h-3.5" />
                               <span>Camera Scanner: {s.cameraScannerEnabled !== false ? 'Enabled' : 'Disabled'}</span>
                             </button>
+                            <button
+                              onClick={() => handleTogglePosItemDiscount(s)}
+                              disabled={loading}
+                              className={`px-2.5 py-1 rounded-lg border font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                                s.allowPosItemDiscount === true
+                                  ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                                  : 'bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-200'
+                              }`}
+                              title="Click to toggle per-product discount during billing in POS Counter"
+                            >
+                              <Percent className="w-3.5 h-3.5 text-rose-600" />
+                              <span>POS Discount: {s.allowPosItemDiscount === true ? 'Allowed' : 'Disabled'}</span>
+                            </button>
                           </div>
 
                           <div className="flex items-center gap-2">
@@ -2697,6 +2792,48 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                   </div>
                 </div>
 
+                {/* Batch POS Per-Product Line-Item Discount Policy */}
+                <div className="p-5 bg-gradient-to-br from-rose-50/70 to-orange-50/40 border border-rose-200/80 rounded-2xl space-y-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2.5 bg-rose-200/60 text-rose-900 rounded-xl shrink-0 mt-0.5">
+                        <Percent className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-extrabold text-rose-950 flex items-center gap-2">
+                          Global POS Line-Item Discount Policy
+                          <span className="text-[10px] font-bold bg-rose-200/80 text-rose-900 px-2 py-0.5 rounded-full">
+                            {stores.filter(s => s.allowPosItemDiscount === true).length} / {stores.length} Enabled
+                          </span>
+                        </h4>
+                        <p className="text-xs text-rose-900/80 font-medium mt-1 leading-relaxed">
+                          Controls whether cashiers are allowed to give discounts on every product during billing at POS checkout counters.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleBatchPosItemDiscountToggle(true)}
+                      disabled={loading || stores.length === 0}
+                      className="py-2.5 px-4 bg-rose-600 hover:bg-rose-500 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <Percent className="w-4 h-4" /> Enable POS Discounts on ALL Stores
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleBatchPosItemDiscountToggle(false)}
+                      disabled={loading || stores.length === 0}
+                      className="py-2.5 px-4 bg-slate-700 hover:bg-slate-600 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <Ban className="w-4 h-4" /> Disable POS Discounts on ALL Stores
+                    </button>
+                  </div>
+                </div>
+
               </div>
 
             </div>
@@ -2732,6 +2869,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                         <th className="py-3 px-4">Store Admin</th>
                         <th className="py-3 px-4 text-center">Voice Generation</th>
                         <th className="py-3 px-4 text-center">Camera Scanner</th>
+                        <th className="py-3 px-4 text-center">POS Item Discount</th>
                         <th className="py-3 px-4 text-center">Store Status</th>
                         <th className="py-3 px-4 text-right">Actions</th>
                       </tr>
@@ -2740,6 +2878,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                       {stores.map((s) => {
                         const voiceAllowed = s.voiceAnnouncementEnabled !== false;
                         const cameraActive = s.cameraScannerEnabled !== false;
+                        const posDiscAllowed = s.allowPosItemDiscount === true;
                         const isActive = s.status !== 'disabled';
 
                         return (
@@ -2794,6 +2933,31 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                                   <>
                                     <Camera className="w-3.5 h-3.5 text-purple-600" />
                                     <span>Enabled</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Ban className="w-3.5 h-3.5 text-slate-500" />
+                                    <span>Disabled</span>
+                                  </>
+                                )}
+                              </button>
+                            </td>
+
+                            <td className="py-3.5 px-4 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleTogglePosItemDiscount(s)}
+                                disabled={loading}
+                                className={`px-3 py-1 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer border ${
+                                  posDiscAllowed
+                                    ? 'bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100'
+                                    : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
+                                }`}
+                              >
+                                {posDiscAllowed ? (
+                                  <>
+                                    <Percent className="w-3.5 h-3.5 text-rose-600" />
+                                    <span>Allowed</span>
                                   </>
                                 ) : (
                                   <>
@@ -2931,7 +3095,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
             </div>
 
             {/* SUPER ADMIN HARDWARE, AUDIO & STORE OPERATING STATUS CONFIGURATION */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Card 1: Inbuilt Camera Barcode Scanner Policy */}
               <div className="p-4 bg-purple-50/50 border border-purple-200 rounded-2xl flex flex-col justify-between gap-4">
                 <div className="flex items-start gap-3">
@@ -3012,7 +3176,47 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                 </button>
               </div>
 
-              {/* Card 3: Store Operating Status (Active / Disabled) */}
+              {/* Card 3: Super Admin POS Per-Product Line-Item Discount Policy */}
+              <div className="p-4 bg-rose-50/50 border border-rose-200 rounded-2xl flex flex-col justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-2.5 bg-rose-100 text-rose-700 rounded-xl shrink-0">
+                    <Percent className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-extrabold text-rose-950">POS Per-Product Discount</h4>
+                    <p className="text-xs text-rose-800/80 font-medium mt-0.5">
+                      {furtherDetailsStore.allowPosItemDiscount === true
+                        ? 'Cashiers CAN give custom discounts on every product during billing.' 
+                        : 'Custom line-item discounts during billing are LOCKED & DISABLED.'}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleTogglePosItemDiscount(furtherDetailsStore)}
+                  disabled={loading}
+                  className={`w-full py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border transition-all cursor-pointer ${
+                    furtherDetailsStore.allowPosItemDiscount === true
+                      ? 'bg-rose-600 text-white border-rose-600 hover:bg-rose-500 shadow-sm'
+                      : 'bg-white text-rose-800 border-rose-300 hover:bg-rose-50'
+                  }`}
+                >
+                  {furtherDetailsStore.allowPosItemDiscount === true ? (
+                    <>
+                      <ToggleRight className="w-4 h-4 text-white" />
+                      <span>POS Discount: Enabled</span>
+                    </>
+                  ) : (
+                    <>
+                      <ToggleLeft className="w-4 h-4 text-rose-400" />
+                      <span>POS Discount: Disabled</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Card 4: Store Operating Status (Active / Disabled) */}
               {(() => {
                 const isCurrentlyDisabled = furtherDetailsStore.status === 'disabled' || furtherDetailsStore.status === 'inactive';
                 return (

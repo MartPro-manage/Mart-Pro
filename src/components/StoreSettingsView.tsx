@@ -84,6 +84,7 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
 
   // Audio & Hardware Settings
   const [soundEffectsEnabled, setSoundEffectsEnabled] = useState<boolean>(store.soundEffectsEnabled !== false);
+  const [posProductDiscountEnabled, setPosProductDiscountEnabled] = useState<boolean>(store.posProductDiscountEnabled === true);
   const [lowStockAlertThreshold, setLowStockAlertThreshold] = useState<number>(store.lowStockAlertThreshold || 5);
   const [zSenderUserId, setZSenderUserId] = useState<string>(store.zSenderUserId || 'supermarketmanage@gmail.com');
 
@@ -118,6 +119,7 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
     setLogoUrl(store.logoUrl || '');
     setCustomCategories(store.customCategories || []);
     setSoundEffectsEnabled(store.soundEffectsEnabled !== false);
+    setPosProductDiscountEnabled(store.posProductDiscountEnabled === true);
     setLowStockAlertThreshold(store.lowStockAlertThreshold || 5);
     setZSenderUserId(store.zSenderUserId || 'supermarketmanage@gmail.com');
   }, [store]);
@@ -232,6 +234,7 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
         logoUrl: logoUrl || '',
         customCategories: customCategories,
         soundEffectsEnabled: Boolean(soundEffectsEnabled),
+        posProductDiscountEnabled: Boolean(posProductDiscountEnabled),
         lowStockAlertThreshold: Number(lowStockAlertThreshold) || 5
       };
 
@@ -931,6 +934,26 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
                     </div>
                     <p className="text-[11px] text-slate-500 font-medium">
                       Plays positive high-frequency beep on valid scan and buzz alert on out-of-stock items.
+                    </p>
+                  </div>
+
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-800">POS Item Discount Entry:</span>
+                      <button
+                        type="button"
+                        onClick={() => setPosProductDiscountEnabled(!posProductDiscountEnabled)}
+                        className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                          posProductDiscountEnabled
+                            ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                            : 'bg-white text-slate-600 border-slate-300'
+                        }`}
+                      >
+                        {posProductDiscountEnabled ? 'Allowed' : 'Disabled'}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      If allowed, cashiers can apply per-product discounts during POS checkout.
                     </p>
                   </div>
                 </div>

@@ -15,6 +15,7 @@ import { StaffAttendanceView } from './components/StaffAttendanceView';
 import { ReceiptModal } from './components/ReceiptModal';
 import { PublicReceiptView } from './components/PublicReceiptView';
 import { OnlineStorefrontView } from './components/OnlineStorefrontView';
+import { PackagePlus } from 'lucide-react';
 
 export default function App() {
   const [auth, setAuth] = useState<AuthState>({
@@ -59,6 +60,23 @@ export default function App() {
 
   // Inspected store for Super Admin
   const [inspectedStore, setInspectedStore] = useState<Store | null>(null);
+
+  // All stores for quick selection if super admin accesses a store interface directly
+  const [allStores, setAllStores] = useState<Store[]>([]);
+
+  useEffect(() => {
+    if (!auth.user) return;
+    const unsub = onSnapshot(collection(db, 'stores'), (snapshot) => {
+      const list: Store[] = [];
+      snapshot.forEach(docSnap => {
+        list.push({ id: docSnap.id, ...docSnap.data() } as Store);
+      });
+      setAllStores(list);
+    }, (err) => {
+      console.warn('Error fetching all stores in App:', err);
+    });
+    return () => unsub();
+  }, [auth.user]);
 
   // Synchronized store users for attendance and operations
   const [storeUsers, setStoreUsers] = useState<UserAccount[]>([]);
@@ -246,7 +264,7 @@ export default function App() {
   }
 
   const userRole = auth.user.role;
-  const activeStore = inspectedStore || auth.store;
+  const activeStore = inspectedStore || auth.store || (userRole === 'super_admin' && allStores.length === 1 ? allStores[0] : null);
 
   // Universal return action: returns back to main panel / default view
   const handleUniversalReturn = () => {
@@ -319,12 +337,53 @@ export default function App() {
         )}
 
         {/* 4. PRODUCT REGISTER & STOCK IN */}
-        {activeNavView === 'inventory' && activeStore && (
-          <ProductRegisterView 
-            store={activeStore} 
-            currentUser={auth.user} 
-            onBack={handleUniversalReturn}
-          />
+        {activeNavView === 'inventory' && (
+          activeStore ? (
+            <ProductRegisterView 
+              store={activeStore} 
+              currentUser={auth.user} 
+              onBack={handleUniversalReturn}
+            />
+          ) : (
+            <div className="flex-1 min-h-0 flex flex-col items-center justify-center p-6 bg-slate-50 text-slate-800">
+              <div className="max-w-md w-full bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-md text-center space-y-4">
+                <div className="w-14 h-14 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
+                  <PackagePlus className="w-7 h-7" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-900 tracking-tight">Select Store for Product Register</h3>
+                  <p className="text-xs text-slate-500 mt-1 font-medium">
+                    You are logged in as Central Super Admin. Choose which store inventory to register and manage products for:
+                  </p>
+                </div>
+                <div className="space-y-2 pt-2 max-h-72 overflow-y-auto">
+                  {allStores.map(s => (
+                    <button
+                      key={s.id}
+                      onClick={() => setInspectedStore(s)}
+                      className="w-full p-3.5 rounded-2xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50/80 text-left font-bold text-sm text-slate-800 flex items-center justify-between transition-all cursor-pointer shadow-xs"
+                    >
+                      <div>
+                        <div className="font-extrabold text-slate-900">{s.name}</div>
+                        <div className="text-[11px] text-slate-500 font-medium">{s.adminUsername || s.branchCode || 'Active Store'}</div>
+                      </div>
+                      <span className="text-xs text-blue-600 font-black flex items-center gap-1">Open Register &rarr;</span>
+                    </button>
+                  ))}
+                  {allStores.length === 0 && (
+                    <p className="text-xs text-slate-400 py-3">No stores configured yet.</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleUniversalReturn}
+                  className="text-xs font-bold text-slate-500 hover:text-slate-800 pt-2 cursor-pointer"
+                >
+                  ← Return to Master Control
+                </button>
+              </div>
+            </div>
+          )
         )}
 
         {/* 5. CUSTOMER PRICE CHECKER KIOSK */}

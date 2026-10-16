@@ -312,33 +312,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
             offscreenCanvas.height = height;
             offscreenCtx.drawImage(video, 0, 0, width, height);
 
-            // Attempt to decode blob via Html5Qrcode hidden instance if needed
-            offscreenCanvas.toBlob(async (blob) => {
-              if (blob) {
-                try {
-                  const tempScanner = new Html5Qrcode('temp-qr-scanner-live-frame', {
-                    formatsToSupport: [
-                      Html5QrcodeSupportedFormats.EAN_13,
-                      Html5QrcodeSupportedFormats.EAN_8,
-                      Html5QrcodeSupportedFormats.CODE_128,
-                      Html5QrcodeSupportedFormats.CODE_39,
-                      Html5QrcodeSupportedFormats.UPC_A,
-                      Html5QrcodeSupportedFormats.UPC_E,
-                      Html5QrcodeSupportedFormats.QR_CODE
-                    ],
-                    verbose: false
-                  });
-                  const file = new File([blob], 'frame.jpg', { type: 'image/jpeg' });
-                  const decoded = await tempScanner.scanFile(file, false);
-                  try { await tempScanner.clear(); } catch (e) {}
-                  if (decoded) {
-                    handleBarcodeDecoded(decoded.trim());
-                  }
-                } catch (e) {
-                  // frame had no barcode
-                }
-              }
-            }, 'image/jpeg', 0.85);
+            // Using native BarcodeDetector or fallback image upload
           }
         } catch (e) {
           // silent scan loop

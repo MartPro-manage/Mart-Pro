@@ -1,0 +1,6 @@
+{
+  "summary": "Plan for implementing per-product POS discounts:\n1. Update Store data model with Store-Admin-controlled flag.\n2. Update Store Admin settings UI.\n3. Create new Discount entry screen for Cashier.\n4. Integrate new screen into POS checkout flow.",
+  "updatedAt": "2026-10-16T10:38:27.139820675Z",
+  "requestFeedback": true,
+  "userFacing": true
+}

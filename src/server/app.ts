@@ -16,132 +16,31 @@ import {
   increment 
 } from 'firebase/firestore';
 import { GoogleGenAI } from '@google/genai';
+import { resolveProductImage } from './productImageService.ts';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
-interface ProductImageCandidate {
-  url: string;
-  thumbnail: string;
-  title: string;
-  domain: string;
-}
-
-function extractDomainFromUrl(url: string): string {
-  try {
-    const parsed = new URL(url);
-    return parsed.hostname.replace(/^www\./, '');
-  } catch {
-    return 'web';
-  }
-}
-
-async function resolveProductImage(aiClient: any, name: string, category?: string, brand?: string, size?: string) {
-  const cleanName = name.trim();
-  const queryTerms = [cleanName, brand, size].filter(Boolean).join(' ');
-  const candidates: ProductImageCandidate[] = [];
-
-  // 1. DuckDuckGo Image Web Search (Google Research equivalent)
-  try {
-    const searchUrl = `https://duckduckgo.com/?q=${encodeURIComponent(queryTerms + ' product')}&t=h_&iar=images&iax=images&ia=images`;
-    const tokenRes = await fetch(searchUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      }
-    });
-    const html = await tokenRes.text();
-    const vqdMatch = html.match(/vqd=([\d-]+)/) || html.match(/vqd="([\d-]+)"/);
-
-    if (vqdMatch && vqdMatch[1]) {
-      const imgRes = await fetch(`https://duckduckgo.com/i.js?l=us-en&o=json&q=${encodeURIComponent(queryTerms + ' product')}&vqd=${vqdMatch[1]}&f=,,,`, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Referer': 'https://duckduckgo.com/'
-        }
-      });
-      const data: any = await imgRes.json();
-      if (Array.isArray(data?.results)) {
-        for (const item of data.results) {
-          if (item?.image && typeof item.image === 'string' && item.image.startsWith('http')) {
-            candidates.push({
-              url: item.image,
-              thumbnail: item.thumbnail || item.image,
-              title: item.title || cleanName,
-              domain: extractDomainFromUrl(item.url || item.image)
-            });
-            if (candidates.length >= 16) break;
-          }
-        }
-      }
-    }
-  } catch (err: any) {
-    console.warn('[Product Image Web Search Warning]:', err.message);
-  }
-
-  // 2. OpenFoodFacts FMCG Product Database Search
-  if (candidates.length < 5) {
-    try {
-      const offRes = await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(cleanName)}&search_simple=1&action=process&json=1`, {
-        headers: {
-          'User-Agent': 'SupermarketApp/1.0 (retail@supermarket.com)'
-        }
-      });
-      if (offRes.ok) {
-        const offData: any = await offRes.json();
-        if (Array.isArray(offData?.products)) {
-          for (const p of offData.products) {
-            const img = p.image_front_url || p.image_url;
-            if (img && typeof img === 'string') {
-              candidates.push({
-                url: img,
-                thumbnail: p.image_small_url || p.image_front_small_url || img,
-                title: p.product_name || cleanName,
-                domain: 'openfoodfacts.org'
-              });
-              if (candidates.length >= 16) break;
-            }
-          }
-        }
-      }
-    } catch (e: any) {
-      console.warn('[OpenFoodFacts Search Warning]:', e.message);
-    }
-  }
-
-  // 3. Fallback: Curated high quality grocery items if still no candidates
-  if (candidates.length === 0) {
-    const unsplashTerm = encodeURIComponent(category || cleanName.split(' ')[0] || 'groceries');
-    candidates.push({
-      url: `https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=600&q=80`,
-      thumbnail: `https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=150&q=80`,
-      title: `${cleanName} - Grocery Product`,
-      domain: 'unsplash.com'
-    });
-  }
-
-  return {
-    imageUrl: candidates[0]?.url,
-    thumbnailUrl: candidates[0]?.thumbnail,
-    source: 'google_web_search',
-    sourceDomain: candidates[0]?.domain,
-    candidates
-  };
-}
-
-
 // Initialize server-side Firebase Firestore instance
 let db: any = null;
-try {
-  const configPath = path.resolve(process.cwd(), 'firebase-applet-config.json');
-  if (fs.existsSync(configPath)) {
-    const raw = fs.readFileSync(configPath, 'utf8');
-    const firebaseConfig = JSON.parse(raw);
-    const firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-    const dbId = firebaseConfig?.firestoreDatabaseId;
-    db = dbId ? getFirestore(firebaseApp, dbId) : getFirestore(firebaseApp);
+
+function getDbInstance() {
+  if (db) return db;
+  try {
+    const configPath = path.resolve(process.cwd(), 'firebase-applet-config.json');
+    if (fs.existsSync(configPath)) {
+      const raw = fs.readFileSync(configPath, 'utf8');
+      const firebaseConfig = JSON.parse(raw);
+      const firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+      const dbId = firebaseConfig?.firestoreDatabaseId;
+      db = dbId ? getFirestore(firebaseApp, dbId) : getFirestore(firebaseApp);
+    }
+  } catch (e) {
+    console.warn('[Server Firebase Init Warning]:', e);
   }
-} catch (e) {
-  console.warn('[Server Firebase Init Warning]:', e);
+  return db;
 }
+
+getDbInstance();
 
 // Helper to resolve store by either onlineStoreId slug, doc ID, or store name
 async function resolveStore(identifier: string) {
@@ -702,9 +601,9 @@ ${storeContext ? JSON.stringify(storeContext, null, 2) : 'No live store context 
         parts: [{ text: prompt }]
       });
 
-      // Call Gemini 2.5 Flash for smart analysis
+      // Call Gemini 3.8 Flash for smart analysis
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.8-flash',
         contents,
         config: {
           systemInstruction,
@@ -741,6 +640,70 @@ ${storeContext ? JSON.stringify(storeContext, null, 2) : 'No live store context 
         error: err?.message || 'Failed to generate product image',
         fallback: true
       });
+    }
+  });
+
+  // Automated Batch Product Image Syncer: adds images to existing products according to their name
+  app.post('/api/ai/batch-sync-product-images', async (req: Request, res: Response) => {
+    try {
+      const currentDb = getDbInstance();
+      if (!currentDb) {
+        return res.status(500).json({ error: 'Database instance not available' });
+      }
+
+      const { storeId, overwriteExisting = false, limit = 500 } = req.body;
+      let snap;
+      if (storeId) {
+        snap = await getDocs(query(collection(currentDb, 'products'), where('storeId', '==', storeId)));
+      } else {
+        snap = await getDocs(collection(currentDb, 'products'));
+      }
+
+      const productsToUpdate: any[] = [];
+      snap.forEach(d => {
+        const data = d.data();
+        const img = (data.imageUrl || '').trim();
+        const isGeneric = img.includes('photo-1542838132-92c53300491e');
+        if (overwriteExisting || !img || isGeneric) {
+          productsToUpdate.push({ id: d.id, ...data });
+        }
+      });
+
+      const maxLimit = Math.min(Number(limit) || 500, 1000);
+      const batchToProcess = productsToUpdate.slice(0, maxLimit);
+      const results: Array<{ id: string; name: string; imageUrl: string }> = [];
+
+      // Process in concurrent chunks of 15 for fast performance
+      const chunkSize = 15;
+      for (let i = 0; i < batchToProcess.length; i += chunkSize) {
+        const chunk = batchToProcess.slice(i, i + chunkSize);
+        await Promise.all(chunk.map(async (item) => {
+          if (!item.name) return;
+          try {
+            const imgResult = await resolveProductImage(ai, item.name, item.category, item.brand, item.size);
+            if (imgResult && imgResult.imageUrl) {
+              await updateDoc(doc(currentDb, 'products', item.id), {
+                imageUrl: imgResult.imageUrl,
+                updatedAt: new Date().toISOString()
+              });
+              results.push({ id: item.id, name: item.name, imageUrl: imgResult.imageUrl });
+            }
+          } catch (itemErr) {
+            console.warn(`Error resolving image for ${item.name}:`, itemErr);
+          }
+        }));
+      }
+
+      return res.json({
+        success: true,
+        updatedCount: results.length,
+        remainingCount: productsToUpdate.length - results.length,
+        totalFound: productsToUpdate.length,
+        updated: results
+      });
+    } catch (err: any) {
+      console.error('[Batch Product Image Sync Error]:', err);
+      return res.status(500).json({ error: err?.message || 'Batch sync failed' });
     }
   });
 

@@ -136,21 +136,52 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
   const [mobileTab, setMobileTab] = useState<'catalog' | 'cart'>('catalog');
   const [isDiscountEntryScreenOpen, setIsDiscountEntryScreenOpen] = useState(false);
 
+  const [liveStore, setLiveStore] = useState<Store>(store);
+
+  useEffect(() => {
+    setLiveStore(store);
+  }, [store]);
+
+  useEffect(() => {
+    if (!store?.id) return;
+    const unsub = onSnapshot(doc(db, 'stores', store.id), (snap) => {
+      if (snap.exists()) {
+        setLiveStore({ id: snap.id, ...snap.data() } as Store);
+      }
+    });
+    return () => unsub();
+  }, [store?.id]);
+
+  // POS Item & Bill Discount states & handlers:
+  // Strictly disabled by default unless store admin explicitly enables it in settings
+  const isPosDiscountAllowed = Boolean(
+    liveStore?.posProductDiscountEnabled === true && liveStore?.allowPosItemDiscount !== false
+  );
+
   const handleInitiateCheckout = () => {
+    // If discount on billing is disabled by the store admin from settings, Do not show this interface on POS
     if (isPosDiscountAllowed && cart.length > 0) {
       setIsDiscountEntryScreenOpen(true);
     } else {
+      setIsDiscountEntryScreenOpen(false);
       setIsPaymentSummaryOpen(true);
     }
   };
 
-
-  // POS Item & Bill Discount states & handlers
-  const isPosDiscountAllowed = store?.posProductDiscountEnabled === true;
   const [isLineDiscountModalOpen, setIsLineDiscountModalOpen] = useState(false);
   const [selectedCartItemForDiscount, setSelectedCartItemForDiscount] = useState<CartItem | null>(null);
   const [billDiscountType, setBillDiscountType] = useState<'percentage' | 'fixed'>('fixed');
   const [billDiscountValue, setBillDiscountValue] = useState<number | ''>(0);
+
+  // Auto-close any discount interface and clear active discounts if disabled in store settings
+  useEffect(() => {
+    if (!isPosDiscountAllowed) {
+      setIsDiscountEntryScreenOpen(false);
+      setIsLineDiscountModalOpen(false);
+      setSelectedCartItemForDiscount(null);
+      setBillDiscountValue(0);
+    }
+  }, [isPosDiscountAllowed]);
 
   const handleApplyItemDiscount = (productId: string, discountType: 'percentage' | 'fixed', discountValue: number, discountScope: 'total' | 'perUnit', discountReason?: string) => {
     if (!isPosDiscountAllowed) return;
@@ -178,6 +209,8 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
         }
 
         const totalItemPrice = Math.round((baseEffective * item.quantity - itemDiscAmount) * 100) / 100;
+        const discountedUnits = discountScope === 'total' ? item.quantity : 1;
+        const discountPerUnit = discountedUnits > 0 ? Math.round((itemDiscAmount / discountedUnits) * 100) / 100 : 0;
 
         return {
           ...item,
@@ -187,6 +220,12 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           customUnitPrice: totalItemPrice / item.quantity,
           totalPrice: totalItemPrice,
           discountScope: discountScope,
+          discountMode: discountScope === 'total' ? 'all' : 'selected',
+          discountedUnits,
+          discountPerUnit,
+          originalUnitPrice: baseEffective,
+          originalSubtotal: Math.round(baseEffective * item.quantity * 100) / 100,
+          finalSubtotal: totalItemPrice,
           discountReason
         };
       }
@@ -1407,11 +1446,19 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           price: effectivePrice,
           originalPrice: isDiscounted ? rawCatalogPrice : undefined,
           discountAmount: itemDiscAmount > 0 ? itemDiscAmount : 0,
+          discountMode: item.discountMode,
+          discountedUnits: item.discountedUnits,
+          discountPerUnit: item.discountPerUnit,
+          discountType: item.customDiscountType,
+          discountValue: item.customDiscountValue,
+          originalSubtotal: regularLineTotal,
+          finalSubtotal: itemLineTotal,
           quantity: itemQty,
           total: itemLineTotal,
           sellBy: item.product.sellBy || (item.product.unitType === 'kg' ? 'weight' : 'unit'),
           unitType: item.product.unitType || (item.product.sellBy === 'weight' ? 'kg' : 'piece'),
-          weightInfo: item.product.weight || (item.product.sellBy === 'weight' ? `${itemQty} kg` : undefined)
+          weightInfo: item.product.weight || (item.product.sellBy === 'weight' ? `${itemQty} kg` : undefined),
+          discountReason: item.discountReason || item.customDiscountReason
         };
       });
 
@@ -3887,30 +3934,35 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           </motion.div>
         )}
 
-        {/* POS Line Item Discount Modal */}
-        <PosLineDiscountModal
-          isOpen={isLineDiscountModalOpen}
-          onClose={() => {
-            setIsLineDiscountModalOpen(false);
-            setSelectedCartItemForDiscount(null);
-          }}
-          cartItem={selectedCartItemForDiscount}
-          store={store}
-          onApplyDiscount={handleApplyItemDiscount}
-          onRemoveDiscount={handleRemoveItemDiscount}
-        />
+        {/* POS Line Item Discount Modal - Only show on POS when enabled in store settings */}
+        {isPosDiscountAllowed && (
+          <PosLineDiscountModal
+            isOpen={isLineDiscountModalOpen}
+            onClose={() => {
+              setIsLineDiscountModalOpen(false);
+              setSelectedCartItemForDiscount(null);
+            }}
+            cartItem={selectedCartItemForDiscount}
+            store={liveStore}
+            onApplyDiscount={handleApplyItemDiscount}
+            onRemoveDiscount={handleRemoveItemDiscount}
+          />
+        )}
 
-        <PosDiscountEntryScreen
-          isOpen={isDiscountEntryScreenOpen}
-          onClose={() => setIsDiscountEntryScreenOpen(false)}
-          onCheckout={() => {
-            setIsDiscountEntryScreenOpen(false);
-            setIsPaymentSummaryOpen(true);
-          }}
-          cart={cart}
-          store={store}
-          onUpdateItemDiscount={(pId, type, val, scope) => handleApplyItemDiscount(pId, type, val, scope)}
-        />
+        {/* POS Checkout Discount Entry Screen - Only show on POS when enabled in store settings */}
+        {isPosDiscountAllowed && (
+          <PosDiscountEntryScreen
+            isOpen={isDiscountEntryScreenOpen}
+            onClose={() => setIsDiscountEntryScreenOpen(false)}
+            onProceedToPayment={(updatedCart) => {
+              setCart(updatedCart);
+              setIsDiscountEntryScreenOpen(false);
+              setIsPaymentSummaryOpen(true);
+            }}
+            cart={cart}
+            store={liveStore}
+          />
+        )}
 
       </div>
     </div>

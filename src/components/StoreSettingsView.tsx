@@ -85,6 +85,10 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
   // Audio & Hardware Settings
   const [soundEffectsEnabled, setSoundEffectsEnabled] = useState<boolean>(store.soundEffectsEnabled !== false);
   const [posProductDiscountEnabled, setPosProductDiscountEnabled] = useState<boolean>(store.posProductDiscountEnabled === true);
+  const [posMaxDiscountPercentage, setPosMaxDiscountPercentage] = useState<number>(store.posMaxDiscountPercentage || 50);
+  const [posMaxFixedDiscountAmount, setPosMaxFixedDiscountAmount] = useState<number>(store.posMaxFixedDiscountAmount || 500);
+  const [posRequireManagerApproval, setPosRequireManagerApproval] = useState<boolean>(store.posRequireManagerApproval === true);
+  const [posManagerApprovalPin, setPosManagerApprovalPin] = useState<string>(store.posManagerApprovalPin || '1234');
   const [lowStockAlertThreshold, setLowStockAlertThreshold] = useState<number>(store.lowStockAlertThreshold || 5);
   const [zSenderUserId, setZSenderUserId] = useState<string>(store.zSenderUserId || 'supermarketmanage@gmail.com');
 
@@ -119,7 +123,12 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
     setLogoUrl(store.logoUrl || '');
     setCustomCategories(store.customCategories || []);
     setSoundEffectsEnabled(store.soundEffectsEnabled !== false);
-    setPosProductDiscountEnabled(store.posProductDiscountEnabled === true);
+    const discountEnabled = Boolean(store.posProductDiscountEnabled === true && store.allowPosItemDiscount !== false);
+    setPosProductDiscountEnabled(discountEnabled);
+    setPosMaxDiscountPercentage(store.posMaxDiscountPercentage || 50);
+    setPosMaxFixedDiscountAmount(store.posMaxFixedDiscountAmount || 500);
+    setPosRequireManagerApproval(store.posRequireManagerApproval === true);
+    setPosManagerApprovalPin(store.posManagerApprovalPin || '1234');
     setLowStockAlertThreshold(store.lowStockAlertThreshold || 5);
     setZSenderUserId(store.zSenderUserId || 'supermarketmanage@gmail.com');
   }, [store]);
@@ -235,6 +244,11 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
         customCategories: customCategories,
         soundEffectsEnabled: Boolean(soundEffectsEnabled),
         posProductDiscountEnabled: Boolean(posProductDiscountEnabled),
+        allowPosItemDiscount: Boolean(posProductDiscountEnabled),
+        posMaxDiscountPercentage: Number(posMaxDiscountPercentage) || 50,
+        posMaxFixedDiscountAmount: Number(posMaxFixedDiscountAmount) || 500,
+        posRequireManagerApproval: Boolean(posRequireManagerApproval),
+        posManagerApprovalPin: posManagerApprovalPin.trim() || '1234',
         lowStockAlertThreshold: Number(lowStockAlertThreshold) || 5
       };
 
@@ -938,23 +952,111 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
                   </div>
 
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-800">POS Item Discount Entry:</span>
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <span className="text-xs font-bold text-slate-800 block">Cashier Discount on Billing (POS):</span>
+                        <span className="text-[11px] text-slate-500 font-medium">
+                          {posProductDiscountEnabled
+                            ? 'Cashier is ALLOWED to add discounts. The discount interface will show on POS checkout.'
+                            : 'Cashier is NOT ALLOWED to add discounts. The discount interface will NOT show on POS.'}
+                        </span>
+                      </div>
                       <button
                         type="button"
-                        onClick={() => setPosProductDiscountEnabled(!posProductDiscountEnabled)}
-                        className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                        onClick={async () => {
+                          const nextVal = !posProductDiscountEnabled;
+                          setPosProductDiscountEnabled(nextVal);
+                          try {
+                            const storeRef = doc(db, 'stores', store.id);
+                            await updateDoc(storeRef, {
+                              posProductDiscountEnabled: nextVal,
+                              allowPosItemDiscount: nextVal
+                            });
+                            if (onStoreUpdated) {
+                              onStoreUpdated({
+                                ...store,
+                                posProductDiscountEnabled: nextVal,
+                                allowPosItemDiscount: nextVal
+                              });
+                            }
+                            showNotification(
+                              'success',
+                              `POS Cashier Discount is now ${nextVal ? 'ALLOWED' : 'DISABLED'}. ${nextVal ? 'The discount interface will now show on POS.' : 'The discount interface will NOT show on POS.'}`
+                            );
+                          } catch (e: any) {
+                            console.error(e);
+                            showNotification('error', 'Failed to update discount setting: ' + e?.message);
+                          }
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all cursor-pointer shrink-0 ${
                           posProductDiscountEnabled
-                            ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
-                            : 'bg-white text-slate-600 border-slate-300'
+                            ? 'bg-[#0B192C] text-white border-blue-900 shadow-sm'
+                            : 'bg-white text-slate-600 border-slate-300 hover:border-slate-400'
                         }`}
                       >
                         {posProductDiscountEnabled ? 'Allowed' : 'Disabled'}
                       </button>
                     </div>
-                    <p className="text-[11px] text-slate-500 font-medium">
-                      If allowed, cashiers can apply per-product discounts during POS checkout.
-                    </p>
+
+                    {posProductDiscountEnabled && (
+                      <div className="pt-3 border-t border-slate-200 space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <label className="text-[11px] font-bold text-slate-700 uppercase">Max Permitted Discount %</label>
+                            <div className="relative">
+                              <input
+                                type="number"
+                                min="1"
+                                max="100"
+                                value={posMaxDiscountPercentage}
+                                onChange={(e) => setPosMaxDiscountPercentage(Math.max(1, Math.min(100, parseInt(e.target.value) || 50)))}
+                                className="w-full pl-3 pr-8 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-blue-600"
+                              />
+                              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">%</span>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[11px] font-bold text-slate-700 uppercase">Max Fixed Discount (Rs.)</label>
+                            <div className="relative">
+                              <input
+                                type="number"
+                                min="0"
+                                value={posMaxFixedDiscountAmount}
+                                onChange={(e) => setPosMaxFixedDiscountAmount(Math.max(0, parseInt(e.target.value) || 0))}
+                                className="w-full pl-3 pr-10 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-blue-600"
+                              />
+                              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">{currencySymbol}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="pt-2 border-t border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={posRequireManagerApproval}
+                              onChange={(e) => setPosRequireManagerApproval(e.target.checked)}
+                              className="w-4 h-4 text-blue-600 rounded"
+                            />
+                            <span className="text-xs font-bold text-slate-800">Require Manager PIN if limit exceeded</span>
+                          </label>
+
+                          {posRequireManagerApproval && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] font-bold text-slate-500">Manager PIN:</span>
+                              <input
+                                type="text"
+                                maxLength={6}
+                                value={posManagerApprovalPin}
+                                onChange={(e) => setPosManagerApprovalPin(e.target.value)}
+                                className="w-20 px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold text-center"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 

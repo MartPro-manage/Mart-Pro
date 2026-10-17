@@ -57,8 +57,14 @@ export interface Store {
   onlineStoreEnabled?: boolean;
   isOnlineStoreEnabled?: boolean;
   onlineStoreId?: string;
+  posProductDiscountEnabled?: boolean; // Store admin setting: allows discount entry screen for cashier during POS checkout (default false)
+  posMaxDiscountPercentage?: number; // Maximum permitted discount percentage (e.g. 50%)
+  posMaxFixedDiscountAmount?: number; // Maximum fixed discount amount (e.g. 500 Rs.)
+  posAllowAllUnitsDiscount?: boolean; // Allow discounts on all units (default true)
+  posAllowSelectedUnitsDiscount?: boolean; // Allow discounts on selected units (default true)
+  posRequireManagerApproval?: boolean; // Require manager approval for discounts exceeding limits
+  posManagerApprovalPin?: string; // Manager approval PIN code
   onlineApiKey?: string;
-  posProductDiscountEnabled?: boolean; // Store admin setting: allows discount entry screen for cashier during POS checkout
   onlineStorePhone?: string;
   onlineStoreDeliveryFee?: number;
   onlineStoreMinOrder?: number;
@@ -260,6 +266,13 @@ export interface CartItem {
   customUnitPrice?: number;
   customDiscountReason?: string;
   discountScope?: 'total' | 'perUnit';
+  discountMode?: 'all' | 'selected'; // Mode A: all units, Mode B: selected units
+  discountedUnits?: number; // How many units receive the discount
+  discountPerUnit?: number; // Calculated discount per unit
+  originalUnitPrice?: number;
+  originalSubtotal?: number;
+  finalSubtotal?: number;
+  discountReason?: string;
 }
 
 export interface SaleItem {
@@ -272,6 +285,13 @@ export interface SaleItem {
   price: number; // Unit price or per kg rate (discounted selling price)
   originalPrice?: number; // Regular catalog price before admin discount
   discountAmount?: number; // Discount saved on this item
+  discountMode?: 'all' | 'selected';
+  discountedUnits?: number;
+  discountPerUnit?: number;
+  discountType?: 'percentage' | 'fixed';
+  discountValue?: number;
+  originalSubtotal?: number;
+  finalSubtotal?: number;
   quantity: number; // Quantity or weight (decimal supported)
   total: number;
   sellBy?: 'unit' | 'weight';

@@ -264,7 +264,9 @@ export default function App() {
   }
 
   const userRole = auth.user.role;
-  const activeStore = inspectedStore || auth.store || (userRole === 'super_admin' && allStores.length === 1 ? allStores[0] : null);
+  const currentStoreId = inspectedStore?.id || auth.store?.id;
+  const liveStoreFromList = currentStoreId ? allStores.find(s => s.id === currentStoreId) : null;
+  const activeStore = liveStoreFromList || inspectedStore || auth.store || (userRole === 'super_admin' && allStores.length === 1 ? allStores[0] : null);
 
   // Universal return action: returns back to main panel / default view
   const handleUniversalReturn = () => {

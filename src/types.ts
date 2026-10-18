@@ -223,6 +223,7 @@ export interface UserAccount {
   hireDate?: string;
   notes?: string;
   status?: 'active' | 'inactive';
+  allowPosDiscount?: boolean; // Controls whether this specific cashier account can apply discounts at POS Counter (default true when store allows)
   createdAt: string;
 }
 

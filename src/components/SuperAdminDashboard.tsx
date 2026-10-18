@@ -416,10 +416,13 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
   const handleTogglePosItemDiscount = async (store: Store) => {
     setLoading(true);
     try {
-      const currentVal = store.allowPosItemDiscount === true;
+      const currentVal = store.allowPosItemDiscount === true && store.posProductDiscountEnabled === true;
       const nextVal = !currentVal;
       const storeRef = doc(db, 'stores', store.id);
-      await updateDoc(storeRef, { allowPosItemDiscount: nextVal });
+      await updateDoc(storeRef, { 
+        allowPosItemDiscount: nextVal,
+        posProductDiscountEnabled: nextVal
+      });
 
       showNotification(
         'success',
@@ -428,7 +431,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
 
       // Also update local modal state if open
       if (furtherDetailsStore && furtherDetailsStore.id === store.id) {
-        setFurtherDetailsStore({ ...furtherDetailsStore, allowPosItemDiscount: nextVal });
+        setFurtherDetailsStore({ ...furtherDetailsStore, allowPosItemDiscount: nextVal, posProductDiscountEnabled: nextVal });
       }
     } catch (err: any) {
       console.error(err);
@@ -973,7 +976,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
     }
   };
 
-  // Batch toggle per-product POS discount for all stores
+  // Batch toggle per-product POS discount for all stores and accounts
   const handleBatchPosItemDiscountToggle = async (enabled: boolean) => {
     if (stores.length === 0) {
       showNotification('error', 'No stores registered yet to update.');
@@ -981,9 +984,15 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
     }
     setLoading(true);
     try {
-      const promises = stores.map((s) => updateDoc(doc(db, 'stores', s.id), { allowPosItemDiscount: enabled }));
-      await Promise.all(promises);
-      showNotification('success', `Per-product POS discount has been ${enabled ? 'ENABLED' : 'DISABLED'} across all ${stores.length} store(s)!`);
+      const storePromises = stores.map((s) => updateDoc(doc(db, 'stores', s.id), { 
+        allowPosItemDiscount: enabled,
+        posProductDiscountEnabled: enabled
+      }));
+      const cashierPromises = users.filter(u => u.role === 'cash_counter').map(u => 
+        updateDoc(doc(db, 'users', u.id), { allowPosDiscount: enabled })
+      );
+      await Promise.all([...storePromises, ...cashierPromises]);
+      showNotification('success', `POS discount system has been ${enabled ? 'ENABLED' : 'DISABLED'} across all ${stores.length} store(s) and cash counter accounts!`);
     } catch (err: any) {
       console.error(err);
       showNotification('error', 'Failed to update POS item discount policy: ' + err.message);

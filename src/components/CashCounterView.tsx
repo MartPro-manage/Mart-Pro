@@ -153,10 +153,8 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
   }, [store?.id]);
 
   // POS Item & Bill Discount states & handlers:
-  // Strictly disabled by default unless store admin explicitly enables it in settings
-  const isPosDiscountAllowed = Boolean(
-    liveStore?.posProductDiscountEnabled === true && liveStore?.allowPosItemDiscount !== false
-  );
+  // ONLY controlled in Store Setting & Branding (posProductDiscountEnabled)
+  const isPosDiscountAllowed = liveStore?.posProductDiscountEnabled === true;
 
   const handleInitiateCheckout = () => {
     // If discount on billing is disabled by the store admin from settings, Do not show this interface on POS

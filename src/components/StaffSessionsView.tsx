@@ -94,6 +94,7 @@ export const StaffSessionsView: React.FC<StaffSessionsViewProps> = ({
   const [profileUsername, setProfileUsername] = useState(() => `staff_${Math.floor(1000 + Math.random() * 9000)}`);
   const [profilePassword, setProfilePassword] = useState(() => `staff_${Math.floor(1000 + Math.random() * 9000)}`);
   const [showPassword, setShowPassword] = useState(false);
+  const [profileAllowDiscount, setProfileAllowDiscount] = useState<boolean>(true);
 
   // Salary Mechanism State: Choosing Day vs Month
   const [salaryType, setSalaryType] = useState<'daily' | 'monthly'>('monthly');
@@ -398,6 +399,7 @@ export const StaffSessionsView: React.FC<StaffSessionsViewProps> = ({
     setSalaryType('monthly');
     setDailyWageInput('');
     setMonthlySalaryInput('');
+    setProfileAllowDiscount(true);
   };
 
   // Load staff into the profile form for editing
@@ -411,6 +413,7 @@ export const StaffSessionsView: React.FC<StaffSessionsViewProps> = ({
     setEditingStaffId(staff.id);
     setProfileName(staff.name || '');
     setProfilePhone(staff.phone || '');
+    setProfileAllowDiscount(staff.allowPosDiscount !== false);
     
     // Determine role
     if (['cash_counter', 'product_register', 'customer_price_checker', 'branch_admin'].includes(staff.role)) {
@@ -497,6 +500,7 @@ export const StaffSessionsView: React.FC<StaffSessionsViewProps> = ({
           counterNumber: finalRole === 'cash_counter' ? (profileCounter.trim() || '1') : '',
           cnic: profileCnic.trim() || '',
           address: profileAddress.trim() || '',
+          allowPosDiscount: Boolean(profileAllowDiscount),
           salaryType: salaryType,
           salaryFrequency: salaryType,
           dailyWage: salaryType === 'daily' ? dailyWageNum : 0,
@@ -542,6 +546,7 @@ export const StaffSessionsView: React.FC<StaffSessionsViewProps> = ({
           counterNumber: finalRole === 'cash_counter' ? (profileCounter.trim() || '1') : '',
           cnic: profileCnic.trim() || '',
           address: profileAddress.trim() || '',
+          allowPosDiscount: Boolean(profileAllowDiscount),
           salaryType: salaryType,
           salaryFrequency: salaryType,
           dailyWage: salaryType === 'daily' ? dailyWageNum : 0,

@@ -81,9 +81,7 @@ export const PosLineDiscountModal: React.FC<PosLineDiscountModalProps> = ({
     }
   }, [cartItem, isOpen]);
 
-  const isPosDiscountAllowed = Boolean(
-    store?.posProductDiscountEnabled === true && store?.allowPosItemDiscount !== false
-  );
+  const isPosDiscountAllowed = store?.posProductDiscountEnabled === true;
 
   if (!isOpen || !cartItem || !isPosDiscountAllowed) return null;
 

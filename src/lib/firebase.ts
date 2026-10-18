@@ -171,6 +171,8 @@ export async function ensureHAMartExists(): Promise<void> {
           onlineStoreEstimatedTime: '30-45 mins',
           cameraScannerEnabled: true,
           voiceAnnouncementEnabled: true,
+          posProductDiscountEnabled: true,
+          allowPosItemDiscount: true,
           currencySymbol: 'Rs.',
           createdAt: new Date().toISOString()
         };

@@ -41,7 +41,8 @@ import {
   Globe,
   Copy,
   ExternalLink,
-  Sparkles
+  Sparkles,
+  Percent
 } from 'lucide-react';
 
 interface StoreSettingsViewProps {
@@ -461,6 +462,130 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
             ) : (
               <div className="text-center py-4 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 text-xs">
                 No logo uploaded yet. Upload a logo to personalize customer receipts.
+              </div>
+            )}
+          </div>
+
+          {/* POS Billing Discount Policy Control (Exclusive Store Admin Setting) */}
+          <div className="p-5 bg-gradient-to-br from-slate-900 to-[#0B192C] text-white rounded-2xl border border-slate-700 shadow-md space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-blue-500/20 text-cyan-300 rounded-lg border border-cyan-500/30">
+                    <Percent className="w-4 h-4" />
+                  </div>
+                  <h4 className="text-sm sm:text-base font-black text-white">
+                    POS Billing Discount Control
+                  </h4>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase font-mono ${
+                    posProductDiscountEnabled 
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
+                      : 'bg-slate-800 text-slate-400 border border-slate-700'
+                  }`}>
+                    {posProductDiscountEnabled ? 'Allowed' : 'Disabled'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 font-medium">
+                  {posProductDiscountEnabled
+                    ? 'Cashiers ARE ALLOWED to add discounts. The discount entry review interface will show on POS checkout.'
+                    : 'Cashiers are NOT ALLOWED to add discounts. The discount interface will NOT show on POS.'}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  const nextVal = !posProductDiscountEnabled;
+                  setPosProductDiscountEnabled(nextVal);
+                  try {
+                    const storeRef = doc(db, 'stores', store.id);
+                    await updateDoc(storeRef, {
+                      posProductDiscountEnabled: nextVal,
+                      allowPosItemDiscount: nextVal
+                    });
+                    if (onStoreUpdated) {
+                      onStoreUpdated({
+                        ...store,
+                        posProductDiscountEnabled: nextVal,
+                        allowPosItemDiscount: nextVal
+                      });
+                    }
+                    showNotification(
+                      'success',
+                      `POS Billing Discount is now ${nextVal ? 'ALLOWED' : 'DISABLED'}. ${nextVal ? 'The discount interface will now show on POS checkout.' : 'The discount interface will NOT show on POS.'}`
+                    );
+                  } catch (e: any) {
+                    console.error(e);
+                    showNotification('error', 'Failed to update discount setting: ' + e?.message);
+                  }
+                }}
+                className={`px-4 py-2.5 rounded-xl text-xs font-black border transition-all cursor-pointer shrink-0 shadow-sm ${
+                  posProductDiscountEnabled
+                    ? 'bg-cyan-500 text-slate-950 border-cyan-400 hover:bg-cyan-400'
+                    : 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700'
+                }`}
+              >
+                {posProductDiscountEnabled ? 'Discount: Allowed (Click to Disable)' : 'Discount: Disabled (Click to Allow)'}
+              </button>
+            </div>
+
+            {posProductDiscountEnabled && (
+              <div className="pt-3 border-t border-slate-700/80 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-slate-300 uppercase">Max Permitted Discount %</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={posMaxDiscountPercentage}
+                        onChange={(e) => setPosMaxDiscountPercentage(Math.max(1, Math.min(100, parseInt(e.target.value) || 50)))}
+                        className="w-full pl-3 pr-8 py-2 bg-slate-950/80 border border-slate-700 rounded-xl text-xs font-mono font-bold text-white focus:outline-none focus:border-cyan-500"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">%</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-slate-300 uppercase">Max Fixed Discount (Rs.)</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="0"
+                        value={posMaxFixedDiscountAmount}
+                        onChange={(e) => setPosMaxFixedDiscountAmount(Math.max(0, parseInt(e.target.value) || 0))}
+                        className="w-full pl-3 pr-10 py-2 bg-slate-950/80 border border-slate-700 rounded-xl text-xs font-mono font-bold text-white focus:outline-none focus:border-cyan-500"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">{currencySymbol}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-slate-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={posRequireManagerApproval}
+                      onChange={(e) => setPosRequireManagerApproval(e.target.checked)}
+                      className="w-4 h-4 text-cyan-500 rounded border-slate-700"
+                    />
+                    <span className="text-xs font-bold text-slate-200">Require Manager PIN if limit exceeded</span>
+                  </label>
+
+                  {posRequireManagerApproval && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-bold text-slate-400">Manager PIN:</span>
+                      <input
+                        type="text"
+                        maxLength={6}
+                        value={posManagerApprovalPin}
+                        onChange={(e) => setPosManagerApprovalPin(e.target.value)}
+                        className="w-20 px-2.5 py-1 bg-slate-950 border border-slate-700 rounded-lg text-xs font-mono font-bold text-center text-cyan-300"
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -949,114 +1074,6 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
                     <p className="text-[11px] text-slate-500 font-medium">
                       Plays positive high-frequency beep on valid scan and buzz alert on out-of-stock items.
                     </p>
-                  </div>
-
-                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <span className="text-xs font-bold text-slate-800 block">Cashier Discount on Billing (POS):</span>
-                        <span className="text-[11px] text-slate-500 font-medium">
-                          {posProductDiscountEnabled
-                            ? 'Cashier is ALLOWED to add discounts. The discount interface will show on POS checkout.'
-                            : 'Cashier is NOT ALLOWED to add discounts. The discount interface will NOT show on POS.'}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          const nextVal = !posProductDiscountEnabled;
-                          setPosProductDiscountEnabled(nextVal);
-                          try {
-                            const storeRef = doc(db, 'stores', store.id);
-                            await updateDoc(storeRef, {
-                              posProductDiscountEnabled: nextVal,
-                              allowPosItemDiscount: nextVal
-                            });
-                            if (onStoreUpdated) {
-                              onStoreUpdated({
-                                ...store,
-                                posProductDiscountEnabled: nextVal,
-                                allowPosItemDiscount: nextVal
-                              });
-                            }
-                            showNotification(
-                              'success',
-                              `POS Cashier Discount is now ${nextVal ? 'ALLOWED' : 'DISABLED'}. ${nextVal ? 'The discount interface will now show on POS.' : 'The discount interface will NOT show on POS.'}`
-                            );
-                          } catch (e: any) {
-                            console.error(e);
-                            showNotification('error', 'Failed to update discount setting: ' + e?.message);
-                          }
-                        }}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all cursor-pointer shrink-0 ${
-                          posProductDiscountEnabled
-                            ? 'bg-[#0B192C] text-white border-blue-900 shadow-sm'
-                            : 'bg-white text-slate-600 border-slate-300 hover:border-slate-400'
-                        }`}
-                      >
-                        {posProductDiscountEnabled ? 'Allowed' : 'Disabled'}
-                      </button>
-                    </div>
-
-                    {posProductDiscountEnabled && (
-                      <div className="pt-3 border-t border-slate-200 space-y-3">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div className="space-y-1">
-                            <label className="text-[11px] font-bold text-slate-700 uppercase">Max Permitted Discount %</label>
-                            <div className="relative">
-                              <input
-                                type="number"
-                                min="1"
-                                max="100"
-                                value={posMaxDiscountPercentage}
-                                onChange={(e) => setPosMaxDiscountPercentage(Math.max(1, Math.min(100, parseInt(e.target.value) || 50)))}
-                                className="w-full pl-3 pr-8 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-blue-600"
-                              />
-                              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">%</span>
-                            </div>
-                          </div>
-
-                          <div className="space-y-1">
-                            <label className="text-[11px] font-bold text-slate-700 uppercase">Max Fixed Discount (Rs.)</label>
-                            <div className="relative">
-                              <input
-                                type="number"
-                                min="0"
-                                value={posMaxFixedDiscountAmount}
-                                onChange={(e) => setPosMaxFixedDiscountAmount(Math.max(0, parseInt(e.target.value) || 0))}
-                                className="w-full pl-3 pr-10 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-blue-600"
-                              />
-                              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">{currencySymbol}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="pt-2 border-t border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={posRequireManagerApproval}
-                              onChange={(e) => setPosRequireManagerApproval(e.target.checked)}
-                              className="w-4 h-4 text-blue-600 rounded"
-                            />
-                            <span className="text-xs font-bold text-slate-800">Require Manager PIN if limit exceeded</span>
-                          </label>
-
-                          {posRequireManagerApproval && (
-                            <div className="flex items-center gap-2">
-                              <span className="text-[11px] font-bold text-slate-500">Manager PIN:</span>
-                              <input
-                                type="text"
-                                maxLength={6}
-                                value={posManagerApprovalPin}
-                                onChange={(e) => setPosManagerApprovalPin(e.target.value)}
-                                className="w-20 px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold text-center"
-                              />
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </div>
 

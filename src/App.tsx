@@ -109,6 +109,42 @@ export default function App() {
   // Selected receipt to view
   const [selectedReceiptSale, setSelectedReceiptSale] = useState<Sale | null>(null);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+  const [disabledNotice, setDisabledNotice] = useState<string | null>(null);
+
+  // Real-time access revocation listener: when Super Admin disables any account or store, immediately terminate active session
+  useEffect(() => {
+    if (!auth.user || auth.user.role === 'super_admin') return;
+
+    // Listen to user document
+    const userUnsub = onSnapshot(doc(db, 'users', auth.user.id), (userSnap) => {
+      if (userSnap.exists()) {
+        const uData = userSnap.data() as UserAccount;
+        if (uData.status === 'disabled' || uData.disabledBySuperAdmin === true) {
+          setDisabledNotice(`Access Revoked: Account "${uData.name || uData.username}" has been DISABLED by Super Admin. No one can enable this account except Super Admin.`);
+          handleLogout();
+        }
+      }
+    }, (err) => console.warn('User status listener error:', err));
+
+    // Listen to store document
+    let storeUnsub: (() => void) | undefined;
+    if (auth.store?.id) {
+      storeUnsub = onSnapshot(doc(db, 'stores', auth.store.id), (storeSnap) => {
+        if (storeSnap.exists()) {
+          const sData = storeSnap.data() as Store;
+          if (sData.status === 'disabled' || sData.status === 'inactive' || sData.disabledBySuperAdmin === true) {
+            setDisabledNotice(`Access Revoked: Store "${sData.name}" has been DISABLED by Super Admin. All login access is blocked. No one can enable this store except Central Super Admin.`);
+            handleLogout();
+          }
+        }
+      }, (err) => console.warn('Store status listener error:', err));
+    }
+
+    return () => {
+      userUnsub();
+      if (storeUnsub) storeUnsub();
+    };
+  }, [auth.user?.id, auth.store?.id]);
 
   // Seed Super Admin on boot after initial connection initialization
   useEffect(() => {
@@ -148,6 +184,7 @@ export default function App() {
   }
 
   const handleLoginSuccess = (newAuth: AuthState) => {
+    setDisabledNotice(null);
     setAuth(newAuth);
     setInspectedStore(newAuth.store);
     
@@ -260,7 +297,7 @@ export default function App() {
 
   // Render Login if not authenticated
   if (!auth.user) {
-    return <Login onLoginSuccess={handleLoginSuccess} />;
+    return <Login onLoginSuccess={handleLoginSuccess} initialError={disabledNotice} />;
   }
 
   const userRole = auth.user.role;

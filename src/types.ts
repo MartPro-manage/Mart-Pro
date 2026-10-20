@@ -16,6 +16,10 @@ export interface Store {
   adminUsername: string;
   adminPassword?: string;
   status?: 'active' | 'disabled' | 'inactive';
+  disabledBy?: 'super_admin' | 'store_admin' | string;
+  disabledBySuperAdmin?: boolean; // When true, only Super Admin can re-enable this store
+  disabledReason?: string;
+  disabledAt?: string;
   parentStoreId?: string; // If this is a branch of a parent chain/store
   storeAdminId?: string; // Store Admin user ID who owns/manages this chain
   storeAdminUsername?: string; // Store Admin username
@@ -222,7 +226,11 @@ export interface UserAccount {
   designation?: string;
   hireDate?: string;
   notes?: string;
-  status?: 'active' | 'inactive';
+  status?: 'active' | 'disabled' | 'inactive';
+  disabledBy?: 'super_admin' | 'store_admin' | string;
+  disabledBySuperAdmin?: boolean; // When true, only Super Admin can re-enable this account
+  disabledReason?: string;
+  disabledAt?: string;
   allowPosDiscount?: boolean; // Controls whether this specific cashier account can apply discounts at POS Counter (default true when store allows)
   createdAt: string;
 }

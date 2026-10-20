@@ -291,7 +291,8 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
           receiptFormat: parentStore?.receiptFormat || 'standard',
           cameraScannerEnabled: newStoreCameraScannerEnabled,
           voiceAnnouncementEnabled: newStoreVoiceAnnouncementEnabled,
-          allowPosItemDiscount: newStorePosItemDiscountEnabled,
+          allowPosItemDiscount: false,
+          posProductDiscountEnabled: false,
           createdAt: new Date().toISOString()
         };
         await setDoc(storeDocRef, cleanFirestoreData(newBranchData));
@@ -323,7 +324,8 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
           status: 'active',
           cameraScannerEnabled: newStoreCameraScannerEnabled,
           voiceAnnouncementEnabled: newStoreVoiceAnnouncementEnabled,
-          allowPosItemDiscount: newStorePosItemDiscountEnabled,
+          allowPosItemDiscount: false,
+          posProductDiscountEnabled: false,
           createdAt: new Date().toISOString()
         };
         await setDoc(storeDocRef, cleanFirestoreData(newStoreData));
@@ -445,27 +447,66 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
   const handleToggleStoreStatus = async (store: Store) => {
     setLoading(true);
     try {
-      const isCurrentlyDisabled = store.status === 'disabled' || store.status === 'inactive';
-      const newStatus = isCurrentlyDisabled ? 'active' : 'disabled';
+      const isCurrentlyDisabled = store.status === 'disabled' || store.status === 'inactive' || store.disabledBySuperAdmin === true;
+      const newStatus: 'active' | 'disabled' = isCurrentlyDisabled ? 'active' : 'disabled';
       const storeRef = doc(db, 'stores', store.id);
       
-      await setDoc(storeRef, cleanFirestoreData({ status: newStatus }), { merge: true });
+      const payload: Partial<Store> = { 
+        status: newStatus,
+        disabledBy: newStatus === 'disabled' ? 'super_admin' : undefined,
+        disabledBySuperAdmin: newStatus === 'disabled',
+        disabledAt: newStatus === 'disabled' ? new Date().toISOString() : undefined
+      };
+
+      await setDoc(storeRef, cleanFirestoreData(payload), { merge: true });
 
       // Optimistically update stores in local state immediately
-      setStores(prev => prev.map(s => s.id === store.id ? { ...s, status: newStatus } : s));
+      setStores(prev => prev.map(s => s.id === store.id ? { ...s, ...payload } : s));
 
       // Also update furtherDetailsStore if modal is open
       if (furtherDetailsStore && furtherDetailsStore.id === store.id) {
-        setFurtherDetailsStore(prev => prev ? { ...prev, status: newStatus } : null);
+        setFurtherDetailsStore(prev => prev ? { ...prev, ...payload } : null);
       }
 
       showNotification(
         'success', 
-        `Store "${store.name}" is now ${newStatus.toUpperCase()}.${newStatus === 'disabled' ? ' Login access for this store is blocked. All store data is safely preserved.' : ' Login access for staff and cashier counters is restored.'}`
+        `Store "${store.name}" is now ${newStatus.toUpperCase()}.${newStatus === 'disabled' ? ' Login access is locked by Super Admin. No one can enable this store except Super Admin.' : ' Store login access has been restored.'}`
       );
     } catch (err: any) {
       console.error(err);
       showNotification('error', 'Failed to update store status: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Toggle User Account Active / Disabled Status (Super Admin Exclusive)
+  const handleToggleUserStatus = async (userAcc: UserAccount) => {
+    setLoading(true);
+    try {
+      const isCurrentlyDisabled = userAcc.status === 'disabled' || userAcc.disabledBySuperAdmin === true;
+      const newStatus: 'active' | 'disabled' = isCurrentlyDisabled ? 'active' : 'disabled';
+      const userRef = doc(db, 'users', userAcc.id);
+      
+      const payload: Partial<UserAccount> = {
+        status: newStatus,
+        disabledBy: newStatus === 'disabled' ? 'super_admin' : undefined,
+        disabledBySuperAdmin: newStatus === 'disabled',
+        disabledAt: newStatus === 'disabled' ? new Date().toISOString() : undefined
+      };
+
+      await setDoc(userRef, cleanFirestoreData(payload), { merge: true });
+
+      // Optimistically update users in local state
+      setUsers(prev => prev.map(u => u.id === userAcc.id ? { ...u, ...payload } : u));
+
+      showNotification(
+        'success',
+        `Account "${userAcc.name}" (@${userAcc.username}) is now ${newStatus.toUpperCase()}.${newStatus === 'disabled' ? ' Locked by Super Admin. No one can enable this account except Super Admin.' : ' Access has been restored.'}`
+      );
+    } catch (err: any) {
+      console.error(err);
+      showNotification('error', 'Failed to update account status: ' + (err?.message || 'Unknown error'));
     } finally {
       setLoading(false);
     }
@@ -1446,36 +1487,18 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                   </button>
                 </div>
 
-                {/* Per-Product Line Discount on Billing Super Admin Setting */}
+                {/* Per-Product Line Discount on Billing Governance Notice */}
                 <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2.5">
-                    <Percent className="w-4 h-4 text-rose-600 shrink-0" />
+                    <Percent className="w-4 h-4 text-slate-500 shrink-0" />
                     <div>
-                      <div className="text-xs font-bold text-slate-800">POS Per-Product Discount on Billing</div>
-                      <div className="text-[11px] text-slate-500 font-medium">Allow cashiers to give item-level discounts during billing</div>
+                      <div className="text-xs font-bold text-slate-800">POS Billing Discount Policy</div>
+                      <div className="text-[11px] text-slate-500 font-medium">Starts disabled. Enable/disable is only controlled in Store Settings & Branding.</div>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setNewStorePosItemDiscountEnabled(!newStorePosItemDiscountEnabled)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 border transition-all cursor-pointer ${
-                      newStorePosItemDiscountEnabled
-                        ? 'bg-rose-50 border-rose-300 text-rose-800 hover:bg-rose-100'
-                        : 'bg-slate-200 border-slate-300 text-slate-600 hover:bg-slate-300'
-                    }`}
-                  >
-                    {newStorePosItemDiscountEnabled ? (
-                      <>
-                        <ToggleRight className="w-4 h-4 text-rose-600" />
-                        <span>Allowed</span>
-                      </>
-                    ) : (
-                      <>
-                        <ToggleLeft className="w-4 h-4 text-slate-400" />
-                        <span>Disallowed</span>
-                      </>
-                    )}
-                  </button>
+                  <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-slate-200 text-slate-700">
+                    Store Admin Controlled
+                  </span>
                 </div>
 
                 <button
@@ -2089,36 +2112,62 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                     No cash counters created yet. Add one using the form on the left!
                   </p>
                 ) : (
-                  users.filter(u => u.role === 'cash_counter').map(cc => (
-                    <div key={cc.id} className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex items-center justify-between">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-extrabold text-slate-900 text-sm">{cc.name}</span>
-                          <span className="text-xs bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full font-bold border border-emerald-200">
-                            Counter #{cc.counterNumber}
-                          </span>
+                  users.filter(u => u.role === 'cash_counter').map(cc => {
+                    const isUserDisabled = cc.status === 'disabled' || cc.disabledBySuperAdmin === true;
+                    return (
+                      <div key={cc.id} className={`p-4 rounded-xl border flex items-center justify-between ${
+                        isUserDisabled ? 'bg-red-50/70 border-red-200' : 'bg-slate-50 border-slate-200'
+                      }`}>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-extrabold text-slate-900 text-sm">{cc.name}</span>
+                            <span className="text-xs bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full font-bold border border-emerald-200">
+                              Counter #{cc.counterNumber}
+                            </span>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-black uppercase font-mono border ${
+                              isUserDisabled 
+                                ? 'bg-red-100 text-red-700 border-red-300' 
+                                : 'bg-emerald-100 text-emerald-700 border-emerald-300'
+                            }`}>
+                              {isUserDisabled ? 'Disabled by Super Admin' : 'Active'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-600 mt-1 font-medium">
+                            Store: <span className="text-slate-900 font-bold">{cc.storeName}</span> | Username: <span className="text-orange-600 font-bold font-mono">{cc.username}</span>
+                          </p>
                         </div>
-                        <p className="text-xs text-slate-600 mt-1 font-medium">
-                          Store: <span className="text-slate-900 font-bold">{cc.storeName}</span> | Username: <span className="text-orange-600 font-bold font-mono">{cc.username}</span>
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleUserStatus(cc)}
+                            disabled={loading}
+                            className={`px-3 py-1 text-xs font-bold rounded-lg border transition-all cursor-pointer flex items-center gap-1 ${
+                              isUserDisabled
+                                ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-600 shadow-xs'
+                                : 'bg-white hover:bg-rose-50 text-rose-700 border-rose-300'
+                            }`}
+                            title={isUserDisabled ? 'Enable this account (Super Admin Exclusive)' : 'Disable this account (Only Super Admin can re-enable)'}
+                          >
+                            <Power className="w-3.5 h-3.5" />
+                            <span>{isUserDisabled ? 'Enable Account' : 'Disable Account'}</span>
+                          </button>
+                          <button
+                            onClick={() => setResetUserModal(cc)}
+                            className="px-2.5 py-1 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100"
+                          >
+                            Reset Pass
+                          </button>
+                          <button
+                            onClick={() => setUserToDelete(cc)}
+                            className="p-1 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"
+                            title="Delete Account"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setResetUserModal(cc)}
-                          className="px-2.5 py-1 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100"
-                        >
-                          Reset Pass
-                        </button>
-                        <button
-                          onClick={() => setUserToDelete(cc)}
-                          className="p-1 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"
-                          title="Delete Account"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -2218,36 +2267,62 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                     No product registers created yet. Add one using the form on the left!
                   </p>
                 ) : (
-                  users.filter(u => u.role === 'product_register').map(pr => (
-                    <div key={pr.id} className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex items-center justify-between">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-extrabold text-slate-900 text-sm">{pr.name}</span>
-                          <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold border border-blue-200">
-                            Product Register
-                          </span>
+                  users.filter(u => u.role === 'product_register').map(pr => {
+                    const isUserDisabled = pr.status === 'disabled' || pr.disabledBySuperAdmin === true;
+                    return (
+                      <div key={pr.id} className={`p-4 rounded-xl border flex items-center justify-between ${
+                        isUserDisabled ? 'bg-red-50/70 border-red-200' : 'bg-slate-50 border-slate-200'
+                      }`}>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-extrabold text-slate-900 text-sm">{pr.name}</span>
+                            <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold border border-blue-200">
+                              Product Register
+                            </span>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-black uppercase font-mono border ${
+                              isUserDisabled 
+                                ? 'bg-red-100 text-red-700 border-red-300' 
+                                : 'bg-emerald-100 text-emerald-700 border-emerald-300'
+                            }`}>
+                              {isUserDisabled ? 'Disabled by Super Admin' : 'Active'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-600 mt-1 font-medium">
+                            Store: <span className="text-slate-900 font-bold">{pr.storeName}</span> | Username: <span className="text-orange-600 font-bold font-mono">{pr.username}</span>
+                          </p>
                         </div>
-                        <p className="text-xs text-slate-600 mt-1 font-medium">
-                          Store: <span className="text-slate-900 font-bold">{pr.storeName}</span> | Username: <span className="text-orange-600 font-bold font-mono">{pr.username}</span>
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleUserStatus(pr)}
+                            disabled={loading}
+                            className={`px-3 py-1 text-xs font-bold rounded-lg border transition-all cursor-pointer flex items-center gap-1 ${
+                              isUserDisabled
+                                ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-600 shadow-xs'
+                                : 'bg-white hover:bg-rose-50 text-rose-700 border-rose-300'
+                            }`}
+                            title={isUserDisabled ? 'Enable this account (Super Admin Exclusive)' : 'Disable this account (Only Super Admin can re-enable)'}
+                          >
+                            <Power className="w-3.5 h-3.5" />
+                            <span>{isUserDisabled ? 'Enable Account' : 'Disable Account'}</span>
+                          </button>
+                          <button
+                            onClick={() => setResetUserModal(pr)}
+                            className="px-2.5 py-1 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100"
+                          >
+                            Reset Pass
+                          </button>
+                          <button
+                            onClick={() => setUserToDelete(pr)}
+                            className="p-1 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"
+                            title="Delete Account"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setResetUserModal(pr)}
-                          className="px-2.5 py-1 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100"
-                        >
-                          Reset Pass
-                        </button>
-                        <button
-                          onClick={() => setUserToDelete(pr)}
-                          className="p-1 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"
-                          title="Delete Account"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -2347,36 +2422,62 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                     No customer price checkers created yet. Create an account on the left to set up price checking screens in your store!
                   </p>
                 ) : (
-                  users.filter(u => u.role === 'customer_price_checker').map(pc => (
-                    <div key={pc.id} className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex items-center justify-between">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-extrabold text-slate-900 text-sm">{pc.name}</span>
-                          <span className="text-xs bg-purple-100 text-purple-800 px-2.5 py-0.5 rounded-full font-bold border border-purple-200">
-                            Customer Kiosk
-                          </span>
+                  users.filter(u => u.role === 'customer_price_checker').map(pc => {
+                    const isUserDisabled = pc.status === 'disabled' || pc.disabledBySuperAdmin === true;
+                    return (
+                      <div key={pc.id} className={`p-4 rounded-xl border flex items-center justify-between ${
+                        isUserDisabled ? 'bg-red-50/70 border-red-200' : 'bg-slate-50 border-slate-200'
+                      }`}>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-extrabold text-slate-900 text-sm">{pc.name}</span>
+                            <span className="text-xs bg-purple-100 text-purple-800 px-2.5 py-0.5 rounded-full font-bold border border-purple-200">
+                              Customer Kiosk
+                            </span>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-black uppercase font-mono border ${
+                              isUserDisabled 
+                                ? 'bg-red-100 text-red-700 border-red-300' 
+                                : 'bg-emerald-100 text-emerald-700 border-emerald-300'
+                            }`}>
+                              {isUserDisabled ? 'Disabled by Super Admin' : 'Active'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-600 mt-1 font-medium">
+                            Store: <span className="text-slate-900 font-bold">{pc.storeName}</span> | Username: <span className="text-orange-600 font-bold font-mono">{pc.username}</span>
+                          </p>
                         </div>
-                        <p className="text-xs text-slate-600 mt-1 font-medium">
-                          Store: <span className="text-slate-900 font-bold">{pc.storeName}</span> | Username: <span className="text-orange-600 font-bold font-mono">{pc.username}</span>
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleUserStatus(pc)}
+                            disabled={loading}
+                            className={`px-3 py-1 text-xs font-bold rounded-lg border transition-all cursor-pointer flex items-center gap-1 ${
+                              isUserDisabled
+                                ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-600 shadow-xs'
+                                : 'bg-white hover:bg-rose-50 text-rose-700 border-rose-300'
+                            }`}
+                            title={isUserDisabled ? 'Enable this account (Super Admin Exclusive)' : 'Disable this account (Only Super Admin can re-enable)'}
+                          >
+                            <Power className="w-3.5 h-3.5" />
+                            <span>{isUserDisabled ? 'Enable Account' : 'Disable Account'}</span>
+                          </button>
+                          <button
+                            onClick={() => setResetUserModal(pc)}
+                            className="px-2.5 py-1 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100"
+                          >
+                            Reset Pass
+                          </button>
+                          <button
+                            onClick={() => setUserToDelete(pc)}
+                            className="p-1 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"
+                            title="Delete Account"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setResetUserModal(pc)}
-                          className="px-2.5 py-1 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100"
-                        >
-                          Reset Pass
-                        </button>
-                        <button
-                          onClick={() => setUserToDelete(pc)}
-                          className="p-1 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"
-                          title="Delete Account"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -2549,19 +2650,17 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                               <Camera className="w-3.5 h-3.5" />
                               <span>Camera Scanner: {s.cameraScannerEnabled !== false ? 'Enabled' : 'Disabled'}</span>
                             </button>
-                            <button
-                              onClick={() => handleTogglePosItemDiscount(s)}
-                              disabled={loading}
-                              className={`px-2.5 py-1 rounded-lg border font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                                s.allowPosItemDiscount === true
-                                  ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
-                                  : 'bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-200'
+                            <span
+                              className={`px-2.5 py-1 rounded-lg border font-bold flex items-center gap-1.5 ${
+                                s.posProductDiscountEnabled === true
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                  : 'bg-slate-100 text-slate-600 border-slate-200'
                               }`}
-                              title="Click to toggle per-product discount during billing in POS Counter"
+                              title="Discount enabling/disabling is exclusively controlled by Store Admin in Store Settings & Branding"
                             >
-                              <Percent className="w-3.5 h-3.5 text-rose-600" />
-                              <span>POS Discount: {s.allowPosItemDiscount === true ? 'Allowed' : 'Disabled'}</span>
-                            </button>
+                              <Percent className="w-3.5 h-3.5 text-slate-500" />
+                              <span>Discount: {s.posProductDiscountEnabled === true ? 'Enabled (in Store Settings)' : 'Disabled'}</span>
+                            </span>
                           </div>
 
                           <div className="flex items-center gap-2">
@@ -2801,45 +2900,25 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                   </div>
                 </div>
 
-                {/* Batch POS Per-Product Line-Item Discount Policy */}
-                <div className="p-5 bg-gradient-to-br from-rose-50/70 to-orange-50/40 border border-rose-200/80 rounded-2xl space-y-4">
+                {/* POS Billing Discount Governance Notice */}
+                <div className="p-5 bg-gradient-to-br from-slate-50 to-orange-50/40 border border-slate-200 rounded-2xl space-y-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3">
-                      <div className="p-2.5 bg-rose-200/60 text-rose-900 rounded-xl shrink-0 mt-0.5">
+                      <div className="p-2.5 bg-orange-100 text-orange-800 rounded-xl shrink-0 mt-0.5">
                         <Percent className="w-5 h-5" />
                       </div>
                       <div>
-                        <h4 className="text-sm font-extrabold text-rose-950 flex items-center gap-2">
-                          Global POS Line-Item Discount Policy
-                          <span className="text-[10px] font-bold bg-rose-200/80 text-rose-900 px-2 py-0.5 rounded-full">
-                            {stores.filter(s => s.allowPosItemDiscount === true).length} / {stores.length} Enabled
+                        <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                          POS Billing Discount Governance
+                          <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-200">
+                            {stores.filter(s => s.posProductDiscountEnabled === true).length} / {stores.length} Enabled by Store Admins
                           </span>
                         </h4>
-                        <p className="text-xs text-rose-900/80 font-medium mt-1 leading-relaxed">
-                          Controls whether cashiers are allowed to give discounts on every product during billing at POS checkout counters.
+                        <p className="text-xs text-slate-600 font-medium mt-1 leading-relaxed">
+                          Enabling or disabling discounts on billing is strictly controlled by each Store Admin in their <strong>Store Settings & Branding</strong> panel. Cashiers can only apply discounts when their Store Admin allows it.
                         </p>
                       </div>
                     </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => handleBatchPosItemDiscountToggle(true)}
-                      disabled={loading || stores.length === 0}
-                      className="py-2.5 px-4 bg-rose-600 hover:bg-rose-500 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50"
-                    >
-                      <Percent className="w-4 h-4" /> Enable POS Discounts on ALL Stores
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleBatchPosItemDiscountToggle(false)}
-                      disabled={loading || stores.length === 0}
-                      className="py-2.5 px-4 bg-slate-700 hover:bg-slate-600 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50"
-                    >
-                      <Ban className="w-4 h-4" /> Disable POS Discounts on ALL Stores
-                    </button>
                   </div>
                 </div>
 
@@ -2953,28 +3032,17 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                             </td>
 
                             <td className="py-3.5 px-4 text-center">
-                              <button
-                                type="button"
-                                onClick={() => handleTogglePosItemDiscount(s)}
-                                disabled={loading}
-                                className={`px-3 py-1 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer border ${
-                                  posDiscAllowed
-                                    ? 'bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100'
-                                    : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
+                              <span
+                                className={`px-2.5 py-1 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 border ${
+                                  s.posProductDiscountEnabled === true
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                    : 'bg-slate-100 text-slate-700 border-slate-300'
                                 }`}
+                                title="Discount on billing is only controlled in Store Settings & Branding"
                               >
-                                {posDiscAllowed ? (
-                                  <>
-                                    <Percent className="w-3.5 h-3.5 text-rose-600" />
-                                    <span>Allowed</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Ban className="w-3.5 h-3.5 text-slate-500" />
-                                    <span>Disabled</span>
-                                  </>
-                                )}
-                              </button>
+                                <Percent className="w-3.5 h-3.5 text-slate-500" />
+                                <span>{s.posProductDiscountEnabled === true ? 'Enabled' : 'Disabled'} (Store Settings)</span>
+                              </span>
                             </td>
 
                             <td className="py-3.5 px-4 text-center">
@@ -3185,44 +3253,35 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
                 </button>
               </div>
 
-              {/* Card 3: Super Admin POS Per-Product Line-Item Discount Policy */}
-              <div className="p-4 bg-rose-50/50 border border-rose-200 rounded-2xl flex flex-col justify-between gap-4">
+              {/* Card 3: POS Billing Discount Policy (Store Controlled) */}
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col justify-between gap-4">
                 <div className="flex items-start gap-3">
-                  <div className="p-2.5 bg-rose-100 text-rose-700 rounded-xl shrink-0">
+                  <div className="p-2.5 bg-orange-100 text-orange-700 rounded-xl shrink-0">
                     <Percent className="w-5 h-5" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-extrabold text-rose-950">POS Per-Product Discount</h4>
-                    <p className="text-xs text-rose-800/80 font-medium mt-0.5">
-                      {furtherDetailsStore.allowPosItemDiscount === true
-                        ? 'Cashiers CAN give custom discounts on every product during billing.' 
-                        : 'Custom line-item discounts during billing are LOCKED & DISABLED.'}
+                    <h4 className="text-sm font-extrabold text-slate-900">POS Billing Discount</h4>
+                    <p className="text-xs text-slate-600 font-medium mt-0.5">
+                      {furtherDetailsStore.posProductDiscountEnabled === true
+                        ? 'Allowed by Store Admin in Store Settings & Branding.' 
+                        : 'Disabled by Store Admin in Store Settings & Branding.'}
                     </p>
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleTogglePosItemDiscount(furtherDetailsStore)}
-                  disabled={loading}
-                  className={`w-full py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border transition-all cursor-pointer ${
-                    furtherDetailsStore.allowPosItemDiscount === true
-                      ? 'bg-rose-600 text-white border-rose-600 hover:bg-rose-500 shadow-sm'
-                      : 'bg-white text-rose-800 border-rose-300 hover:bg-rose-50'
-                  }`}
-                >
-                  {furtherDetailsStore.allowPosItemDiscount === true ? (
-                    <>
-                      <ToggleRight className="w-4 h-4 text-white" />
-                      <span>POS Discount: Enabled</span>
-                    </>
-                  ) : (
-                    <>
-                      <ToggleLeft className="w-4 h-4 text-rose-400" />
-                      <span>POS Discount: Disabled</span>
-                    </>
-                  )}
-                </button>
+                <div className="p-2.5 bg-white border border-slate-200 rounded-xl text-xs flex items-center justify-between font-bold">
+                  <span className="text-slate-600">Store Settings Status:</span>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase font-mono ${
+                    furtherDetailsStore.posProductDiscountEnabled === true
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                      : 'bg-slate-100 text-slate-700 border border-slate-300'
+                  }`}>
+                    {furtherDetailsStore.posProductDiscountEnabled === true ? 'Allowed' : 'Disabled'}
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-400 font-medium italic">
+                  Controlled only at in Store Setting & Branding by Store Admin.
+                </p>
               </div>
 
               {/* Card 4: Store Operating Status (Active / Disabled) */}

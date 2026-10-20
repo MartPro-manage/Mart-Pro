@@ -137,10 +137,15 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
   const [isDiscountEntryScreenOpen, setIsDiscountEntryScreenOpen] = useState(false);
 
   const [liveStore, setLiveStore] = useState<Store>(store);
+  const [liveUser, setLiveUser] = useState<UserAccount>(currentUser);
 
   useEffect(() => {
     setLiveStore(store);
   }, [store]);
+
+  useEffect(() => {
+    setLiveUser(currentUser);
+  }, [currentUser]);
 
   useEffect(() => {
     if (!store?.id) return;
@@ -152,12 +157,28 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
     return () => unsub();
   }, [store?.id]);
 
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    const unsub = onSnapshot(doc(db, 'users', currentUser.id), (snap) => {
+      if (snap.exists()) {
+        setLiveUser({ id: snap.id, ...snap.data() } as UserAccount);
+      }
+    });
+    return () => unsub();
+  }, [currentUser?.id]);
+
   // POS Item & Bill Discount states & handlers:
   // ONLY controlled in Store Setting & Branding (posProductDiscountEnabled)
-  const isPosDiscountAllowed = liveStore?.posProductDiscountEnabled === true;
+  // and cashier permission set by Store Admin (allowPosDiscount)
+  const storeDiscountAllowed = liveStore?.posProductDiscountEnabled === true;
+  const cashierDiscountAllowed = liveUser?.role === 'cash_counter' 
+    ? liveUser.allowPosDiscount !== false 
+    : true;
+
+  const isPosDiscountAllowed = Boolean(storeDiscountAllowed && cashierDiscountAllowed);
 
   const handleInitiateCheckout = () => {
-    // If discount on billing is disabled by the store admin from settings, Do not show this interface on POS
+    // If discount on billing is disabled by the store admin from settings, or cashier is not allowed, do not show this interface on POS
     if (isPosDiscountAllowed && cart.length > 0) {
       setIsDiscountEntryScreenOpen(true);
     } else {

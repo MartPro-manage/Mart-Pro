@@ -48,7 +48,9 @@ import {
   ChevronDown,
   ChevronUp,
   RefreshCw,
-  Wallet
+  Wallet,
+  Lock,
+  ShieldAlert
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -492,6 +494,7 @@ export const StaffSessionsView: React.FC<StaffSessionsViewProps> = ({
     try {
       if (editingStaffId) {
         // Updating existing staff profile
+        const existingStaff = staffList.find(s => s.id === editingStaffId);
         const userRef = doc(db, 'users', editingStaffId);
         const updatePayload: Record<string, any> = {
           name,
@@ -507,6 +510,15 @@ export const StaffSessionsView: React.FC<StaffSessionsViewProps> = ({
           monthlySalary: salaryType === 'monthly' ? monthlySalaryNum : 0,
           salary: finalSalary,
         };
+
+        // When superadmin disables any account, no one can enable that account except super admin
+        if (existingStaff?.disabledBySuperAdmin === true || existingStaff?.status === 'disabled') {
+          updatePayload.status = 'disabled';
+          updatePayload.disabledBySuperAdmin = true;
+          updatePayload.disabledBy = 'super_admin';
+          updatePayload.disabledReason = 'Disabled by Super Admin';
+        }
+
         if (profilePassword.trim()) {
           updatePayload.password = profilePassword.trim();
         }
@@ -1007,7 +1019,25 @@ export const StaffSessionsView: React.FC<StaffSessionsViewProps> = ({
                 onSubmit={handleSaveProfile}
                 className="p-5 sm:p-6 space-y-6"
               >
-                
+                {/* Notice if account is disabled by Super Admin */}
+                {editingStaffId && (() => {
+                  const target = staffList.find(s => s.id === editingStaffId);
+                  if (target?.disabledBySuperAdmin === true || target?.status === 'disabled') {
+                    return (
+                      <div className="p-4 bg-red-50 border border-red-300 rounded-2xl flex items-center gap-3 text-red-900 text-xs font-bold">
+                        <ShieldAlert className="w-5 h-5 text-red-600 shrink-0" />
+                        <div>
+                          <div className="font-extrabold text-sm text-red-800">Account Disabled by Central Super Administrator</div>
+                          <p className="text-[11px] text-red-700 font-medium mt-0.5">
+                            This staff account is currently locked by the Super Administrator. No one can enable this account except the Super Administrator. Salary adjustments and contact details can still be saved.
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+
                 {/* 1A. STAFF PROFILE DETAILS */}
                 <div className="space-y-4">
                   <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-500">
@@ -1689,7 +1719,14 @@ export const StaffSessionsView: React.FC<StaffSessionsViewProps> = ({
                                 {(staff.name || staff.username).charAt(0).toUpperCase()}
                               </div>
                               <div>
-                                <div className="font-bold text-slate-900 text-sm leading-tight">{staff.name}</div>
+                                <div className="font-bold text-slate-900 text-sm leading-tight flex items-center gap-1.5 flex-wrap">
+                                  <span>{staff.name}</span>
+                                  {(staff.disabledBySuperAdmin === true || staff.status === 'disabled') && (
+                                    <span className="text-[10px] bg-red-100 text-red-800 px-2 py-0.5 rounded-full font-extrabold border border-red-300 inline-flex items-center gap-1">
+                                      <Lock className="w-3 h-3 text-red-600" /> Locked by Super Admin
+                                    </span>
+                                  )}
+                                </div>
                                 <div className="text-[11px] text-slate-400 font-mono">@{staff.username}</div>
                                 {staff.phone && (
                                   <a href={`tel:${staff.phone}`} className="text-[11px] text-emerald-700 hover:underline flex items-center gap-1 mt-0.5">

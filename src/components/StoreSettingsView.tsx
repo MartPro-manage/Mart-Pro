@@ -7,6 +7,7 @@ import {
   query, 
   where, 
   getDocs, 
+  onSnapshot,
   handleFirestoreError, 
   OperationType 
 } from '../lib/firebase';
@@ -58,40 +59,60 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
   storeUsers,
   onStoreUpdated
 }) => {
+  const [liveStore, setLiveStore] = useState<Store>(store);
+
+  useEffect(() => {
+    setLiveStore(store);
+  }, [store]);
+
+  useEffect(() => {
+    if (!store?.id) return;
+    const unsub = onSnapshot(doc(db, 'stores', store.id), (snap) => {
+      if (snap.exists()) {
+        const updated = { id: snap.id, ...snap.data() } as Store;
+        setLiveStore(updated);
+        if (onStoreUpdated) {
+          onStoreUpdated(updated);
+        }
+      }
+    });
+    return () => unsub();
+  }, [store?.id]);
+
   // Store Identity & Address
-  const [storeName, setStoreName] = useState(store.name || '');
-  const [storeAddress, setStoreAddress] = useState(store.address || '');
-  const [storePhone, setStorePhone] = useState(store.phone || '');
+  const [storeName, setStoreName] = useState(liveStore.name || '');
+  const [storeAddress, setStoreAddress] = useState(liveStore.address || '');
+  const [storePhone, setStorePhone] = useState(liveStore.phone || '');
 
   // POS & Receipt Settings
-  const [currencySymbol, setCurrencySymbol] = useState(store.currencySymbol || 'Rs.');
-  const [receiptHeader, setReceiptHeader] = useState(store.receiptHeader || 'OFFICIAL SALES INVOICE');
-  const [receiptFooter, setReceiptFooter] = useState(store.receiptFooter || 'THANK YOU FOR SHOPPING WITH US! Retain slip for returns.');
-  const [receiptGreeting, setReceiptGreeting] = useState(store.receiptGreeting || 'Welcome & Thank You for Shopping!');
-  const [receiptQrCodeEnabled, setReceiptQrCodeEnabled] = useState<boolean>(Boolean(store.receiptQrCodeEnabled));
-  const [receiptQrTitle, setReceiptQrTitle] = useState(store.receiptQrTitle || 'Scan to Verify Receipt');
-  const [receiptQrData, setReceiptQrData] = useState(store.receiptQrData || '');
-  const [receiptQrImageUrl, setReceiptQrImageUrl] = useState<string>(store.receiptQrImageUrl || '');
-  const [returnPolicyDays, setReturnPolicyDays] = useState<number>(store.returnPolicyDays || 7);
-  const [receiptFormat, setReceiptFormat] = useState<'standard' | 'classic_detailed' | 'compact_eco'>(store.receiptFormat || 'standard');
-  const [receiptFontFamily, setReceiptFontFamily] = useState(store.receiptFontFamily || 'Courier New');
-  const [receiptFontBold, setReceiptFontBold] = useState<boolean>(Boolean(store.receiptFontBold));
-  const [receiptFontItalic, setReceiptFontItalic] = useState<boolean>(Boolean(store.receiptFontItalic));
-  const [receiptBorderRadius, setReceiptBorderRadius] = useState(store.receiptBorderRadius || 'rounded-2xl');
-  const [logoUrl, setLogoUrl] = useState<string>(store.logoUrl || '');
+  const [currencySymbol, setCurrencySymbol] = useState(liveStore.currencySymbol || 'Rs.');
+  const [receiptHeader, setReceiptHeader] = useState(liveStore.receiptHeader || 'OFFICIAL SALES INVOICE');
+  const [receiptFooter, setReceiptFooter] = useState(liveStore.receiptFooter || 'THANK YOU FOR SHOPPING WITH US! Retain slip for returns.');
+  const [receiptGreeting, setReceiptGreeting] = useState(liveStore.receiptGreeting || 'Welcome & Thank You for Shopping!');
+  const [receiptQrCodeEnabled, setReceiptQrCodeEnabled] = useState<boolean>(Boolean(liveStore.receiptQrCodeEnabled));
+  const [receiptQrTitle, setReceiptQrTitle] = useState(liveStore.receiptQrTitle || 'Scan to Verify Receipt');
+  const [receiptQrData, setReceiptQrData] = useState(liveStore.receiptQrData || '');
+  const [receiptQrImageUrl, setReceiptQrImageUrl] = useState<string>(liveStore.receiptQrImageUrl || '');
+  const [returnPolicyDays, setReturnPolicyDays] = useState<number>(liveStore.returnPolicyDays || 7);
+  const [receiptFormat, setReceiptFormat] = useState<'standard' | 'classic_detailed' | 'compact_eco'>(liveStore.receiptFormat || 'standard');
+  const [receiptFontFamily, setReceiptFontFamily] = useState(liveStore.receiptFontFamily || 'Courier New');
+  const [receiptFontBold, setReceiptFontBold] = useState<boolean>(Boolean(liveStore.receiptFontBold));
+  const [receiptFontItalic, setReceiptFontItalic] = useState<boolean>(Boolean(liveStore.receiptFontItalic));
+  const [receiptBorderRadius, setReceiptBorderRadius] = useState(liveStore.receiptBorderRadius || 'rounded-2xl');
+  const [logoUrl, setLogoUrl] = useState<string>(liveStore.logoUrl || '');
 
   // Category Management (Preserved in store record)
-  const [customCategories, setCustomCategories] = useState<string[]>(store.customCategories || []);
+  const [customCategories, setCustomCategories] = useState<string[]>(liveStore.customCategories || []);
 
   // Audio & Hardware Settings
-  const [soundEffectsEnabled, setSoundEffectsEnabled] = useState<boolean>(store.soundEffectsEnabled !== false);
-  const [posProductDiscountEnabled, setPosProductDiscountEnabled] = useState<boolean>(store.posProductDiscountEnabled === true);
-  const [posMaxDiscountPercentage, setPosMaxDiscountPercentage] = useState<number>(store.posMaxDiscountPercentage || 50);
-  const [posMaxFixedDiscountAmount, setPosMaxFixedDiscountAmount] = useState<number>(store.posMaxFixedDiscountAmount || 500);
-  const [posRequireManagerApproval, setPosRequireManagerApproval] = useState<boolean>(store.posRequireManagerApproval === true);
-  const [posManagerApprovalPin, setPosManagerApprovalPin] = useState<string>(store.posManagerApprovalPin || '1234');
-  const [lowStockAlertThreshold, setLowStockAlertThreshold] = useState<number>(store.lowStockAlertThreshold || 5);
-  const [zSenderUserId, setZSenderUserId] = useState<string>(store.zSenderUserId || 'supermarketmanage@gmail.com');
+  const [soundEffectsEnabled, setSoundEffectsEnabled] = useState<boolean>(liveStore.soundEffectsEnabled !== false);
+  const [posProductDiscountEnabled, setPosProductDiscountEnabled] = useState<boolean>(Boolean(liveStore.posProductDiscountEnabled === true && liveStore.allowPosItemDiscount !== false));
+  const [posMaxDiscountPercentage, setPosMaxDiscountPercentage] = useState<number>(liveStore.posMaxDiscountPercentage || 50);
+  const [posMaxFixedDiscountAmount, setPosMaxFixedDiscountAmount] = useState<number>(liveStore.posMaxFixedDiscountAmount || 500);
+  const [posRequireManagerApproval, setPosRequireManagerApproval] = useState<boolean>(liveStore.posRequireManagerApproval === true);
+  const [posManagerApprovalPin, setPosManagerApprovalPin] = useState<string>(liveStore.posManagerApprovalPin || '1234');
+  const [lowStockAlertThreshold, setLowStockAlertThreshold] = useState<number>(liveStore.lowStockAlertThreshold || 5);
+  const [zSenderUserId, setZSenderUserId] = useState<string>(liveStore.zSenderUserId || 'supermarketmanage@gmail.com');
 
   // Password Change State
   const [newAdminPassword, setNewAdminPassword] = useState('');
@@ -102,37 +123,37 @@ export const StoreSettingsView: React.FC<StoreSettingsViewProps> = ({
   const [loading, setLoading] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Sync state if store prop changes
+  // Sync state if liveStore prop changes
   useEffect(() => {
-    setStoreName(store.name || '');
-    setStoreAddress(store.address || '');
-    setStorePhone(store.phone || '');
-    setCurrencySymbol(store.currencySymbol || 'Rs.');
-    setReceiptHeader(store.receiptHeader || 'OFFICIAL SALES INVOICE');
-    setReceiptFooter(store.receiptFooter || 'THANK YOU FOR SHOPPING WITH US! Retain slip for returns.');
-    setReceiptGreeting(store.receiptGreeting || 'Welcome & Thank You for Shopping!');
-    setReceiptQrCodeEnabled(Boolean(store.receiptQrCodeEnabled));
-    setReceiptQrTitle(store.receiptQrTitle || 'Scan to Verify Receipt');
-    setReceiptQrData(store.receiptQrData || '');
-    setReceiptQrImageUrl(store.receiptQrImageUrl || '');
-    setReturnPolicyDays(store.returnPolicyDays || 7);
-    setReceiptFormat(store.receiptFormat || 'standard');
-    setReceiptFontFamily(store.receiptFontFamily || 'Courier New');
-    setReceiptFontBold(Boolean(store.receiptFontBold));
-    setReceiptFontItalic(Boolean(store.receiptFontItalic));
-    setReceiptBorderRadius(store.receiptBorderRadius || 'rounded-2xl');
-    setLogoUrl(store.logoUrl || '');
-    setCustomCategories(store.customCategories || []);
-    setSoundEffectsEnabled(store.soundEffectsEnabled !== false);
-    const discountEnabled = Boolean(store.posProductDiscountEnabled === true && store.allowPosItemDiscount !== false);
+    setStoreName(liveStore.name || '');
+    setStoreAddress(liveStore.address || '');
+    setStorePhone(liveStore.phone || '');
+    setCurrencySymbol(liveStore.currencySymbol || 'Rs.');
+    setReceiptHeader(liveStore.receiptHeader || 'OFFICIAL SALES INVOICE');
+    setReceiptFooter(liveStore.receiptFooter || 'THANK YOU FOR SHOPPING WITH US! Retain slip for returns.');
+    setReceiptGreeting(liveStore.receiptGreeting || 'Welcome & Thank You for Shopping!');
+    setReceiptQrCodeEnabled(Boolean(liveStore.receiptQrCodeEnabled));
+    setReceiptQrTitle(liveStore.receiptQrTitle || 'Scan to Verify Receipt');
+    setReceiptQrData(liveStore.receiptQrData || '');
+    setReceiptQrImageUrl(liveStore.receiptQrImageUrl || '');
+    setReturnPolicyDays(liveStore.returnPolicyDays || 7);
+    setReceiptFormat(liveStore.receiptFormat || 'standard');
+    setReceiptFontFamily(liveStore.receiptFontFamily || 'Courier New');
+    setReceiptFontBold(Boolean(liveStore.receiptFontBold));
+    setReceiptFontItalic(Boolean(liveStore.receiptFontItalic));
+    setReceiptBorderRadius(liveStore.receiptBorderRadius || 'rounded-2xl');
+    setLogoUrl(liveStore.logoUrl || '');
+    setCustomCategories(liveStore.customCategories || []);
+    setSoundEffectsEnabled(liveStore.soundEffectsEnabled !== false);
+    const discountEnabled = Boolean(liveStore.posProductDiscountEnabled === true && liveStore.allowPosItemDiscount !== false);
     setPosProductDiscountEnabled(discountEnabled);
-    setPosMaxDiscountPercentage(store.posMaxDiscountPercentage || 50);
-    setPosMaxFixedDiscountAmount(store.posMaxFixedDiscountAmount || 500);
-    setPosRequireManagerApproval(store.posRequireManagerApproval === true);
-    setPosManagerApprovalPin(store.posManagerApprovalPin || '1234');
-    setLowStockAlertThreshold(store.lowStockAlertThreshold || 5);
-    setZSenderUserId(store.zSenderUserId || 'supermarketmanage@gmail.com');
-  }, [store]);
+    setPosMaxDiscountPercentage(liveStore.posMaxDiscountPercentage || 50);
+    setPosMaxFixedDiscountAmount(liveStore.posMaxFixedDiscountAmount || 500);
+    setPosRequireManagerApproval(liveStore.posRequireManagerApproval === true);
+    setPosManagerApprovalPin(liveStore.posManagerApprovalPin || '1234');
+    setLowStockAlertThreshold(liveStore.lowStockAlertThreshold || 5);
+    setZSenderUserId(liveStore.zSenderUserId || 'supermarketmanage@gmail.com');
+  }, [liveStore]);
 
   const showNotification = (type: 'success' | 'error', text: string) => {
     setFeedbackMsg({ type, text });

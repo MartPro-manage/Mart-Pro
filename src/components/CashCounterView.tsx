@@ -168,11 +168,10 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
   }, [currentUser?.id]);
 
   // POS Item & Bill Discount states & handlers:
-  // ONLY controlled in Store Setting & Branding (posProductDiscountEnabled)
-  // and cashier permission set by Store Admin (allowPosDiscount)
-  const storeDiscountAllowed = liveStore?.posProductDiscountEnabled === true;
+  // Controlled in Store Setting & Branding (posProductDiscountEnabled) and Super Admin / Store Admin policy (allowPosItemDiscount)
+  const storeDiscountAllowed = liveStore?.posProductDiscountEnabled === true && liveStore?.allowPosItemDiscount !== false;
   const cashierDiscountAllowed = liveUser?.role === 'cash_counter' 
-    ? liveUser.allowPosDiscount !== false 
+    ? (liveUser.allowPosDiscount !== false && storeDiscountAllowed)
     : true;
 
   const isPosDiscountAllowed = Boolean(storeDiscountAllowed && cashierDiscountAllowed);

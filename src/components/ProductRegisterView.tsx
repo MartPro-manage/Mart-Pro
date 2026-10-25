@@ -599,7 +599,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
           setSearchCandidates(data.candidates);
         }
         lastFetchedNameRef.current = targetTitle;
-        showNotification('success', `✓ Searched Google & pasted image URL for "${targetTitle}"!`);
+        showNotification('success', `✓ Automatically searched image, copied link & pasted for "${targetTitle}"!`);
       }
     } catch (err: any) {
       console.warn('[Online Image Search Error]:', err);
@@ -1218,105 +1218,9 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
               </div>
             </div>
 
-            {/* All Action Buttons Row */}
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Discounts & Promotions Manager Button */}
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => setIsDiscountModalOpen(true)}
-                className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs uppercase tracking-wider shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer relative border border-rose-400/40"
-                title="Add discount to all or selected products (% or Rs.)"
-              >
-                <Tag className="w-3.5 h-3.5 text-rose-200" />
-                <span>Discounts & Sales</span>
-                {products.filter(p => p.discountActive && p.discountValue).length > 0 && (
-                  <span className="ml-0.5 px-1.5 py-0.2 bg-white text-rose-700 text-[10px] font-black rounded-full">
-                    {products.filter(p => p.discountActive && p.discountValue).length}
-                  </span>
-                )}
-              </motion.button>
-
-              {/* Multi-Product Batch Entry & Excel Import */}
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => setIsExcelModalOpen(true)}
-                className="px-3 py-1.5 rounded-xl bg-blue-900/60 hover:bg-blue-800/80 text-white font-bold text-xs uppercase tracking-wider shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-blue-700/60 backdrop-blur-xs"
-                title="Upload Excel from device or create spreadsheet in-app"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-blue-300" />
-                <span>Excel / Spreadsheet</span>
-              </motion.button>
-
-              {/* 4-Digit Short Codes Directory & PDF */}
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => setIsShortcutsModalOpen(true)}
-                className="px-3 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs uppercase tracking-wider shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-orange-400/40"
-                title="Open Product Short Codes Directory and Download PDF or Excel"
-              >
-                <Hash className="w-3.5 h-3.5 text-orange-200" />
-                <span>Short Codes (PDF)</span>
-              </motion.button>
-
-              {/* AI Assistant Button */}
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => setIsAiAssistantOpen(true)}
-                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                title="Store AI Copilot: Query cheapest/most selling items or ask questions"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-slate-950" />
-                <span>AI Assistant</span>
-              </motion.button>
-
-              {/* Generate Barcode Button */}
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => handleOpenGeneratorForProduct()}
-                className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs uppercase tracking-wider shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-slate-700"
-                title="Generate and print printable barcode sticker labels"
-              >
-                <BarcodeIcon className="w-3.5 h-3.5 text-amber-300" />
-                <span>Barcode Sticker</span>
-              </motion.button>
-
-              {/* Camera Scanner Trigger (respects store setting) */}
-              {store.cameraScannerEnabled !== false && (
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => setIsScannerOpen(true)}
-                  className="px-3 py-1.5 rounded-xl bg-blue-950/80 hover:bg-blue-900 text-blue-200 border border-blue-700/60 font-bold text-xs uppercase tracking-wider shadow-2xs transition-all flex items-center justify-center gap-1.5 cursor-pointer backdrop-blur-xs"
-                >
-                  <Camera className="w-3.5 h-3.5 text-blue-400" />
-                  <span>Scanner</span>
-                </motion.button>
-              )}
-
-              {/* Collapsible Device & Hardware Controls Toggle */}
-              <button
-                type="button"
-                onClick={() => setShowHardwareBar(!showHardwareBar)}
-                className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border cursor-pointer ${
-                  showHardwareBar 
-                    ? 'bg-blue-600 text-white border-blue-500 shadow-xs' 
-                    : 'bg-blue-900/40 hover:bg-blue-800/60 text-blue-200 border-blue-800/60 shadow-2xs'
-                }`}
-                title="Show or hide camera, audio, and device permissions bar"
-              >
-                <SlidersHorizontal className="w-3.5 h-3.5 text-blue-300" />
-                <span className="hidden sm:inline">Hardware</span>
-                {showHardwareBar ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-              </button>
-            </div>
           </div>
 
-          {/* Bottom Row: Text present at below of all buttons */}
+          {/* Bottom Row */}
           <div className="pt-2 border-t border-blue-900/60 flex flex-col md:flex-row md:items-center justify-between gap-1.5 text-xs text-blue-200 z-10">
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-extrabold text-white text-sm tracking-tight">
@@ -1328,9 +1232,6 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                 PKR (Rs.)
               </span>
             </div>
-            <p className="text-[11px] text-slate-300 font-medium">
-              Add products, adjust stock quantities, and generate barcode stickers. Scanners work automatically.
-            </p>
           </div>
         </motion.div>
 
@@ -2155,11 +2056,23 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                         <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
                           Product Name *
                         </label>
-                        {name.trim().length >= 3 && !imageUrl && autoAiImageEnabled && (
-                          <span className="text-[10px] text-sky-600 font-bold flex items-center gap-1 animate-pulse">
-                            <Search className="w-3 h-3 text-sky-500" /> Searching Google for image URL...
-                          </span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {name.trim().length >= 3 && !imageUrl && autoAiImageEnabled && (
+                            <span className="text-[10px] text-sky-600 font-bold flex items-center gap-1 animate-pulse">
+                              <Search className="w-3 h-3 text-sky-500" /> Searching Google for image URL...
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleSearchProductImageOnline(name, true)}
+                            disabled={isGeneratingAiImage || !name.trim()}
+                            className="text-[10px] bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold px-2.5 py-1 rounded-lg border border-sky-200 flex items-center gap-1 transition-all cursor-pointer disabled:opacity-50"
+                            title="Automatically search image for this name, copy link and paste it"
+                          >
+                            <Sparkles className="w-3 h-3 text-sky-600" />
+                            <span>{isGeneratingAiImage ? 'Searching...' : '✨ Auto-Search & Paste Image'}</span>
+                          </button>
+                        </div>
                       </div>
                       <input
                         ref={nameInputRef}

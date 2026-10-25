@@ -88,7 +88,7 @@ export const PosDiscountEntryScreen: React.FC<PosDiscountEntryScreenProps> = ({
     }
   }, [isOpen, cart]);
 
-  const isPosDiscountAllowed = store?.posProductDiscountEnabled === true;
+  const isPosDiscountAllowed = store?.posProductDiscountEnabled === true && store?.allowPosItemDiscount !== false;
 
   if (!isOpen || !isPosDiscountAllowed) return null;
 

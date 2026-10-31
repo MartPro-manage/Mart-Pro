@@ -5,81 +5,63 @@ export interface ProductImageCandidate {
   domain?: string;
 }
 
-export interface ProductImageSearchResult {
+export interface ResolveImageDetails {
   imageUrl: string;
   thumbnailUrl: string;
+  title?: string;
   source: string;
   sourceDomain: string;
   candidates: ProductImageCandidate[];
 }
 
-/**
- * Searches for accurate real product packaging and FMCG photos
- */
-export async function searchProductImageWithCandidates(params: {
-  name: string;
-  brand?: string;
-  category?: string;
-  size?: string;
-  barcode?: string;
-  manualQuery?: string;
-}): Promise<ProductImageSearchResult | null> {
-  try {
-    const targetQuery = (params.manualQuery || params.name || '').trim();
-    if (!targetQuery) return null;
-
-    const response = await fetch('/api/ai/product-image', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: params.name ? params.name.trim() : targetQuery,
-        brand: params.brand,
-        category: params.category,
-        size: params.size,
-        barcode: params.barcode,
-        manualQuery: params.manualQuery
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`Server returned ${response.status}`);
-    }
-
-    const data: ProductImageSearchResult = await response.json();
-    return data;
-  } catch (error) {
-    console.warn('[Image Search Client Warning]:', error);
-    return null;
-  }
-}
-
-/**
- * Quick helper to get single best product image URL
- */
 export async function fetchProductImageUrl(
   productName: string,
+  category?: string,
   brand?: string,
   size?: string,
-  barcode?: string
+  query?: string
 ): Promise<string> {
   try {
-    const res = await searchProductImageWithCandidates({
-      name: productName,
-      brand,
-      size,
-      barcode
-    });
-    return res?.imageUrl || '';
-  } catch {
+    const details = await fetchProductImageDetails(productName, { category, brand, size, query });
+    return details.imageUrl || '';
+  } catch (error) {
+    console.error('Error fetching image URL:', error);
     return '';
   }
 }
 
-/**
- * Helper to get safe proxied image URL if direct hotlinking fails
- */
-export function getProxiedImageUrl(originalUrl: string): string {
-  if (!originalUrl || !originalUrl.startsWith('http')) return originalUrl;
-  if (originalUrl.includes('/api/image-proxy')) return originalUrl;
-  return `/api/image-proxy?url=${encodeURIComponent(originalUrl)}`;
+export async function fetchProductImageDetails(
+  productName: string,
+  options?: {
+    category?: string;
+    brand?: string;
+    size?: string;
+    query?: string;
+  }
+): Promise<ResolveImageDetails> {
+  const response = await fetch('/api/ai/product-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: productName,
+      category: options?.category,
+      brand: options?.brand,
+      size: options?.size,
+      query: options?.query
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch image: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return {
+    imageUrl: data.imageUrl || '',
+    thumbnailUrl: data.thumbnailUrl || data.imageUrl || '',
+    title: data.title || productName,
+    source: data.source || 'web_search',
+    sourceDomain: data.sourceDomain || '',
+    candidates: Array.isArray(data.candidates) ? data.candidates : []
+  };
 }

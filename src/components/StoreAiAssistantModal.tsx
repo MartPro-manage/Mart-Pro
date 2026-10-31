@@ -1668,7 +1668,7 @@ export const StoreAiAssistantModal: React.FC<StoreAiAssistantModalProps> = ({
         // Fetch image if new product and no image provided
         let imageUrl = p.imageUrl?.trim() || existing?.imageUrl || '';
         if (!existing && !imageUrl) {
-            imageUrl = await fetchProductImageUrl(p.name.trim());
+            imageUrl = await fetchProductImageUrl(p.name.trim(), p.category);
         }
 
         savedShortcuts.push({ name: p.name || existing?.name || 'Product', code: shortcutCode, isUpdate: !!existing });

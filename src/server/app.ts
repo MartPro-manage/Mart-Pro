@@ -624,59 +624,20 @@ ${storeContext ? JSON.stringify(storeContext, null, 2) : 'No live store context 
     }
   });
 
-  // High-performance image proxy endpoint to bypass CORS and anti-hotlinking protections
-  app.get('/api/image-proxy', async (req: Request, res: Response) => {
-    try {
-      const url = req.query.url as string;
-      if (!url || typeof url !== 'string' || !url.startsWith('http')) {
-        return res.status(400).send('Invalid or missing image URL');
-      }
-
-      const imageRes = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-          'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
-        },
-        signal: AbortSignal.timeout(6000)
-      });
-
-      if (!imageRes.ok) {
-        return res.status(imageRes.status).send('Failed to fetch remote image');
-      }
-
-      const contentType = imageRes.headers.get('content-type') || 'image/jpeg';
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
-      const arrayBuffer = await imageRes.arrayBuffer();
-      return res.send(Buffer.from(arrayBuffer));
-    } catch (err: any) {
-      return res.status(500).send('Image proxy error: ' + err.message);
-    }
-  });
-
-  // Accurate Real Web & FMCG Product Image Search Endpoint
+  // Automated AI Product Image Generator Endpoint
   app.post('/api/ai/product-image', async (req: Request, res: Response) => {
     try {
-      const { name, category, brand, size, barcode, manualQuery } = req.body;
-      const targetQuery = (manualQuery || name || '').trim();
-      if (!targetQuery) {
-        return res.status(400).json({ error: 'Product name or search query is required' });
+      const { name, category, brand, size, query } = req.body;
+      if (!name || typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ error: 'Product name is required' });
       }
 
-      const result = await resolveProductImage(
-        ai,
-        name ? name.trim() : targetQuery,
-        category,
-        brand,
-        size,
-        barcode,
-        manualQuery
-      );
+      const result = await resolveProductImage(ai, name.trim(), category, brand, size, query);
       return res.json(result);
     } catch (err: any) {
-      console.error('[Product Image Search Error]:', err);
+      console.error('[AI Product Image Error]:', err);
       return res.status(500).json({
-        error: err?.message || 'Failed to search product image',
+        error: err?.message || 'Failed to generate product image',
         fallback: true
       });
     }
@@ -719,7 +680,7 @@ ${storeContext ? JSON.stringify(storeContext, null, 2) : 'No live store context 
         await Promise.all(chunk.map(async (item) => {
           if (!item.name) return;
           try {
-            const imgResult = await resolveProductImage(ai, item.name, item.category, item.brand, item.size, item.barcode);
+            const imgResult = await resolveProductImage(ai, item.name, item.category, item.brand, item.size);
             if (imgResult && imgResult.imageUrl) {
               await updateDoc(doc(currentDb, 'products', item.id), {
                 imageUrl: imgResult.imageUrl,

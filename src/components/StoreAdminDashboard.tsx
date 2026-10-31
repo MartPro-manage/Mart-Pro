@@ -1256,18 +1256,6 @@ export const StoreAdminDashboard: React.FC<StoreAdminDashboardProps> = ({
         {/* STICKY TOP APP BAR */}
         <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 px-3 sm:px-6 py-3.5 flex items-center justify-between gap-4 shadow-2xs shrink-0">
           <div className="flex items-center gap-3 min-w-0">
-            {/* Menu Button to Open Sidebar Drawer */}
-            <button
-              type="button"
-              onClick={() => setIsSidebarOpenMobile(true)}
-              className="p-2 rounded-xl bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 cursor-pointer flex items-center gap-1.5 text-xs font-bold transition-colors shadow-2xs"
-              title="Open Sidebar Navigation"
-              aria-label="Open Sidebar Navigation"
-            >
-              <Menu className="w-5 h-5 text-orange-600" />
-              <span>Menu</span>
-            </button>
-
             {/* Breadcrumb Indicator */}
             <div className="flex items-center gap-2 min-w-0">
               <button 

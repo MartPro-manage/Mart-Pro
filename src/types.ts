@@ -258,6 +258,11 @@ export interface Product {
   discountActive?: boolean; // Whether discount is currently active on this product
   discountStartDate?: string; // Date (YYYY-MM-DD) from which discount is applicable
   discountEndDate?: string; // Date (YYYY-MM-DD) until which discount is applicable (expiry date)
+  brand?: string;
+  description?: string;
+  reorderLevel?: number;
+  isActive?: boolean;
+  trackStock?: boolean;
   updatedAt: string;
   createdAt: string;
 }
@@ -397,6 +402,9 @@ export interface Sale {
   cashReceived?: number;
   changeReturned?: number;
   receiptNumber: string;
+  billNumber?: string;
+  status?: 'completed' | 'returned' | 'on_hold';
+  paymentMode?: 'cash' | 'card' | 'jazzcash' | 'easypaisa' | 'bank_transfer' | string;
   timestamp: string;
   expiresAt?: string;
   isSlipDeleted?: boolean;
@@ -522,9 +530,39 @@ export interface SupplierProfile {
   businessName?: string;
   email?: string;
   notes?: string;
+  totalDue?: number;
+  advanceBalance?: number;
   status: 'active' | 'inactive';
   createdAt: string;
   updatedAt: string;
+}
+
+export type Supplier = SupplierProfile;
+
+export interface LedgerEntry {
+  id: string;
+  storeId: string;
+  date: string;
+  particulars: string;
+  debit: number;
+  credit: number;
+  balance: number;
+  type: 'general' | 'supplier';
+  supplierId?: string;
+  supplierName?: string;
+  referenceId?: string;
+  category?: string;
+  createdAt: string;
+}
+
+export interface ActivityLog {
+  id: string;
+  storeId: string;
+  title: string;
+  description: string;
+  type: 'sale' | 'stock' | 'order' | 'expense' | 'supplier';
+  amount?: number;
+  timestamp: string;
 }
 
 export interface SupplierPayment {

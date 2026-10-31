@@ -15,6 +15,8 @@ import { StaffAttendanceView } from './components/StaffAttendanceView';
 import { ReceiptModal } from './components/ReceiptModal';
 import { PublicReceiptView } from './components/PublicReceiptView';
 import { OnlineStorefrontView } from './components/OnlineStorefrontView';
+import { Screen1Login } from './components/martpro/Screen1Login';
+import { MartProMainLayout } from './components/martpro/MartProMainLayout';
 import { PackagePlus } from 'lucide-react';
 
 export default function App() {
@@ -295,230 +297,34 @@ export default function App() {
     setIsReceiptModalOpen(true);
   };
 
-  // Render Login if not authenticated
+  // 1. Render Screen 1: Login Page if not authenticated
   if (!auth.user) {
-    return <Login onLoginSuccess={handleLoginSuccess} initialError={disabledNotice} />;
+    return <Screen1Login onLoginSuccess={handleLoginSuccess} initialError={disabledNotice} />;
   }
+
+  const defaultStore: Store = {
+    id: 'mart-pro-store',
+    name: 'Mart Pro Main Supermarket',
+    adminUsername: 'admin@martpro.com',
+    phone: '0300-8899770',
+    address: 'Commercial Avenue, Block 4, Supermarket Hub',
+    currencySymbol: 'Rs.',
+    status: 'active',
+    createdAt: new Date().toISOString()
+  };
 
   const userRole = auth.user.role;
   const currentStoreId = inspectedStore?.id || auth.store?.id;
   const liveStoreFromList = currentStoreId ? allStores.find(s => s.id === currentStoreId) : null;
-  const activeStore = liveStoreFromList || inspectedStore || auth.store || (userRole === 'super_admin' && allStores.length === 1 ? allStores[0] : null);
+  const effectiveStore = liveStoreFromList || inspectedStore || auth.store || defaultStore;
 
-  // Universal return action: returns back to main panel / default view
-  const handleUniversalReturn = () => {
-    if (userRole === 'cash_counter') {
-      setActiveNavView('pos');
-    } else if (userRole === 'product_register') {
-      setActiveNavView('inventory');
-    } else if (userRole === 'customer_price_checker') {
-      setActiveNavView('price_checker');
-    } else {
-      setActiveNavView('dashboard');
-    }
-  };
-
+  // 2. Render complete 13-Screen Mart Pro layout matching reference mockup
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-slate-50 text-slate-900 font-sans selection:bg-orange-500 selection:text-white">
-      {/* Top Navbar with Dynamic Interface Switching - Moves separately from page interface */}
-      <Navbar 
-        auth={auth} 
-        activeView={activeNavView}
-        onSelectView={(view) => setActiveNavView(view)}
-        onLogout={handleLogout} 
-      />
-
-      {/* Main Content Body - Dynamically renders ONLY the selected view and scrolls separately (scroll slide bar hidden for super admin) */}
-      <main className={`flex-1 min-h-0 flex flex-col ${
-        activeNavView === 'dashboard' || activeNavView === 'pos' || activeNavView === 'price_checker'
-          ? 'overflow-hidden'
-          : userRole === 'super_admin' 
-            ? 'overflow-y-auto scrollbar-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' 
-            : 'overflow-y-auto'
-      }`}>
-
-        {/* 1. SUPPLIER MODULE (Explicitly in Main Navigation) */}
-        {activeNavView === 'suppliers' && activeStore && (
-          <SupplierManagementView 
-            store={activeStore} 
-            currentUser={auth.user} 
-            initialTab="suppliers"
-            onBack={handleUniversalReturn}
-          />
-        )}
-
-        {/* 1b. ADD SUPPLIER OPTION */}
-        {activeNavView === 'add_supplier' && activeStore && (
-          <AddSupplierView 
-            store={activeStore} 
-            currentUser={auth.user} 
-            onBack={handleUniversalReturn}
-          />
-        )}
-
-        {/* 2. STAFF & SALARIES */}
-        {activeNavView === 'staff' && activeStore && (
-          <StaffSessionsView 
-            store={activeStore} 
-            currentUser={auth.user} 
-            onBack={handleUniversalReturn}
-          />
-        )}
-
-        {/* 3. CASH COUNTER POINT OF SALE (POS) */}
-        {activeNavView === 'pos' && activeStore && (
-          <CashCounterView 
-            store={activeStore} 
-            currentUser={auth.user} 
-            onBack={handleUniversalReturn}
-            onLogout={handleLogout}
-          />
-        )}
-
-        {/* 4. PRODUCT REGISTER & STOCK IN */}
-        {activeNavView === 'inventory' && (
-          activeStore ? (
-            <ProductRegisterView 
-              store={activeStore} 
-              currentUser={auth.user} 
-              onBack={handleUniversalReturn}
-            />
-          ) : (
-            <div className="flex-1 min-h-0 flex flex-col items-center justify-center p-6 bg-slate-50 text-slate-800">
-              <div className="max-w-md w-full bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-md text-center space-y-4">
-                <div className="w-14 h-14 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
-                  <PackagePlus className="w-7 h-7" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-black text-slate-900 tracking-tight">Select Store for Product Register</h3>
-                  <p className="text-xs text-slate-500 mt-1 font-medium">
-                    You are logged in as Central Super Admin. Choose which store inventory to register and manage products for:
-                  </p>
-                </div>
-                <div className="space-y-2 pt-2 max-h-72 overflow-y-auto">
-                  {allStores.map(s => (
-                    <button
-                      key={s.id}
-                      onClick={() => setInspectedStore(s)}
-                      className="w-full p-3.5 rounded-2xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50/80 text-left font-bold text-sm text-slate-800 flex items-center justify-between transition-all cursor-pointer shadow-xs"
-                    >
-                      <div>
-                        <div className="font-extrabold text-slate-900">{s.name}</div>
-                        <div className="text-[11px] text-slate-500 font-medium">{s.adminUsername || s.branchCode || 'Active Store'}</div>
-                      </div>
-                      <span className="text-xs text-blue-600 font-black flex items-center gap-1">Open Register &rarr;</span>
-                    </button>
-                  ))}
-                  {allStores.length === 0 && (
-                    <p className="text-xs text-slate-400 py-3">No stores configured yet.</p>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={handleUniversalReturn}
-                  className="text-xs font-bold text-slate-500 hover:text-slate-800 pt-2 cursor-pointer"
-                >
-                  ← Return to Master Control
-                </button>
-              </div>
-            </div>
-          )
-        )}
-
-        {/* 5. CUSTOMER PRICE CHECKER KIOSK */}
-        {activeNavView === 'price_checker' && activeStore && (
-          <CustomerPriceCheckerView 
-            store={activeStore} 
-            currentUser={auth.user} 
-            onBack={handleUniversalReturn}
-          />
-        )}
-
-        {/* 6. STAFF ATTENDANCE & MONTHLY REPORTS */}
-        {activeNavView === 'attendance' && activeStore && (
-          <StaffAttendanceView 
-            store={activeStore} 
-            currentUser={auth.user} 
-            storeUsers={storeUsers}
-            onBack={handleUniversalReturn}
-          />
-        )}
-
-        {/* 6. PRIMARY DASHBOARD / MAIN PANEL */}
-        {activeNavView === 'dashboard' && (
-          <div className="h-full w-full flex-1 min-h-0 flex flex-col">
-            {userRole === 'super_admin' ? (
-              inspectedStore ? (
-                <div className="h-full w-full flex-1 min-h-0 flex flex-col">
-                  <div className="bg-orange-50 border-b border-orange-200 px-6 py-2.5 flex items-center justify-between text-xs text-orange-950 font-medium shrink-0">
-                    <span className="font-bold text-orange-700">
-                      Inspecting Store: {inspectedStore.name}
-                    </span>
-                    <button
-                      onClick={() => setInspectedStore(null)}
-                      className="px-3 py-1 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-lg cursor-pointer transition-colors shadow-sm"
-                    >
-                      ← Back to Central Super Admin
-                    </button>
-                  </div>
-
-                  <div className="flex-1 min-h-0 h-full w-full">
-                    <StoreAdminDashboard
-                      store={inspectedStore}
-                      currentUser={auth.user}
-                      onNavigateToPOS={() => setActiveNavView('pos')}
-                      onNavigateToInventory={() => setActiveNavView('inventory')}
-                      onNavigateToSuppliers={() => setActiveNavView('suppliers')}
-                      onNavigateToLiveSessions={() => setActiveNavView('staff')}
-                      onViewReceipt={handleViewReceipt}
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div className="h-full w-full flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain">
-                  <SuperAdminDashboard
-                    onSelectStoreToManage={(store) => setInspectedStore(store)}
-                  />
-                </div>
-              )
-            ) : (userRole === 'admin' || userRole === 'store_admin' || userRole === 'branch_admin') && activeStore ? (
-              <StoreAdminDashboard
-                store={activeStore}
-                currentUser={auth.user}
-                onNavigateToPOS={() => setActiveNavView('pos')}
-                onNavigateToInventory={() => setActiveNavView('inventory')}
-                onNavigateToSuppliers={() => setActiveNavView('suppliers')}
-                onNavigateToLiveSessions={() => setActiveNavView('staff')}
-                onViewReceipt={handleViewReceipt}
-              />
-            ) : userRole === 'cash_counter' && activeStore ? (
-              <CashCounterView 
-                store={activeStore} 
-                currentUser={auth.user} 
-              />
-            ) : userRole === 'product_register' && activeStore ? (
-              <ProductRegisterView 
-                store={activeStore} 
-                currentUser={auth.user} 
-              />
-            ) : userRole === 'customer_price_checker' && activeStore ? (
-              <CustomerPriceCheckerView 
-                store={activeStore} 
-                currentUser={auth.user} 
-              />
-            ) : null}
-          </div>
-        )}
-
-      </main>
-
-      {/* Global Receipt Modal for Viewing Historical or Inspected Receipts */}
-      <ReceiptModal
-        sale={selectedReceiptSale}
-        store={activeStore}
-        isOpen={isReceiptModalOpen}
-        onClose={() => setIsReceiptModalOpen(false)}
-      />
-    </div>
+    <MartProMainLayout
+      store={effectiveStore}
+      currentUser={auth.user}
+      onLogout={handleLogout}
+      onStoreChange={(s) => setInspectedStore(s)}
+    />
   );
 }

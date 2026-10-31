@@ -18,7 +18,21 @@ import {
   UserPlus
 } from 'lucide-react';
 
-export type AppNavView = 'dashboard' | 'pos' | 'inventory' | 'suppliers' | 'add_supplier' | 'staff' | 'price_checker' | 'attendance';
+export type AppNavView = 
+  | 'dashboard' 
+  | 'pos' 
+  | 'products' 
+  | 'sales' 
+  | 'customers' 
+  | 'suppliers' 
+  | 'expenses' 
+  | 'reports' 
+  | 'staff' 
+  | 'settings'
+  | 'inventory' 
+  | 'add_supplier' 
+  | 'price_checker' 
+  | 'attendance';
 
 interface NavbarProps {
   auth: AuthState;

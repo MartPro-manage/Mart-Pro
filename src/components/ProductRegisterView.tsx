@@ -27,7 +27,8 @@ import { ItemDiscountModal } from './ItemDiscountModal';
 import { ManageCategoriesView } from './ManageCategoriesView';
 import { ProductShortcutsModal } from './ProductShortcutsModal';
 import { downloadBarcodeForProduct } from '../lib/barcodeDownload';
-import { fetchProductImageUrl } from '../lib/imageFetcher';
+import { fetchProductImageUrl, getProxiedImageUrl } from '../lib/imageFetcher';
+import { ProductImageSearchModal } from './ProductImageSearchModal';
 import { BatchProductRow } from '../lib/excelParser';
 import { 
   getAllCategories, 
@@ -87,6 +88,7 @@ import {
   ShoppingBag,
   Hash,
   CheckCircle2,
+  Check,
   Globe,
   Copy,
   ExternalLink
@@ -137,8 +139,10 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   const [imageUrl, setImageUrl] = useState('');
   const [imageInputMode, setImageInputMode] = useState<'upload' | 'url'>('upload');
   
-  // Google Image Search & Auto-Paste states
+  // Live Web Product Image Search states
   const [isGeneratingAiImage, setIsGeneratingAiImage] = useState(false);
+  const [isImageSearchModalOpen, setIsImageSearchModalOpen] = useState(false);
+  const [isBatchImageSyncing, setIsBatchImageSyncing] = useState(false);
   const [autoAiImageEnabled, setAutoAiImageEnabled] = useState(true);
   const [aiImageSource, setAiImageSource] = useState<string | null>(null);
   const [imageSourceDomain, setImageSourceDomain] = useState<string | null>(null);
@@ -564,12 +568,12 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     }
   }, [barcode, serialNumber, products]);
 
-  // Handler to search Google and copy/paste real product image URL
+  // Handler to search accurate real product packaging photo
   const handleSearchProductImageOnline = async (productTitle?: string, force = false) => {
     const targetTitle = (productTitle !== undefined ? productTitle : name).trim();
     if (!targetTitle) {
       if (force) {
-        showNotification('error', 'Please enter a product name first to search Google for an image.');
+        showNotification('error', 'Please enter a product name first to search for accurate photos.');
       }
       return;
     }
@@ -585,10 +589,11 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: `${targetTitle} ${brandName || ''} ${selectedSize || ''} ${category !== 'General' ? category : ''}`.trim(),
-          category: category !== 'General' ? category : undefined,
+          name: targetTitle,
           brand: brandName,
-          size: selectedSize || undefined,
+          size: selectedSize || weight || undefined,
+          barcode: barcode ? barcode.trim() : undefined,
+          category: category !== 'General' ? category : undefined
         }),
       });
 
@@ -600,24 +605,50 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
       if (data && data.imageUrl) {
         setImageUrl(data.imageUrl);
         setFallbackThumbnailUrl(data.thumbnailUrl || null);
-        setAiImageSource(data.source || 'google_web_search');
+        setAiImageSource(data.source || 'web_product_search');
         setImageSourceDomain(data.sourceDomain || null);
         if (Array.isArray(data.candidates) && data.candidates.length > 0) {
           setSearchCandidates(data.candidates);
         }
         lastFetchedNameRef.current = targetTitle;
-        showNotification('success', `✓ Automatically searched image, copied link & pasted for "${targetTitle}"!`);
+        showNotification('success', `✓ Found authentic product photo for "${targetTitle}"${data.sourceDomain ? ` from ${data.sourceDomain}` : ''}!`);
       }
     } catch (err: any) {
       console.warn('[Online Image Search Error]:', err);
       if (force) {
-        showNotification('error', 'Could not retrieve image from Google. You can paste any image URL or upload manually.');
+        showNotification('error', 'Could not retrieve image online. You can choose from candidates, paste a URL, or upload.');
       }
     } finally {
       setIsGeneratingAiImage(false);
     }
   };
   const handleAutoGenerateProductPicture = handleSearchProductImageOnline;
+
+  // Batch sync handler for existing store catalog products missing images
+  const handleBatchSyncAllMissingImages = async () => {
+    if (!store?.id) return;
+    setIsBatchImageSyncing(true);
+    try {
+      const res = await fetch('/api/ai/batch-sync-product-images', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storeId: store.id,
+          overwriteExisting: false
+        })
+      });
+      const data = await res.json();
+      if (data && data.success) {
+        showNotification('success', `✓ Successfully updated ${data.updatedCount} products with real packaging photos!`);
+      } else {
+        showNotification('error', data?.error || 'Failed to sync missing product photos');
+      }
+    } catch (err: any) {
+      showNotification('error', 'Error syncing product photos: ' + err.message);
+    } finally {
+      setIsBatchImageSyncing(false);
+    }
+  };
 
   // Automatically trigger AI Product Picture when user enters or edits product name/category/brand
   useEffect(() => {
@@ -1339,7 +1370,28 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                       </button>
                     )}
 
-                    {/* Primary "+ Add Product" Button (Matches Screenshot) */}
+                    {/* Auto-Fetch Real Packaging Photos for All Products Missing Images */}
+                    <button
+                      type="button"
+                      onClick={handleBatchSyncAllMissingImages}
+                      disabled={isBatchImageSyncing || products.length === 0}
+                      className="px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs shrink-0 disabled:opacity-50"
+                      title="Automatically find and attach authentic packaging photos for products missing pictures"
+                    >
+                      {isBatchImageSyncing ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+                          <span>Syncing Photos...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>Sync Photos</span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* Primary "+ Add Product" Button */}
                     <motion.button
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
@@ -1918,44 +1970,61 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
 
                 <form onSubmit={handleSubmitProductStock} className="space-y-6">
                   {/* Field 1: Product Name & Media */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
                       <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
                         Product Name *
                       </label>
                       <div className="flex items-center gap-2 text-xs">
                         {name.trim().length >= 3 && !imageUrl && autoAiImageEnabled && (
                           <span className="text-[11px] text-sky-600 font-semibold flex items-center gap-1 animate-pulse">
-                            <Search className="w-3 h-3 text-sky-500" /> Searching Google...
+                            <Search className="w-3 h-3 text-sky-500" /> Searching accurate packaging...
                           </span>
                         )}
                         <button
                           type="button"
+                          onClick={() => setIsImageSearchModalOpen(true)}
+                          disabled={!name.trim()}
+                          className="text-[11px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-2.5 py-1 rounded-lg border border-indigo-200 flex items-center gap-1 transition-all cursor-pointer disabled:opacity-50 shadow-2xs"
+                          title="Open photo search gallery to search or pick exact packaging"
+                        >
+                          <Search className="w-3 h-3 text-indigo-600" />
+                          <span>🔍 Pick Photo</span>
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => handleSearchProductImageOnline(name, true)}
                           disabled={isGeneratingAiImage || !name.trim()}
-                          className="text-[11px] bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold px-2.5 py-1 rounded-lg border border-sky-200 flex items-center gap-1 transition-all cursor-pointer disabled:opacity-50"
-                          title="Search Google for image, copy link and paste it"
+                          className="text-[11px] bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold px-2.5 py-1 rounded-lg border border-sky-200 flex items-center gap-1 transition-all cursor-pointer disabled:opacity-50 shadow-2xs"
+                          title="Automatically find and attach accurate product photo"
                         >
                           <Sparkles className="w-3 h-3 text-sky-600" />
-                          <span>{isGeneratingAiImage ? 'Searching...' : '✨ Auto-Find Image'}</span>
+                          <span>{isGeneratingAiImage ? 'Finding...' : '✨ Auto-Find'}</span>
                         </button>
                       </div>
                     </div>
 
                     <div className="flex items-start gap-3">
                       {/* Image Thumbnail Box */}
-                      <div className="w-14 h-14 rounded-xl bg-slate-50 border border-slate-300 shrink-0 flex items-center justify-center overflow-hidden relative shadow-2xs group">
+                      <div 
+                        onClick={() => name.trim() && setIsImageSearchModalOpen(true)}
+                        className="w-16 h-16 rounded-2xl bg-slate-50 border border-slate-300 shrink-0 flex items-center justify-center overflow-hidden relative shadow-2xs group cursor-pointer hover:border-indigo-500 transition-colors"
+                        title="Click to search or change product photo"
+                      >
                         {isGeneratingAiImage ? (
-                          <RefreshCw className="w-4 h-4 text-sky-600 animate-spin" />
+                          <RefreshCw className="w-5 h-5 text-indigo-600 animate-spin" />
                         ) : imageUrl ? (
                           <>
                             <img
                               src={imageUrl}
                               alt="Product"
-                              className="w-full h-full object-contain p-0.5"
+                              className="w-full h-full object-contain p-1"
                               referrerPolicy="no-referrer"
                               onError={(e) => {
-                                if (fallbackThumbnailUrl && (e.target as any).src !== fallbackThumbnailUrl) {
+                                const currentSrc = (e.target as any).src;
+                                if (!currentSrc.includes('/api/image-proxy') && imageUrl.startsWith('http')) {
+                                  (e.target as any).src = getProxiedImageUrl(imageUrl);
+                                } else if (fallbackThumbnailUrl && currentSrc !== fallbackThumbnailUrl) {
                                   (e.target as any).src = fallbackThumbnailUrl;
                                 } else {
                                   (e.target as any).src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%2394a3b8" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
@@ -1964,21 +2033,25 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                             />
                             <button
                               type="button"
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 setImageUrl('');
                                 setAiImageSource(null);
                                 setImageSourceDomain(null);
                                 setFallbackThumbnailUrl(null);
                                 setSearchCandidates([]);
                               }}
-                              className="absolute top-0.5 right-0.5 bg-red-600 text-white rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shadow-xs"
+                              className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shadow-xs z-10"
                               title="Remove image"
                             >
                               <X className="w-2.5 h-2.5" />
                             </button>
                           </>
                         ) : (
-                          <ImageIcon className="w-5 h-5 text-slate-300" />
+                          <div className="flex flex-col items-center justify-center text-slate-400 group-hover:text-indigo-600">
+                            <ImageIcon className="w-6 h-6" />
+                            <span className="text-[9px] font-bold mt-0.5">Add Pic</span>
+                          </div>
                         )}
                       </div>
 
@@ -1988,7 +2061,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                           ref={nameInputRef}
                           type="text"
                           required
-                          placeholder="e.g. Olpers Full Cream Milk 1L, Tapal Tea 450g..."
+                          placeholder="e.g. Olpers Full Cream Milk 1L, Tapal Danedar Tea 450g..."
                           value={name}
                           onChange={(e) => setName(e.target.value)}
                           onBlur={() => {
@@ -1996,10 +2069,18 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                               handleAutoGenerateProductPicture(name.trim(), false);
                             }
                           }}
-                          className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-blue-500 focus:bg-white font-bold transition-all shadow-2xs"
+                          className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-indigo-600 focus:bg-white font-bold transition-all shadow-2xs"
                         />
-                        <div className="flex items-center justify-between text-[11px] text-slate-400">
-                          <span>{imageSourceDomain ? `Image source: ${imageSourceDomain}` : 'Shows on POS and printed receipts'}</span>
+                        <div className="flex items-center justify-between text-[11px] text-slate-400 flex-wrap gap-1">
+                          <span className="flex items-center gap-1">
+                            {imageSourceDomain ? (
+                              <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                                ✓ Photo from {imageSourceDomain}
+                              </span>
+                            ) : (
+                              'Shows on POS counter, online catalog & customer receipts'
+                            )}
+                          </span>
                           <div className="flex items-center gap-2">
                             <input
                               ref={fileInputRef}
@@ -2013,7 +2094,15 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                               onClick={() => fileInputRef.current?.click()}
                               className="text-slate-500 hover:text-slate-800 font-semibold cursor-pointer underline"
                             >
-                              Upload custom photo
+                              Upload
+                            </button>
+                            <span>·</span>
+                            <button
+                              type="button"
+                              onClick={() => setIsImageSearchModalOpen(true)}
+                              className="text-indigo-600 hover:text-indigo-800 font-bold cursor-pointer underline"
+                            >
+                              Search Gallery
                             </button>
                             <span>·</span>
                             <button
@@ -2034,27 +2123,70 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                       </div>
                     </div>
 
-                    {/* Search Candidates if available */}
+                    {/* Search Candidates Visual Gallery if available */}
                     {searchCandidates && searchCandidates.length > 1 && (
-                      <div className="flex items-center gap-1.5 pt-1 overflow-x-auto pb-1">
-                        <span className="text-[10px] text-slate-400 shrink-0 font-medium">Candidates:</span>
-                        {searchCandidates.slice(0, 6).map((c, idx) => (
+                      <div className="bg-slate-50/80 p-2 rounded-xl border border-slate-200/90 space-y-1.5">
+                        <div className="flex items-center justify-between text-[11px] text-slate-600 font-semibold">
+                          <span className="flex items-center gap-1 font-bold text-slate-700">
+                            <Sparkles className="w-3 h-3 text-indigo-600" />
+                            <span>Matched Product Variations:</span>
+                          </span>
                           <button
-                            key={idx}
                             type="button"
-                            onClick={() => {
-                              setImageUrl(c.url);
-                              setFallbackThumbnailUrl(c.thumbnail);
-                              setImageSourceDomain(c.domain || null);
-                              showNotification('success', `Selected image from ${c.domain || 'candidate'}`);
-                            }}
-                            className={`w-8 h-8 rounded border p-0.5 shrink-0 overflow-hidden cursor-pointer ${
-                              imageUrl === c.url || imageUrl === c.thumbnail ? 'border-sky-500 ring-1 ring-sky-300' : 'border-slate-200'
-                            }`}
+                            onClick={() => setIsImageSearchModalOpen(true)}
+                            className="text-indigo-600 hover:underline font-bold text-[10px]"
                           >
-                            <img src={c.thumbnail || c.url} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            View All ({searchCandidates.length}) &rarr;
                           </button>
-                        ))}
+                        </div>
+                        <div className="flex items-center gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                          {searchCandidates.slice(0, 6).map((c, idx) => {
+                            const isMatch = imageUrl === c.url || imageUrl === c.thumbnail;
+                            return (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => {
+                                  setImageUrl(c.url);
+                                  setFallbackThumbnailUrl(c.thumbnail);
+                                  setImageSourceDomain(c.domain || null);
+                                  showNotification('success', `Selected image from ${c.domain || 'candidate'}`);
+                                }}
+                                title={`${c.title} (${c.domain})`}
+                                className={`group relative w-12 h-12 rounded-xl border p-0.5 shrink-0 overflow-hidden cursor-pointer transition-all bg-white ${
+                                  isMatch
+                                    ? 'border-indigo-600 ring-2 ring-indigo-400 shadow-xs'
+                                    : 'border-slate-300 hover:border-indigo-400 hover:shadow-xs'
+                                }`}
+                              >
+                                <img
+                                  src={c.thumbnail || c.url}
+                                  alt=""
+                                  className="w-full h-full object-contain"
+                                  referrerPolicy="no-referrer"
+                                  onError={(e) => {
+                                    const el = e.target as HTMLImageElement;
+                                    if (!el.src.includes('/api/image-proxy')) {
+                                      el.src = getProxiedImageUrl(c.url);
+                                    }
+                                  }}
+                                />
+                                {isMatch && (
+                                  <div className="absolute top-0.5 right-0.5 bg-indigo-600 text-white rounded-full p-0.5">
+                                    <Check className="w-2 h-2" />
+                                  </div>
+                                )}
+                              </button>
+                            );
+                          })}
+                          <button
+                            type="button"
+                            onClick={() => setIsImageSearchModalOpen(true)}
+                            className="h-12 px-2.5 rounded-xl border border-dashed border-indigo-300 hover:border-indigo-500 bg-indigo-50/50 hover:bg-indigo-50 text-indigo-700 text-[10px] font-bold shrink-0 flex items-center justify-center transition-colors cursor-pointer"
+                          >
+                            + More
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2628,6 +2760,60 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
 
       </motion.div>
     </AnimatePresence>
+
+        {/* Dedicated Real Product Packaging Image Search Modal */}
+        <ProductImageSearchModal
+          isOpen={isImageSearchModalOpen}
+          onClose={() => setIsImageSearchModalOpen(false)}
+          initialQuery={name}
+          brand={activeSelectedCompany?.name}
+          size={selectedSize || weight}
+          barcode={barcode}
+          currentImageUrl={imageUrl}
+          initialCandidates={searchCandidates}
+          onSelectImage={(newUrl, domain, thumb) => {
+            setImageUrl(newUrl);
+            setAiImageSource('web_product_search');
+            setImageSourceDomain(domain || null);
+            setFallbackThumbnailUrl(thumb || null);
+            showNotification('success', `✓ Product photo selected${domain ? ` from ${domain}` : ''}!`);
+          }}
+          onUploadImage={(file) => {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              const img = new Image();
+              img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const MAX_DIM = 450;
+                let width = img.width;
+                let height = img.height;
+                if (width > height) {
+                  if (width > MAX_DIM) {
+                    height = Math.round((height * MAX_DIM) / width);
+                    width = MAX_DIM;
+                  }
+                } else {
+                  if (height > MAX_DIM) {
+                    width = Math.round((width * MAX_DIM) / height);
+                    height = MAX_DIM;
+                  }
+                }
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  ctx.drawImage(img, 0, 0, width, height);
+                  const compressed = canvas.toDataURL('image/jpeg', 0.85);
+                  setImageUrl(compressed);
+                  setImageSourceDomain('uploaded');
+                  showNotification('success', 'Custom photo attached and optimized!');
+                }
+              };
+              img.src = event.target?.result as string;
+            };
+            reader.readAsDataURL(file);
+          }}
+        />
 
         {/* Dedicated Barcode Generator & Print Station Modal */}
         <BarcodeGeneratorModal

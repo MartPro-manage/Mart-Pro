@@ -114,6 +114,34 @@
         "markedByUsername": { "type": "string", "description": "Username of branch admin who marked attendance" },
         "timestamp": { "type": "string", "description": "ISO date string" }
       }
+    },
+    "customers": {
+      "description": "Store customer accounts with contact details, credit ledger, and loyalty status",
+      "fields": {
+        "storeId": { "type": "string", "description": "Associated store ID" },
+        "name": { "type": "string", "description": "Customer full name" },
+        "phone": { "type": "string", "description": "Customer phone number" },
+        "email": { "type": "string", "description": "Customer email address" },
+        "address": { "type": "string", "description": "Customer physical address" },
+        "totalDue": { "type": "number", "description": "Total balance due" },
+        "status": { "type": "string", "description": "'Good' or 'Due'" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" }
+      }
+    },
+    "customer_ledgers": {
+      "description": "Customer ledger records for sales debits and payments received",
+      "fields": {
+        "storeId": { "type": "string", "description": "Associated store ID" },
+        "customerId": { "type": "string", "description": "Associated customer ID" },
+        "customerName": { "type": "string", "description": "Customer name" },
+        "date": { "type": "string", "description": "Transaction date YYYY-MM-DD" },
+        "reference": { "type": "string", "description": "Invoice or Receipt reference" },
+        "description": { "type": "string", "description": "Transaction description" },
+        "debit": { "type": "number", "description": "Debit amount" },
+        "credit": { "type": "number", "description": "Credit amount" },
+        "balance": { "type": "number", "description": "Current balance" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" }
+      }
     }
   }
 }

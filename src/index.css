@@ -1,5 +1,14 @@
 @import "tailwindcss";
 
+@theme {
+  --color-mart-orange: #FF6500;
+  --color-mart-dark: #111111;
+  --color-mart-sidebar: #111111;
+  --color-mart-card: #FFFFFF;
+  --color-mart-bg: #F8F9FA;
+  --color-mart-border: #E5E7EB;
+}
+
 @layer utilities {
   /* Clean, elegant custom scrollbar */
   .custom-scrollbar {

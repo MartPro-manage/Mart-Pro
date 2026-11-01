@@ -241,7 +241,7 @@ export const MultiProductBatchModal: React.FC<MultiProductBatchModalProps> = ({
         if (!existing) {
           productPayload.createdAt = new Date().toISOString();
           try {
-            const autoImg = await fetchProductImageUrl(row.name.trim(), row.category);
+            const autoImg = await fetchProductImageUrl(row.name.trim());
             if (autoImg) {
               productPayload.imageUrl = autoImg;
             }

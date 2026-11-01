@@ -140,7 +140,7 @@ export function createApiApp() {
   });
 
   // Health check endpoint for Cloud Run, Vercel, and monitoring
-  app.get(['/api/health', '/healthz', '/health'], (_req: Request, res: Response) => {
+  app.get('/api/health', (_req: Request, res: Response) => {
     res.json({
       status: 'healthy',
       service: 'mart-pro-pos',
@@ -627,12 +627,12 @@ ${storeContext ? JSON.stringify(storeContext, null, 2) : 'No live store context 
   // Automated AI Product Image Generator Endpoint
   app.post('/api/ai/product-image', async (req: Request, res: Response) => {
     try {
-      const { name, category, brand, size, query } = req.body;
+      const { name, category, brand, size } = req.body;
       if (!name || typeof name !== 'string' || !name.trim()) {
         return res.status(400).json({ error: 'Product name is required' });
       }
 
-      const result = await resolveProductImage(ai, name.trim(), category, brand, size, query);
+      const result = await resolveProductImage(ai, name.trim(), category, brand, size);
       return res.json(result);
     } catch (err: any) {
       console.error('[AI Product Image Error]:', err);

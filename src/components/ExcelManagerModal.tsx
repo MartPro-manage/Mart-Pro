@@ -516,7 +516,7 @@ export const ExcelManagerModal: React.FC<ExcelManagerModalProps> = ({
 
         let imageUrl = r.imageUrl?.trim() || '';
         if (!imageUrl) {
-            imageUrl = await fetchProductImageUrl(r.name.trim(), rowCategory);
+            imageUrl = await fetchProductImageUrl(r.name.trim());
         }
 
         return {

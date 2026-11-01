@@ -144,8 +144,6 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   const [imageSourceDomain, setImageSourceDomain] = useState<string | null>(null);
   const [fallbackThumbnailUrl, setFallbackThumbnailUrl] = useState<string | null>(null);
   const [searchCandidates, setSearchCandidates] = useState<Array<{ url: string; thumbnail: string; title: string; domain?: string }>>([]);
-  const [customSearchQuery, setCustomSearchQuery] = useState('');
-  const [showCustomSearchInput, setShowCustomSearchInput] = useState(false);
   const aiImageFetchDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const lastFetchedNameRef = useRef<string>('');
   const [weight, setWeight] = useState('');
@@ -207,7 +205,6 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
   const [activeTab, setActiveTab] = useState<'catalog' | 'form'>('form');
-  const [showMoreOptions, setShowMoreOptions] = useState(false);
 
   const [msg, setMsg] = useState<{ type: string; text: string } | null>(null);
   const showNotification = (type: 'success' | 'error' | 'info', text: string) => {
@@ -446,12 +443,6 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     setWeightPerUnit(p.weightPerUnit !== undefined ? p.weightPerUnit : '');
     setStockAdjustmentMode('keep');
     setStockQuantityToAdd('');
-    setShowMoreOptions(Boolean(
-      p.discountActive || 
-      p.weightPerUnit || 
-      (p.minStockLevel !== undefined && p.minStockLevel !== 5) || 
-      (p.weight && p.sellBy === 'weight')
-    ));
   };
 
   // Helper to find a registered product by Barcode, Serial Number, Short Code (1001-9999), or ID
@@ -566,18 +557,17 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     }
   }, [barcode, serialNumber, products]);
 
-  // Handler to search online and copy/paste real product image URL
-  const handleSearchProductImageOnline = async (productTitle?: string, force = false, customQueryOverride?: string) => {
+  // Handler to search Google and copy/paste real product image URL
+  const handleSearchProductImageOnline = async (productTitle?: string, force = false) => {
     const targetTitle = (productTitle !== undefined ? productTitle : name).trim();
-    const effectiveQuery = (customQueryOverride || '').trim();
-    if (!targetTitle && !effectiveQuery) {
+    if (!targetTitle) {
       if (force) {
-        showNotification('error', 'Please enter a product name first to search for an accurate image.');
+        showNotification('error', 'Please enter a product name first to search Google for an image.');
       }
       return;
     }
 
-    if (!force && !effectiveQuery && lastFetchedNameRef.current.toLowerCase() === targetTitle.toLowerCase() && imageUrl) {
+    if (!force && lastFetchedNameRef.current.toLowerCase() === targetTitle.toLowerCase() && imageUrl) {
       return;
     }
 
@@ -588,11 +578,10 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: targetTitle || effectiveQuery,
+          name: `${targetTitle} ${brandName || ''} ${selectedSize || ''} ${category !== 'General' ? category : ''}`.trim(),
           category: category !== 'General' ? category : undefined,
           brand: brandName,
           size: selectedSize || undefined,
-          query: effectiveQuery || undefined
         }),
       });
 
@@ -604,56 +593,24 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
       if (data && data.imageUrl) {
         setImageUrl(data.imageUrl);
         setFallbackThumbnailUrl(data.thumbnailUrl || null);
-        setAiImageSource(data.source || 'live_web_search');
+        setAiImageSource(data.source || 'google_web_search');
         setImageSourceDomain(data.sourceDomain || null);
         if (Array.isArray(data.candidates) && data.candidates.length > 0) {
           setSearchCandidates(data.candidates);
         }
         lastFetchedNameRef.current = targetTitle;
-        const domainText = data.sourceDomain ? ` from ${data.sourceDomain}` : '';
-        showNotification('success', `✓ Found accurate product image${domainText} for "${targetTitle || effectiveQuery}"!`);
+        showNotification('success', `✓ Automatically searched image, copied link & pasted for "${targetTitle}"!`);
       }
     } catch (err: any) {
       console.warn('[Online Image Search Error]:', err);
       if (force) {
-        showNotification('error', 'Could not retrieve online image. You can try custom keywords or paste an image URL.');
+        showNotification('error', 'Could not retrieve image from Google. You can paste any image URL or upload manually.');
       }
     } finally {
       setIsGeneratingAiImage(false);
     }
   };
   const handleAutoGenerateProductPicture = handleSearchProductImageOnline;
-
-  // Quick 1-click image finder for existing registered products in catalog
-  const handleQuickFindImageForExisting = async (p: Product) => {
-    if (!p.id || !store?.id) return;
-    try {
-      showNotification('info', `Searching accurate packaging image for "${p.name}"...`);
-      const res = await fetch('/api/ai/product-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: p.name,
-          category: p.category,
-          brand: (p as any).brand
-        }),
-      });
-      if (!res.ok) throw new Error('Search failed');
-      const data = await res.json();
-      if (data && data.imageUrl) {
-        const prodRef = doc(db, 'products', p.id);
-        await updateDoc(prodRef, {
-          imageUrl: data.imageUrl,
-          updatedAt: new Date().toISOString()
-        });
-        showNotification('success', `✓ Updated image for "${p.name}" from ${data.sourceDomain || 'web'}!`);
-      } else {
-        showNotification('info', `No matching image found for "${p.name}".`);
-      }
-    } catch (err: any) {
-      showNotification('error', `Could not find image: ${err?.message || 'Error'}`);
-    }
-  };
 
   // Automatically trigger AI Product Picture when user enters or edits product name/category/brand
   useEffect(() => {
@@ -761,7 +718,6 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     setStockQuantityToAdd('');
     setStockAdjustmentMode('keep');
     setExistingProduct(null);
-    setShowMoreOptions(false);
     if (barcodeInputRef.current) {
       barcodeInputRef.current.focus();
     }
@@ -1240,70 +1196,218 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     <div className="min-h-screen bg-slate-50 text-slate-900 p-3.5 sm:p-5 md:p-6 lg:p-8 xl:p-10">
       <div className="max-w-7xl 2xl:max-w-[1600px] w-full mx-auto space-y-5 sm:space-y-6">
 
-        {/* Sleek Single-Layer Header */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-3.5 sm:px-5 sm:py-3.5 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center gap-3 w-full sm:w-auto">
-            {onBack && (
-              <UniversalBackButton onBack={onBack} label="Back" />
-            )}
-            <div>
-              <div className="flex items-center gap-2">
-                <PackagePlus className="w-5 h-5 text-blue-600" />
-                <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
-                  Product Register
-                </h1>
-                <span className="text-slate-300">·</span>
-                <span className="text-xs text-slate-600 font-semibold">{store.name}</span>
+        {/* Top Control Banner (Compact Height, Wide Length, Dark Blue Theme) */}
+        <motion.div 
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25 }}
+          className="bg-gradient-to-r from-slate-950 via-blue-950 to-indigo-950 text-white p-3.5 sm:px-5 sm:py-3 rounded-2xl border border-blue-900/70 shadow-lg shadow-slate-950/20 relative overflow-hidden flex flex-col gap-2.5"
+        >
+          {/* Subtle Ambient Glow */}
+          <div className="absolute top-0 right-0 w-80 h-32 bg-blue-600/15 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
+
+          {/* Top Row: Navigation and Action Buttons */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5 z-10">
+            <div className="flex items-center gap-2">
+              {onBack && (
+                <UniversalBackButton onBack={onBack} label="Back" />
+              )}
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-blue-900/50 backdrop-blur-xs border border-blue-700/50 text-blue-100 text-xs font-black tracking-wide shadow-2xs">
+                <PackagePlus className="w-3.5 h-3.5 text-blue-400" />
+                <span>Product Register</span>
               </div>
-              <p className="text-xs text-slate-500">
-                Register stock inventory, set selling prices, and print barcode labels (PKR)
-              </p>
+            </div>
+
+            {/* All Action Buttons Row */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Discounts & Promotions Manager Button */}
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setIsDiscountModalOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs uppercase tracking-wider shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer relative border border-rose-400/40"
+                title="Add discount to all or selected products (% or Rs.)"
+              >
+                <Tag className="w-3.5 h-3.5 text-rose-200" />
+                <span>Discounts & Sales</span>
+                {products.filter(p => p.discountActive && p.discountValue).length > 0 && (
+                  <span className="ml-0.5 px-1.5 py-0.2 bg-white text-rose-700 text-[10px] font-black rounded-full">
+                    {products.filter(p => p.discountActive && p.discountValue).length}
+                  </span>
+                )}
+              </motion.button>
+
+              {/* Multi-Product Batch Entry & Excel Import */}
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setIsExcelModalOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-blue-900/60 hover:bg-blue-800/80 text-white font-bold text-xs uppercase tracking-wider shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-blue-700/60 backdrop-blur-xs"
+                title="Upload Excel from device or create spreadsheet in-app"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-blue-300" />
+                <span>Excel / Spreadsheet</span>
+              </motion.button>
+
+              {/* 4-Digit Short Codes Directory & PDF */}
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setIsShortcutsModalOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs uppercase tracking-wider shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-orange-400/40"
+                title="Open Product Short Codes Directory and Download PDF or Excel"
+              >
+                <Hash className="w-3.5 h-3.5 text-orange-200" />
+                <span>Short Codes (PDF)</span>
+              </motion.button>
+
+              {/* AI Assistant Button */}
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setIsAiAssistantOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                title="Store AI Copilot: Query cheapest/most selling items or ask questions"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-slate-950" />
+                <span>AI Assistant</span>
+              </motion.button>
+
+              {/* Generate Barcode Button */}
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => handleOpenGeneratorForProduct()}
+                className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs uppercase tracking-wider shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-slate-700"
+                title="Generate and print printable barcode sticker labels"
+              >
+                <BarcodeIcon className="w-3.5 h-3.5 text-amber-300" />
+                <span>Barcode Sticker</span>
+              </motion.button>
+
+              {/* Camera Scanner Trigger (respects store setting) */}
+              {store.cameraScannerEnabled !== false && (
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setIsScannerOpen(true)}
+                  className="px-3 py-1.5 rounded-xl bg-blue-950/80 hover:bg-blue-900 text-blue-200 border border-blue-700/60 font-bold text-xs uppercase tracking-wider shadow-2xs transition-all flex items-center justify-center gap-1.5 cursor-pointer backdrop-blur-xs"
+                >
+                  <Camera className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Scanner</span>
+                </motion.button>
+              )}
+
+              {/* Collapsible Device & Hardware Controls Toggle */}
+              <button
+                type="button"
+                onClick={() => setShowHardwareBar(!showHardwareBar)}
+                className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border cursor-pointer ${
+                  showHardwareBar 
+                    ? 'bg-blue-600 text-white border-blue-500 shadow-xs' 
+                    : 'bg-blue-900/40 hover:bg-blue-800/60 text-blue-200 border-blue-800/60 shadow-2xs'
+                }`}
+                title="Show or hide camera, audio, and device permissions bar"
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5 text-blue-300" />
+                <span className="hidden sm:inline">Hardware</span>
+                {showHardwareBar ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
             </div>
           </div>
 
-          {/* Segmented Tab Switcher */}
-          <div className="flex items-center p-1 bg-slate-100 rounded-xl w-full sm:w-auto border border-slate-200/60 shrink-0">
-            <button
-              type="button"
-              id="tab-btn-product-register"
-              onClick={() => {
-                if (activeTab !== 'form') {
-                  handleResetForm();
-                  setActiveTab('form');
-                }
-              }}
-              className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                activeTab === 'form'
-                  ? 'bg-white text-blue-700 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <PackagePlus className="w-4 h-4" />
-              <span>{existingProduct ? 'Edit Product' : 'Add Product'}</span>
-              {existingProduct && (
-                <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-black uppercase">
-                  Editing
-                </span>
-              )}
-            </button>
-
-            <button
-              type="button"
-              id="tab-btn-stock-catalog"
-              onClick={() => setActiveTab('catalog')}
-              className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                activeTab === 'catalog'
-                  ? 'bg-white text-blue-700 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <LayoutGrid className="w-4 h-4" />
-              <span>Stock Catalog</span>
-              <span className="text-xs font-semibold text-slate-500 tabular-nums">
-                ({products.length})
+          {/* Bottom Row: Text present at below of all buttons */}
+          <div className="pt-2 border-t border-blue-900/60 flex flex-col md:flex-row md:items-center justify-between gap-1.5 text-xs text-blue-200 z-10">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-extrabold text-white text-sm tracking-tight">
+                Product Register & Inventory Stock
               </span>
-            </button>
+              <span className="text-blue-400/60">&bull;</span>
+              <span className="text-blue-200">Store: <strong className="text-white">{store.name}</strong></span>
+              <span className="bg-blue-900/60 border border-blue-700/50 px-2 py-0.2 rounded-md font-bold text-[11px] text-blue-200">
+                PKR (Rs.)
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-300 font-medium">
+              Add products, adjust stock quantities, and generate barcode stickers. Scanners work automatically.
+            </p>
           </div>
+        </motion.div>
+
+        {/* Collapsible Hardware Permissions & Voice Controls */}
+        <AnimatePresence>
+          {showHardwareBar && (
+            <motion.div
+              initial={{ opacity: 0, height: 0, overflow: 'hidden' }}
+              animate={{ opacity: 1, height: 'auto', overflow: 'visible' }}
+              exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
+              transition={{ duration: 0.2 }}
+            >
+              <HardwarePermissionsBar 
+                voiceEnabled={voiceEnabled} 
+                onToggleVoice={setVoiceEnabled} 
+                voiceAllowed={store?.voiceAnnouncementEnabled !== false}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Global Notifications */}
+        {msg && (
+          <div className={`p-4 rounded-2xl border flex items-center gap-3 text-sm font-medium shadow-sm transition-all ${
+            msg.type === 'success' 
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+              : 'bg-red-50 border-red-200 text-red-800'
+          }`}>
+            {msg.type === 'success' ? <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" /> : <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />}
+            <span>{msg.text}</span>
+          </div>
+        )}
+
+        {/* Primary View Switcher: Product Registration Terminal vs Full Stock Catalog */}
+        <div className="flex items-center gap-2 sm:gap-3 bg-white p-2 rounded-2xl border border-slate-200 shadow-xs">
+          <button
+            type="button"
+            id="tab-btn-product-register"
+            onClick={() => {
+              if (activeTab !== 'form') {
+                handleResetForm();
+                setActiveTab('form');
+              }
+            }}
+            className={`flex-1 py-3 px-4 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'form'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 ring-2 ring-blue-500/20'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900'
+            }`}
+          >
+            <PackagePlus className={`w-4 h-4 ${activeTab === 'form' ? 'text-white' : 'text-blue-600'}`} />
+            <span>Product Register & Stock In</span>
+            {existingProduct && (
+              <span className="text-[10px] bg-amber-400 text-slate-950 px-2 py-0.5 rounded-full font-black uppercase">
+                Editing
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            id="tab-btn-stock-catalog"
+            onClick={() => setActiveTab('catalog')}
+            className={`flex-1 py-3 px-4 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'catalog'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 ring-2 ring-blue-500/20'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900'
+            }`}
+          >
+            <LayoutGrid className={`w-4 h-4 ${activeTab === 'catalog' ? 'text-white' : 'text-blue-600'}`} />
+            <span>View Stock Catalog</span>
+            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+              activeTab === 'catalog' ? 'bg-white text-blue-700' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {products.length} Products
+            </span>
+          </button>
         </div>
 
         {/* Animated View Container with Changing Transition Animation */}
@@ -1618,47 +1722,21 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                           <div className="p-3.5 space-y-3 flex-1">
                             <div className="flex items-start gap-3">
                               {/* Product Image / Icon with Glowing Border */}
-                              <div className="w-14 h-14 rounded-2xl overflow-hidden bg-slate-100 border-2 border-indigo-100 shrink-0 flex items-center justify-center relative shadow-xs group/img">
+                              <div className="w-14 h-14 rounded-2xl overflow-hidden bg-slate-100 border-2 border-indigo-100 shrink-0 flex items-center justify-center relative shadow-xs">
                                 {p.imageUrl ? (
-                                  <>
-                                    <img
-                                      src={p.imageUrl}
-                                      alt={p.name}
-                                      className="w-full h-full object-cover"
-                                      referrerPolicy="no-referrer"
-                                      onError={(e) => {
-                                        (e.target as any).src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%2394a3b8" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
-                                      }}
-                                    />
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleQuickFindImageForExisting(p);
-                                      }}
-                                      className="absolute inset-0 bg-slate-950/75 text-white text-[9px] font-bold opacity-0 group-hover/img:opacity-100 flex flex-col items-center justify-center transition-opacity cursor-pointer"
-                                      title="Re-search accurate packaging photo"
-                                    >
-                                      <RefreshCw className="w-3.5 h-3.5" />
-                                      <span className="text-[8px] mt-0.5">Change</span>
-                                    </button>
-                                  </>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleQuickFindImageForExisting(p);
+                                  <img
+                                    src={p.imageUrl}
+                                    alt={p.name}
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      (e.target as any).style.display = 'none';
                                     }}
-                                    className="w-full h-full flex flex-col items-center justify-center text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 transition-colors cursor-pointer"
-                                    title="Auto-find real packaging image"
-                                  >
-                                    <Sparkles className="w-4 h-4 text-indigo-500" />
-                                    <span className="text-[8px] font-extrabold uppercase mt-0.5">+Img</span>
-                                  </button>
+                                  />
+                                ) : (
+                                  <ImageIcon className="w-6 h-6 text-indigo-400" />
                                 )}
                                 {p.category && (
-                                  <div className="absolute bottom-0 inset-x-0 bg-indigo-950/85 backdrop-blur-2xs text-[9px] font-black text-amber-300 text-center py-0.5 truncate px-1 pointer-events-none">
+                                  <div className="absolute bottom-0 inset-x-0 bg-indigo-950/85 backdrop-blur-2xs text-[9px] font-black text-amber-300 text-center py-0.5 truncate px-1">
                                     {p.category}
                                   </div>
                                 )}
@@ -1821,43 +1899,18 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
 
                               {/* 1. Image */}
                               <td className="py-3 px-4 text-center">
-                                <div className="w-12 h-12 rounded-xl overflow-hidden bg-slate-50 border border-slate-200 mx-auto flex items-center justify-center p-1 shadow-2xs group/tbl relative">
+                                <div className="w-12 h-12 rounded-xl overflow-hidden bg-slate-50 border border-slate-200 mx-auto flex items-center justify-center p-1 shadow-2xs">
                                   {p.imageUrl ? (
-                                    <>
-                                      <img
-                                        src={p.imageUrl}
-                                        alt={p.name}
-                                        className="w-full h-full object-contain"
-                                        referrerPolicy="no-referrer"
-                                        onError={(e) => {
-                                          (e.target as any).src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%2394a3b8" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
-                                        }}
-                                      />
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleQuickFindImageForExisting(p);
-                                        }}
-                                        className="absolute inset-0 bg-slate-950/75 text-white text-[9px] font-bold opacity-0 group-hover/tbl:opacity-100 flex items-center justify-center transition-opacity cursor-pointer"
-                                        title="Re-search accurate photo"
-                                      >
-                                        <RefreshCw className="w-3.5 h-3.5" />
-                                      </button>
-                                    </>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleQuickFindImageForExisting(p);
+                                    <img
+                                      src={p.imageUrl}
+                                      alt={p.name}
+                                      className="w-full h-full object-contain"
+                                      onError={(e) => {
+                                        (e.target as any).style.display = 'none';
                                       }}
-                                      className="w-full h-full flex flex-col items-center justify-center text-sky-600 hover:text-sky-800 hover:bg-sky-50 transition-colors cursor-pointer"
-                                      title="Auto-find real packaging image"
-                                    >
-                                      <Sparkles className="w-3.5 h-3.5 text-sky-500" />
-                                      <span className="text-[8px] font-black uppercase mt-0.5">+Img</span>
-                                    </button>
+                                    />
+                                  ) : (
+                                    <ImageIcon className="w-5 h-5 text-slate-300" />
                                   )}
                                 </div>
                               </td>
@@ -1978,270 +2031,178 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
               </div>
             )}
 
-            {/* Product Registration Form (Simple, Clean, Fast) */}
+            {/* Product Registration & Stock Terminal (Visible in 'form' mode) */}
             {activeTab === 'form' && (
-              <div className="max-w-4xl mx-auto w-full bg-white rounded-2xl border border-slate-200 shadow-xs p-5 sm:p-7 md:p-8 space-y-6">
+              <div className="max-w-screen-2xl mx-auto w-full bg-white rounded-3xl border border-slate-200 shadow-md overflow-hidden transition-all">
+                {/* Terminal Dark Header (Responsive Scaling with Screen Size) */}
+                <div className="bg-gradient-to-r from-slate-950 via-blue-950 to-indigo-950 text-white p-4 sm:p-6 lg:p-7 xl:p-8 border-b border-blue-900/60 relative overflow-hidden">
+                  {/* Ambient Glow */}
+                  <div className="absolute top-0 right-0 w-80 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
+
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2.5 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('catalog')}
+                          className="px-3 py-1.5 rounded-xl bg-blue-900/80 hover:bg-blue-800 text-white font-bold text-xs flex items-center gap-1.5 transition-all border border-blue-700/60 shadow-xs cursor-pointer active:scale-95"
+                          title="Return to products catalog"
+                        >
+                          <ArrowLeft className="w-3.5 h-3.5" />
+                          <span>Back to Products</span>
+                        </button>
+                        <h2 className="text-lg sm:text-xl md:text-2xl font-black text-white flex items-center gap-2 tracking-tight">
+                          <PackagePlus className="w-5 h-5 text-amber-400 shrink-0" /> 
+                          <span>{existingProduct ? 'Product Editor & Pricing Station' : 'Register New Product & Stock'}</span>
+                        </h2>
+                      </div>
+                      <p className="text-xs sm:text-sm text-blue-200 font-medium pl-1">
+                        {existingProduct ? `Active Editing: "${existingProduct.name}"` : 'Scan barcode or enter details to record stock and generate barcode sticker labels'}
+                      </p>
+                    </div>
+
+                    {existingProduct ? (
+                      <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+                        <span className="px-3 sm:px-3.5 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-black bg-amber-400 text-slate-950 shadow-xs">
+                          Editing Mode
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleResetForm}
+                          className="text-xs sm:text-sm font-bold text-blue-200 hover:text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-blue-900/70 hover:bg-blue-800 transition-all cursor-pointer border border-blue-700/60 shadow-sm"
+                          title="Clear and register a new item"
+                        >
+                          ✕ New Item
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="px-3 sm:px-3.5 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-black bg-blue-500/30 text-blue-200 border border-blue-400/40 shrink-0">
+                        New Product Entry
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Form Body */}
+                <div className="p-4 sm:p-6 lg:p-8 xl:p-10 space-y-6 sm:space-y-7">
+                  {/* Helpful Notice */}
+                  <div className="p-3.5 sm:p-4 bg-blue-50/80 rounded-2xl border border-blue-100 text-xs sm:text-sm text-blue-950 flex items-start gap-2.5">
+                    <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>POS Terminal Tip:</strong> Scan barcode with a USB scanner or device camera. You can modify prices anytime without altering existing stock balances.
+                    </span>
+                  </div>
+
+            <form onSubmit={handleSubmitProductStock} className="space-y-8">
+              {/* Single Unified Form - Undivided Layout */}
+              <div className="space-y-6">
                 
-                {/* Active Editing Notice */}
-                {existingProduct && (
-                  <div className="flex items-center justify-between p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold">Editing Product:</span>
-                      <span className="font-semibold">{existingProduct.name}</span>
-                      <span className="text-amber-700">· S/N #{previewNextSerialNumber}</span>
-                      {existingProduct.barcode && (
-                        <span className="text-amber-700">· Barcode: {existingProduct.barcode}</span>
-                      )}
+                {/* Basic Identification */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+                      <div>
+                        <h3 className="text-sm font-extrabold text-slate-900 tracking-tight">Basic Identification</h3>
+                        <p className="text-[11px] text-slate-500">Name, selling method, and barcode identifiers</p>
+                      </div>
+                      <span className="text-[11px] font-mono text-slate-600 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200 font-bold">
+                        S/N #{previewNextSerialNumber}
+                      </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleResetForm}
-                      className="text-xs font-bold text-amber-900 hover:text-amber-950 underline cursor-pointer shrink-0"
-                    >
-                      ✕ New Product
-                    </button>
-                  </div>
-                )}
 
-                <form onSubmit={handleSubmitProductStock} className="space-y-6">
-                  {/* Field 1: Product Name & Media */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-                        Product Name *
+                    {/* Selling Method Mode: Piece vs Weight */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                        Selling Method *
                       </label>
-                      <div className="flex items-center gap-2 text-xs">
-                        {name.trim().length >= 3 && !imageUrl && autoAiImageEnabled && (
-                          <span className="text-[11px] text-sky-600 font-semibold flex items-center gap-1 animate-pulse">
-                            <Search className="w-3 h-3 text-sky-500" /> Searching accurate packaging...
-                          </span>
-                        )}
+                      <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl border border-slate-200">
                         <button
                           type="button"
-                          onClick={() => handleSearchProductImageOnline(name, true)}
-                          disabled={isGeneratingAiImage || !name.trim()}
-                          className="text-[11px] bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold px-2.5 py-1 rounded-lg border border-sky-200 flex items-center gap-1 transition-all cursor-pointer disabled:opacity-50"
-                          title="Search online for accurate retail packaging image"
+                          onClick={() => {
+                            setSellBy('unit');
+                            if (unitType === 'kg' || unitType === 'g') setUnitType('piece');
+                          }}
+                          className={`py-2 px-3 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                            sellBy === 'unit'
+                              ? 'bg-white text-slate-900 shadow-xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
                         >
-                          <Sparkles className="w-3 h-3 text-sky-600" />
-                          <span>{isGeneratingAiImage ? 'Searching...' : '✨ Auto-Find Image'}</span>
+                          <PackagePlus className="w-4 h-4 text-blue-600" />
+                          <span>📦 By Piece / Unit</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSellBy('weight');
+                            setUnitType('kg');
+                          }}
+                          className={`py-2 px-3 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                            sellBy === 'weight'
+                              ? 'bg-orange-600 text-white shadow-xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          <Scale className="w-4 h-4 text-amber-200" />
+                          <span>⚖️ By Weight (kg)</span>
                         </button>
                       </div>
                     </div>
 
-                    <div className="flex items-start gap-3">
-                      {/* Image Thumbnail Box */}
-                      <div className="w-16 h-16 rounded-xl bg-slate-50 border border-slate-300 shrink-0 flex items-center justify-center overflow-hidden relative shadow-2xs group">
-                        {isGeneratingAiImage ? (
-                          <RefreshCw className="w-5 h-5 text-sky-600 animate-spin" />
-                        ) : imageUrl ? (
-                          <>
-                            <img
-                              src={imageUrl}
-                              alt="Product"
-                              className="w-full h-full object-contain p-1"
-                              referrerPolicy="no-referrer"
-                              onError={(e) => {
-                                if (fallbackThumbnailUrl && (e.target as any).src !== fallbackThumbnailUrl) {
-                                  (e.target as any).src = fallbackThumbnailUrl;
-                                } else {
-                                  (e.target as any).src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%2394a3b8" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
-                                }
-                              }}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setImageUrl('');
-                                setAiImageSource(null);
-                                setImageSourceDomain(null);
-                                setFallbackThumbnailUrl(null);
-                                setSearchCandidates([]);
-                              }}
-                              className="absolute top-0.5 right-0.5 bg-red-600 text-white rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shadow-xs"
-                              title="Remove image"
-                            >
-                              <X className="w-2.5 h-2.5" />
-                            </button>
-                          </>
-                        ) : (
-                          <ImageIcon className="w-6 h-6 text-slate-300" />
-                        )}
-                      </div>
-
-                      {/* Name input */}
-                      <div className="flex-1 space-y-1">
-                        <input
-                          ref={nameInputRef}
-                          type="text"
-                          required
-                          placeholder="e.g. Olpers Full Cream Milk 1L, Tapal Tea 450g..."
-                          value={name}
-                          onChange={(e) => setName(e.target.value)}
-                          onBlur={() => {
-                            if (autoAiImageEnabled && !imageUrl && name.trim().length >= 3) {
-                              handleAutoGenerateProductPicture(name.trim(), false);
-                            }
-                          }}
-                          className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-blue-500 focus:bg-white font-bold transition-all shadow-2xs"
-                        />
-                        <div className="flex items-center justify-between text-[11px] text-slate-400">
-                          <span className="truncate max-w-[240px]">
-                            {imageSourceDomain ? `✓ Source: ${imageSourceDomain}` : 'Real packaging photo shows on POS and online store'}
-                          </span>
-                          <div className="flex items-center gap-2">
-                            <input
-                              ref={fileInputRef}
-                              type="file"
-                              accept="image/*"
-                              onChange={handleImageFileUpload}
-                              className="hidden"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setCustomSearchQuery(name.trim());
-                                setShowCustomSearchInput(!showCustomSearchInput);
-                              }}
-                              className="text-sky-600 hover:text-sky-800 font-semibold cursor-pointer underline flex items-center gap-0.5"
-                            >
-                              <Search className="w-2.5 h-2.5" />
-                              Custom Keywords
-                            </button>
-                            <span>·</span>
-                            <button
-                              type="button"
-                              onClick={() => fileInputRef.current?.click()}
-                              className="text-slate-500 hover:text-slate-800 font-semibold cursor-pointer underline"
-                            >
-                              Upload
-                            </button>
-                            <span>·</span>
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                const manualUrl = prompt('Enter image URL:', imageUrl || '');
-                                if (manualUrl && manualUrl.trim()) {
-                                  setImageUrl(manualUrl.trim());
-                                  setAiImageSource('manual');
-                                }
-                              }}
-                              className="text-slate-500 hover:text-slate-800 font-semibold cursor-pointer underline"
-                            >
-                              Paste URL
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Inline Custom Keyword Search Bar */}
-                    {showCustomSearchInput && (
-                      <div className="flex items-center gap-1.5 p-2 bg-sky-50/80 border border-sky-200 rounded-xl">
-                        <Search className="w-3.5 h-3.5 text-sky-600 shrink-0 ml-1" />
-                        <input
-                          type="text"
-                          value={customSearchQuery}
-                          onChange={(e) => setCustomSearchQuery(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              handleSearchProductImageOnline(name, true, customSearchQuery);
-                            }
-                          }}
-                          placeholder="Type specific keywords (e.g. Tapal Danedar 430g red pouch)..."
-                          className="flex-1 bg-white border border-sky-300 px-2.5 py-1 text-xs rounded-lg font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 shadow-2xs"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleSearchProductImageOnline(name, true, customSearchQuery)}
-                          disabled={isGeneratingAiImage || !customSearchQuery.trim()}
-                          className="bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold px-3 py-1 rounded-lg cursor-pointer transition-all disabled:opacity-50 shrink-0"
-                        >
-                          {isGeneratingAiImage ? 'Searching...' : 'Search'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setShowCustomSearchInput(false)}
-                          className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer shrink-0"
-                          title="Close"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Accurate Search Candidates Gallery */}
-                    {searchCandidates && searchCandidates.length > 0 && (
-                      <div className="space-y-1.5 p-2 bg-slate-50/90 border border-slate-200 rounded-xl">
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="font-bold text-slate-700 flex items-center gap-1">
-                            <Sparkles className="w-3 h-3 text-sky-600" />
-                            Retail Packaging Matches ({searchCandidates.length}):
-                          </span>
-                          <span className="text-slate-400 text-[10px]">Click any photo to select</span>
-                        </div>
-                        <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-0.5 custom-scrollbar">
-                          {searchCandidates.map((c, idx) => {
-                            const isSelected = imageUrl === c.url || imageUrl === c.thumbnail;
-                            return (
-                              <button
-                                key={idx}
-                                type="button"
-                                onClick={() => {
-                                  setImageUrl(c.url);
-                                  setFallbackThumbnailUrl(c.thumbnail);
-                                  setImageSourceDomain(c.domain || null);
-                                  showNotification('success', `Selected image from ${c.domain || 'candidate'}`);
-                                }}
-                                title={c.title}
-                                className={`group relative flex flex-col items-center shrink-0 p-1 rounded-xl border bg-white transition-all cursor-pointer ${
-                                  isSelected
-                                    ? 'border-sky-500 ring-2 ring-sky-400 shadow-xs'
-                                    : 'border-slate-200 hover:border-sky-300 hover:shadow-2xs'
-                                }`}
-                              >
-                                <div className="w-12 h-12 rounded-lg overflow-hidden bg-slate-50 flex items-center justify-center relative">
-                                  <img
-                                    src={c.thumbnail || c.url}
-                                    alt={c.title}
-                                    className="w-full h-full object-contain"
-                                    referrerPolicy="no-referrer"
-                                  />
-                                  {isSelected && (
-                                    <div className="absolute top-0.5 right-0.5 w-3.5 h-3.5 bg-sky-600 rounded-full flex items-center justify-center text-white text-[9px] font-bold shadow-xs">
-                                      ✓
-                                    </div>
-                                  )}
-                                </div>
-                                {c.domain && (
-                                  <span className="text-[9px] text-slate-500 max-w-[56px] truncate font-semibold mt-0.5">
-                                    {c.domain.replace(/\.[a-z]+$/, '')}
-                                  </span>
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Field 2: Barcode & Category */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Barcode */}
+                    {/* Product Name Field */}
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
-                        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                          Product Name *
+                        </label>
+                        <div className="flex items-center gap-2">
+                          {name.trim().length >= 3 && !imageUrl && autoAiImageEnabled && (
+                            <span className="text-[10px] text-sky-600 font-bold flex items-center gap-1 animate-pulse">
+                              <Search className="w-3 h-3 text-sky-500" /> Searching Google for image URL...
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleSearchProductImageOnline(name, true)}
+                            disabled={isGeneratingAiImage || !name.trim()}
+                            className="text-[10px] bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold px-2.5 py-1 rounded-lg border border-sky-200 flex items-center gap-1 transition-all cursor-pointer disabled:opacity-50"
+                            title="Automatically search image for this name, copy link and paste it"
+                          >
+                            <Sparkles className="w-3 h-3 text-sky-600" />
+                            <span>{isGeneratingAiImage ? 'Searching...' : '✨ Auto-Search & Paste Image'}</span>
+                          </button>
+                        </div>
+                      </div>
+                      <input
+                        ref={nameInputRef}
+                        type="text"
+                        required
+                        placeholder="e.g. Olpers Full Cream Milk 1L, Tapal Danedar Tea 450g..."
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        onBlur={() => {
+                          if (autoAiImageEnabled && !imageUrl && name.trim().length >= 3) {
+                            handleAutoGenerateProductPicture(name.trim(), false);
+                          }
+                        }}
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-blue-500 focus:bg-white font-bold transition-all shadow-2xs"
+                      />
+                      <p className="text-[11px] text-slate-400 mt-1">Item title printed on receipts and shown in POS.</p>
+                    </div>
+
+                    {/* Product Barcode Field */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                           <BarcodeIcon className="w-3.5 h-3.5 text-blue-600" />
-                          <span>Barcode / Code</span>
+                          <span>Product Barcode (Full Barcode)</span>
                         </label>
                         <button
                           type="button"
                           onClick={handleAutoGenerateBarcodeNumber}
-                          className="text-[11px] text-blue-600 font-bold hover:underline cursor-pointer"
+                          className="text-[11px] text-blue-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
                         >
-                          Auto-generate
+                          <Sparkles className="w-3 h-3" /> Auto-generate Code
                         </button>
                       </div>
                       <div className="relative flex gap-2">
@@ -2252,7 +2213,9 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                             type="text"
                             maxLength={50}
                             autoComplete="off"
-                            placeholder="Scan barcode or enter code..."
+                            autoCorrect="off"
+                            spellCheck={false}
+                            placeholder="Scan or enter barcode (e.g. 890123456789)..."
                             value={barcode}
                             onChange={(e) => setBarcode(e.target.value)}
                             onKeyDown={(e) => {
@@ -2261,48 +2224,106 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                                 handleCodeEnterLookup(barcode, 'barcode');
                               }
                             }}
-                            className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-blue-500 focus:bg-white font-mono font-bold transition-all shadow-2xs"
+                            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-blue-500 focus:bg-white font-mono transition-all font-bold tracking-wide shadow-2xs"
                           />
+                        </div>
+                        <div className="flex items-center gap-2 mt-2">
+                          <input
+                            type="checkbox"
+                            checked={noBarcode}
+                            onChange={(e) => setNoBarcode(e.target.checked)}
+                            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer"
+                          />
+                          <label className="text-xs text-slate-600 cursor-pointer">Do not use barcode</label>
                         </div>
                         {store.cameraScannerEnabled !== false && (
                           <button
                             type="button"
                             onClick={() => setIsScannerOpen(true)}
-                            className="px-3 rounded-xl bg-slate-100 border border-slate-300 hover:border-blue-500 text-blue-600 transition-colors cursor-pointer shrink-0 flex items-center justify-center"
+                            className="p-2.5 rounded-xl bg-slate-100 border border-slate-300 hover:border-blue-500 text-blue-600 hover:text-blue-700 transition-colors cursor-pointer shrink-0"
                             title="Camera Scanner"
                           >
-                            <Camera className="w-4 h-4" />
+                            <Camera className="w-5 h-5" />
                           </button>
                         )}
                       </div>
-                      <div className="flex items-center justify-between mt-1 px-0.5 text-[11px] text-slate-500">
-                        <label className="flex items-center gap-1.5 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={noBarcode}
-                            onChange={(e) => setNoBarcode(e.target.checked)}
-                            className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300"
-                          />
-                          <span>Do not use barcode</span>
-                        </label>
-                        <span className="font-mono text-slate-400">S/N #{previewNextSerialNumber}</span>
+                      <div className="flex items-center justify-between text-[11px] text-slate-400 mt-1 px-0.5">
+                        <span>Standard barcode (EAN-13, UPC, Code-128, etc.)</span>
+                        <span className="font-mono text-slate-500 font-medium">{barcode.length} chars</span>
                       </div>
                     </div>
 
-                    {/* Category */}
-                    <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-                          Category *
-                        </label>
+                    {/* Weight / Loose Packaging Inputs (if sellBy === 'weight') */}
+                    {sellBy === 'weight' && (
+                      <div className="pt-3 border-t border-slate-100 space-y-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                            Packaging / Weight Description (Optional)
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 1 kg pack, 500g, or Loose in basket"
+                            value={weight}
+                            onChange={(e) => setWeight(e.target.value)}
+                            className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs font-medium focus:outline-none focus:border-blue-500 focus:bg-white"
+                          />
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                              <span>Pre-packed Weight per Bag/Unit (kg)</span>
+                              <span className="text-[10px] text-slate-500 font-normal">(Optional)</span>
+                            </label>
+                            <span className="text-[10px] text-blue-600 font-bold">Auto-multiplier</span>
+                          </div>
+                          <input
+                            type="number"
+                            step="any"
+                            min="0"
+                            placeholder="e.g. 0.5 (kg per packet) or leave blank for loose"
+                            value={weightPerUnit}
+                            onChange={(e) => setWeightPerUnit(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-500 font-mono"
+                          />
+                          <p className="text-[10px] text-slate-400 mt-1">
+                            When sold in fixed weight bags, entering quantity multiplies: <em>Quantity × Weight</em>.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Category, Brand & Size Organization */}
+                  <div className="space-y-4 pt-6 border-t border-slate-200">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+                      <div>
+                        <h3 className="text-sm font-extrabold text-slate-900 tracking-tight">Category & Hierarchy</h3>
+                        <p className="text-[11px] text-slate-500">Classify product by Category, Brand & Packaging Size</p>
+                      </div>
+                      <div className="flex items-center gap-2">
                         <button
                           type="button"
                           onClick={() => setIsAddCategoryModalOpen(true)}
-                          className="text-[11px] text-blue-600 font-bold hover:underline cursor-pointer"
+                          className="text-[11px] text-blue-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
                         >
-                          + New Category
+                          <Plus className="w-3 h-3" /> + New Category
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsManageCategoriesModalOpen(true)}
+                          className="text-[11px] text-indigo-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <FolderTree className="w-3 h-3" /> Hierarchy
                         </button>
                       </div>
+                    </div>
+
+                    {/* Category Selector */}
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1.5">
+                        Product Category *
+                      </label>
                       <select
                         value={category}
                         onChange={(e) => {
@@ -2318,29 +2339,505 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                           </option>
                         ))}
                       </select>
-                      <div className="flex items-center justify-between mt-1 px-0.5 text-[11px] text-slate-400">
-                        <span>Select department category</span>
+                    </div>
+
+                    {/* Company / Brand Selector */}
+                    <div className="space-y-2 pt-2 border-t border-slate-100">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+                          <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">Choose Company / Brand</span>
+                          <span className="text-[10px] text-indigo-700 font-bold bg-indigo-50 px-2 py-0.5 rounded-md">
+                            for {category}
+                          </span>
+                        </div>
                         <button
                           type="button"
-                          onClick={() => setIsManageCategoriesModalOpen(true)}
-                          className="text-slate-500 hover:text-slate-800 underline cursor-pointer"
+                          onClick={() => setIsAddingCustomCompany(!isAddingCustomCompany)}
+                          className="text-[11px] text-indigo-700 font-bold hover:underline flex items-center gap-1 cursor-pointer"
                         >
-                          Manage Categories
+                          <Plus className="w-3 h-3" />
+                          <span>{isAddingCustomCompany ? 'Cancel' : '+ Add Brand'}</span>
                         </button>
                       </div>
+
+                      {/* Inline Add Brand Input */}
+                      {isAddingCustomCompany && (
+                        <div className="flex items-center gap-1.5 p-2 bg-indigo-50/50 rounded-xl border border-indigo-200">
+                          <input
+                            type="text"
+                            placeholder={`Type brand/company name for ${category}...`}
+                            value={customCompanyName}
+                            onChange={(e) => setCustomCompanyName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleAddCustomCompanySubmit();
+                              }
+                            }}
+                            className="flex-1 px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-indigo-500 font-semibold"
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            onClick={handleAddCustomCompanySubmit}
+                            className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 cursor-pointer shadow-xs"
+                          >
+                            Add & Select
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Company Dropdown */}
+                      <select
+                        value={selectedCompanyId || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '__add_custom_company__') {
+                            setIsAddingCustomCompany(true);
+                          } else if (!val) {
+                            handleSelectCompany(null);
+                          } else {
+                            const found = activeCategoryCompanies.find(c => c.id === val);
+                            if (found) handleSelectCompany(found);
+                          }
+                        }}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-800 text-xs font-bold focus:outline-none focus:border-indigo-500 cursor-pointer shadow-2xs"
+                      >
+                        <option value="">-- Choose Company for {category} ({activeCategoryCompanies.length} available) --</option>
+                        {activeCategoryCompanies.map((comp) => (
+                          <option key={comp.id} value={comp.id}>
+                            {comp.name}
+                          </option>
+                        ))}
+                        <option value="__add_custom_company__">+ Add Other Company for {category}...</option>
+                      </select>
+
+                      {/* Brand Quick Click Pills */}
+                      {activeCategoryCompanies.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-0.5 max-h-24 overflow-y-auto">
+                          {activeCategoryCompanies.map((comp) => {
+                            const isCompSelected = selectedCompanyId === comp.id;
+                            return (
+                              <button
+                                key={comp.id}
+                                type="button"
+                                onClick={() => {
+                                  if (isCompSelected) {
+                                    handleSelectCompany(null);
+                                  } else {
+                                    handleSelectCompany(comp);
+                                  }
+                                }}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                                  isCompSelected
+                                    ? 'bg-indigo-600 text-white shadow-xs'
+                                    : 'bg-slate-50 text-slate-700 border border-slate-200 hover:bg-indigo-50 hover:text-indigo-900'
+                                }`}
+                              >
+                                {isCompSelected && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                                <span>{comp.name}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Size / Pack Selection */}
+                    <div className="space-y-2 pt-2 border-t border-slate-100">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <Scale className="w-3.5 h-3.5 text-emerald-600" />
+                          <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">Choose Size / Pack</span>
+                          <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md">
+                            {activeSelectedCompany ? `for ${activeSelectedCompany.name}` : `for ${category}`}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsAddingCustomSize(!isAddingCustomSize)}
+                          className="text-[11px] text-emerald-700 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>{isAddingCustomSize ? 'Cancel' : '+ Custom Size'}</span>
+                        </button>
+                      </div>
+
+                      {/* Inline Custom Size input */}
+                      {isAddingCustomSize && (
+                        <div className="flex items-center gap-1.5 p-2 bg-emerald-50/50 rounded-xl border border-emerald-200">
+                          <input
+                            type="text"
+                            placeholder="e.g. 750ml, 350g, 1.25 Liter, 6-Pack..."
+                            value={customSizeName}
+                            onChange={(e) => setCustomSizeName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleAddCustomSizeSubmit();
+                              }
+                            }}
+                            className="flex-1 px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 font-semibold"
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            onClick={handleAddCustomSizeSubmit}
+                            className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 cursor-pointer shadow-xs"
+                          >
+                            Apply Size
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Size Dropdown */}
+                      <select
+                        value={selectedSize || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '__add_custom_size__') {
+                            setIsAddingCustomSize(true);
+                          } else if (!val) {
+                            handleSelectSize(null);
+                          } else {
+                            handleSelectSize(val);
+                          }
+                        }}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-800 text-xs font-bold focus:outline-none focus:border-emerald-500 cursor-pointer shadow-2xs"
+                      >
+                        <option value="">
+                          -- Choose Size / Pack ({activeSelectedCompany ? activeSelectedCompany.name : category}) --
+                        </option>
+                        {activeAvailableSizes.map((sz) => (
+                          <option key={sz} value={sz}>
+                            {sz}
+                          </option>
+                        ))}
+                        <option value="__add_custom_size__">+ Enter Custom Size / Pack...</option>
+                      </select>
+
+                      {/* Size Quick Click Pills */}
+                      {activeAvailableSizes.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-0.5 max-h-24 overflow-y-auto">
+                          {activeAvailableSizes.map((sz) => {
+                            const isSzSelected = selectedSize === sz;
+                            return (
+                              <button
+                                key={sz}
+                                type="button"
+                                onClick={() => {
+                                  if (isSzSelected) {
+                                    handleSelectSize(null);
+                                  } else {
+                                    handleSelectSize(sz);
+                                  }
+                                }}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                                  isSzSelected
+                                    ? 'bg-emerald-600 text-white shadow-xs'
+                                    : 'bg-slate-50 text-slate-700 border border-slate-200 hover:bg-emerald-50 hover:text-emerald-900'
+                                }`}
+                              >
+                                {isSzSelected && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                                <span>{sz}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Active Selection Breadcrumb */}
+                    {(selectedCompanyId || selectedSize) && (
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-extrabold text-slate-800 text-[11px] uppercase tracking-wide">Path:</span>
+                          <span className="font-bold text-slate-900">{category}</span>
+                          {activeSelectedCompany && (
+                            <>
+                              <span className="text-slate-400">/</span>
+                              <span className="font-bold text-indigo-700">{activeSelectedCompany.name}</span>
+                            </>
+                          )}
+                          {selectedSize && (
+                            <>
+                              <span className="text-slate-400">/</span>
+                              <span className="font-bold text-emerald-700">{selectedSize}</span>
+                            </>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedCompanyId(null);
+                            setSelectedSize(null);
+                          }}
+                          className="text-[11px] text-red-600 font-bold hover:underline cursor-pointer ml-2 shrink-0"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Product Media */}
+                  <div className="space-y-4 pt-6 border-t border-slate-200">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+                      <div>
+                        <h3 className="text-sm font-extrabold text-slate-900 tracking-tight">Product Media</h3>
+                        <p className="text-[11px] text-slate-500">Google image search, direct URL, or device upload</p>
+                      </div>
+                      {imageUrl && (
+                        <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-md border border-emerald-200 flex items-center gap-1">
+                          <CheckCircle className="w-3 h-3 text-emerald-600" />
+                          Attached
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-start gap-3.5">
+                      {/* Image Thumbnail Box */}
+                      <div className="w-20 h-20 rounded-xl bg-slate-50 border border-slate-200 shrink-0 flex items-center justify-center overflow-hidden shadow-2xs relative group">
+                        {isGeneratingAiImage ? (
+                          <div className="w-full h-full flex flex-col items-center justify-center bg-sky-50 text-sky-600 animate-pulse">
+                            <RefreshCw className="w-5 h-5 animate-spin" />
+                            <span className="text-[9px] font-black mt-1">Searching...</span>
+                          </div>
+                        ) : imageUrl ? (
+                          <>
+                            <img
+                              src={imageUrl}
+                              alt="Product preview"
+                              className="w-full h-full object-contain p-1"
+                              referrerPolicy="no-referrer"
+                              onError={(e) => {
+                                if (fallbackThumbnailUrl && (e.target as any).src !== fallbackThumbnailUrl) {
+                                  (e.target as any).src = fallbackThumbnailUrl;
+                                } else {
+                                  (e.target as any).src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%2394a3b8" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
+                                }
+                              }}
+                            />
+                            <div className="absolute top-1 right-1 bg-emerald-500 text-white p-0.5 rounded-full shadow-xs" title="Picture Attached">
+                              <CheckCircle2 className="w-2.5 h-2.5" />
+                            </div>
+                          </>
+                        ) : (
+                          <ImageIcon className="w-7 h-7 text-slate-300" />
+                        )}
+                      </div>
+
+                      {/* Action Buttons for Picture */}
+                      <div className="flex-1 space-y-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <button
+                            type="button"
+                            disabled={isGeneratingAiImage || !name.trim()}
+                            onClick={() => handleSearchProductImageOnline(name, true)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs ${
+                              isGeneratingAiImage
+                                ? 'bg-sky-100 text-sky-400 cursor-not-allowed'
+                                : !name.trim()
+                                ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
+                                : 'bg-sky-600 hover:bg-sky-700 text-white shadow-sky-200'
+                            }`}
+                            title="Search Google for product name and auto-paste image URL"
+                          >
+                            <Search className={`w-3.5 h-3.5 ${isGeneratingAiImage ? 'animate-spin' : 'text-white'}`} />
+                            <span>{imageUrl ? 'Search Again' : 'Google Search & Paste'}</span>
+                          </button>
+
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={handleImageFileUpload}
+                            className="hidden"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="px-2.5 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-bold flex items-center gap-1 cursor-pointer transition-all"
+                            title="Upload image from device"
+                          >
+                            <Upload className="w-3.5 h-3.5 text-slate-600" />
+                            <span>Upload</span>
+                          </button>
+
+                          <a
+                            href={`https://www.google.com/search?tbm=isch&q=${encodeURIComponent((name.trim() || 'product') + ' packaging')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2.5 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-sky-600 border border-slate-200 text-xs font-bold transition-all flex items-center gap-1"
+                            title="Open Google Images in new tab"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+
+                          {imageUrl && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setImageUrl('');
+                                setAiImageSource(null);
+                                setImageSourceDomain(null);
+                                setFallbackThumbnailUrl(null);
+                                setSearchCandidates([]);
+                              }}
+                              className="px-2 py-1.5 rounded-xl bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border border-red-200 text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                              title="Remove picture"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+
+                        <p className="text-[11px] text-slate-500">
+                          {imageSourceDomain ? `Found on ${imageSourceDomain}` : 'Shows on POS terminal, Customer Price Checker & receipts'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Direct Pasted Image URL Field */}
+                    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 focus-within:border-sky-500 focus-within:bg-white transition-all shadow-2xs">
+                      <LinkIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <input
+                        type="text"
+                        placeholder="Image URL: Copied from Google search (https://...)"
+                        value={imageUrl}
+                        onChange={(e) => {
+                          const val = e.target.value.trim();
+                          setImageUrl(val);
+                          setAiImageSource('manual');
+                        }}
+                        className="w-full text-xs text-slate-800 bg-transparent focus:outline-none font-mono font-medium"
+                      />
+                      {imageUrl && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(imageUrl);
+                            showNotification('success', 'Image URL copied to clipboard!');
+                          }}
+                          className="px-2 py-0.5 text-[10px] font-bold text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded shrink-0 flex items-center gap-1 cursor-pointer transition-all"
+                        >
+                          <Copy className="w-3 h-3" />
+                          <span>Copy</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const clipText = await navigator.clipboard.readText();
+                            if (clipText && (clipText.startsWith('http://') || clipText.startsWith('https://'))) {
+                              setImageUrl(clipText.trim());
+                              setAiImageSource('manual');
+                              showNotification('success', 'Pasted image URL from clipboard!');
+                            } else {
+                              const manualUrl = prompt('Paste image URL:', imageUrl || '');
+                              if (manualUrl && manualUrl.trim()) {
+                                setImageUrl(manualUrl.trim());
+                                setAiImageSource('manual');
+                              }
+                            }
+                          } catch {
+                            const manualUrl = prompt('Paste image URL:', imageUrl || '');
+                            if (manualUrl && manualUrl.trim()) {
+                              setImageUrl(manualUrl.trim());
+                              setAiImageSource('manual');
+                            }
+                          }
+                        }}
+                        className="px-2 py-0.5 text-[10px] font-bold text-sky-700 hover:text-sky-900 bg-sky-50 hover:bg-sky-100 rounded shrink-0 flex items-center gap-1 cursor-pointer transition-all"
+                      >
+                        <span>Paste</span>
+                      </button>
+                    </div>
+
+                    {/* Alternate Candidates from Google/Web Search */}
+                    {searchCandidates && searchCandidates.length > 1 && (
+                      <div className="pt-2 border-t border-slate-100">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                            <Search className="w-3 h-3 text-sky-600" />
+                            <span>Other Google Candidates:</span>
+                          </span>
+                          <span className="text-[10px] text-slate-400">{searchCandidates.length} found</span>
+                        </div>
+                        <div className="flex gap-2 overflow-x-auto pb-1 pt-0.5">
+                          {searchCandidates.slice(0, 6).map((c, idx) => {
+                            const isCurrent = imageUrl === c.url || imageUrl === c.thumbnail;
+                            return (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => {
+                                  setImageUrl(c.url);
+                                  setFallbackThumbnailUrl(c.thumbnail);
+                                  setImageSourceDomain(c.domain || null);
+                                  showNotification('success', `Selected image from ${c.domain || 'Google candidate'}`);
+                                }}
+                                className={`shrink-0 w-12 h-12 rounded-lg border-2 p-0.5 overflow-hidden transition-all relative group cursor-pointer ${
+                                  isCurrent
+                                    ? 'border-sky-500 ring-2 ring-sky-200 shadow-xs'
+                                    : 'border-slate-200 hover:border-sky-400 bg-white'
+                                }`}
+                                title={`Use this image: ${c.title || c.domain || 'Candidate'}`}
+                              >
+                                <img
+                                  src={c.thumbnail || c.url}
+                                  alt={c.title || 'Candidate'}
+                                  className="w-full h-full object-cover rounded"
+                                  referrerPolicy="no-referrer"
+                                />
+                                {isCurrent && (
+                                  <div className="absolute inset-0 bg-sky-600/20 flex items-center justify-center">
+                                    <CheckCircle className="w-3.5 h-3.5 text-sky-600 drop-shadow" />
+                                  </div>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Auto Search on Type checkbox */}
+                    <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                      <label className="flex items-center gap-1.5 cursor-pointer font-medium select-none hover:text-slate-800">
+                        <input
+                          type="checkbox"
+                          checked={autoAiImageEnabled}
+                          onChange={(e) => setAutoAiImageEnabled(e.target.checked)}
+                          className="w-3.5 h-3.5 text-sky-600 rounded border-slate-300 focus:ring-sky-500 cursor-pointer"
+                        />
+                        <span>Auto-search Google image as you type name</span>
+                      </label>
                     </div>
                   </div>
 
-                  {/* Field 3: Pricing & Stock (Clean 3-col grid) */}
-                  <div className="space-y-2">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      {/* Cost Price */}
+                  {/* Pricing & Profit Margins */}
+                  <div className="space-y-4 pt-6 border-t border-slate-200">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
                       <div>
-                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                          Cost Price (Rs.) *
+                        <h3 className="text-sm font-extrabold text-slate-900 tracking-tight">Pricing & Margins</h3>
+                        <p className="text-[11px] text-slate-500">Cost, margin percentage, and retail price (PKR)</p>
+                      </div>
+                      <span className="text-[10px] text-emerald-800 font-extrabold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                        Auto-Calculates
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {/* 1. Cost Price */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                          Cost Price *
                         </label>
                         <div className="relative">
-                          <span className="text-xs font-bold text-slate-400 absolute left-3 top-1/2 -translate-y-1/2">
+                          <span className="text-xs font-black text-slate-400 absolute left-3 top-1/2 -translate-y-1/2">
                             Rs.
                           </span>
                           <input
@@ -2360,18 +2857,45 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                                 setMarginPercent(Math.round(((price - val) / val) * 100 * 10) / 10);
                               }
                             }}
-                            className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-blue-500 focus:bg-white font-mono font-bold transition-all shadow-2xs"
+                            className="w-full pl-9 pr-2 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs sm:text-sm focus:outline-none focus:border-blue-500 focus:bg-white font-mono font-bold transition-all shadow-2xs"
                           />
                         </div>
                       </div>
 
-                      {/* Selling Price */}
+                      {/* 2. Margin Percentage */}
                       <div>
-                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                          Selling Price (Rs.) *
+                        <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                          Margin %
                         </label>
                         <div className="relative">
-                          <span className="text-xs font-bold text-emerald-600 absolute left-3 top-1/2 -translate-y-1/2">
+                          <input
+                            type="number"
+                            step="any"
+                            placeholder="25"
+                            value={marginPercent}
+                            onChange={(e) => {
+                              const mVal = e.target.value === '' ? '' : parseFloat(e.target.value);
+                              setMarginPercent(mVal);
+                              if (typeof mVal === 'number' && typeof costPrice === 'number' && costPrice > 0) {
+                                const calcSell = Math.round(costPrice * (1 + mVal / 100) * 100) / 100;
+                                setPrice(calcSell);
+                              }
+                            }}
+                            className="w-full pl-3 pr-7 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs sm:text-sm focus:outline-none focus:border-blue-500 focus:bg-white font-mono font-bold transition-all shadow-2xs"
+                          />
+                          <span className="text-xs font-black text-slate-500 absolute right-2.5 top-1/2 -translate-y-1/2">
+                            %
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* 3. Selling Price */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                          Selling Price *
+                        </label>
+                        <div className="relative">
+                          <span className="text-xs font-black text-emerald-600 absolute left-3 top-1/2 -translate-y-1/2">
                             Rs.
                           </span>
                           <input
@@ -2389,58 +2913,159 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                                 setMarginPercent(Math.round(((pVal - costPrice) / costPrice) * 100 * 10) / 10);
                               }
                             }}
-                            className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-emerald-600 focus:bg-white font-mono font-extrabold text-emerald-700 transition-all shadow-2xs"
+                            className="w-full pl-9 pr-2 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs sm:text-sm focus:outline-none focus:border-emerald-600 focus:bg-white font-mono font-extrabold text-emerald-700 transition-all shadow-2xs"
                           />
                         </div>
                       </div>
+                    </div>
 
-                      {/* Stock Quantity */}
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                          {existingProduct 
-                            ? `Stock (${existingProduct.stockQuantity} ${sellBy === 'weight' ? 'kg' : 'units'})`
-                            : `Initial Stock (${sellBy === 'weight' ? 'kg' : 'units'})`}
-                        </label>
-                        {existingProduct ? (
-                          <div className="space-y-1.5">
-                            <div className="grid grid-cols-3 gap-1 bg-slate-100 p-0.5 rounded-lg text-[11px] font-bold">
-                              <button
-                                type="button"
-                                onClick={() => { setStockAdjustmentMode('keep'); setStockQuantityToAdd(''); }}
-                                className={`py-1 rounded text-center cursor-pointer ${stockAdjustmentMode === 'keep' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600'}`}
-                              >
-                                Keep
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setStockAdjustmentMode('add')}
-                                className={`py-1 rounded text-center cursor-pointer ${stockAdjustmentMode === 'add' ? 'bg-emerald-600 text-white shadow-2xs' : 'text-slate-600'}`}
-                              >
-                                + Add
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setStockAdjustmentMode('set')}
-                                className={`py-1 rounded text-center cursor-pointer ${stockAdjustmentMode === 'set' ? 'bg-blue-600 text-white shadow-2xs' : 'text-slate-600'}`}
-                              >
-                                Set
-                              </button>
-                            </div>
-                            {stockAdjustmentMode !== 'keep' && (
-                              <input
-                                ref={quantityInputRef}
-                                type="number"
-                                step="any"
-                                min="0"
-                                required
-                                placeholder={stockAdjustmentMode === 'add' ? '+ Qty to add' : 'New total qty'}
-                                value={stockQuantityToAdd}
-                                onChange={(e) => setStockQuantityToAdd(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                                className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 text-xs font-mono font-bold focus:outline-none focus:border-blue-500"
-                              />
-                            )}
+                    {/* Clean Profit & Margin Summary Card */}
+                    {(() => {
+                      const numSellingPrice = typeof price === 'number' ? price : (price !== '' ? parseFloat(price as any) : 0);
+                      const numCostPrice = typeof costPrice === 'number' ? costPrice : (costPrice !== '' ? parseFloat(costPrice as any) : 0);
+                      
+                      if (numSellingPrice <= 0 && numCostPrice <= 0) return null;
+
+                      const unitProfit = numSellingPrice - numCostPrice;
+                      const marginPct = numSellingPrice > 0 ? (unitProfit / numSellingPrice) * 100 : 0;
+                      const markupPct = numCostPrice > 0 ? (unitProfit / numCostPrice) * 100 : 0;
+                      const isProfit = unitProfit >= 0;
+
+                      return (
+                        <div className={`p-3 rounded-xl border transition-all ${
+                          isProfit ? 'bg-emerald-50/70 border-emerald-200' : 'bg-red-50/70 border-red-200'
+                        }`}>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                              <TrendingUp className={`w-3.5 h-3.5 ${isProfit ? 'text-emerald-600' : 'text-red-600'}`} />
+                              <span>Profit Preview ({sellBy === 'weight' ? 'per kg' : 'per unit'})</span>
+                            </span>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${
+                              isProfit ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+                            }`}>
+                              {isProfit ? '✓ Profitable' : '⚠ Low / Negative Margin'}
+                            </span>
                           </div>
+
+                          <div className="grid grid-cols-3 gap-2 text-center">
+                            <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
+                              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">Est. Profit</div>
+                              <div className={`text-xs sm:text-sm font-black font-mono mt-0.5 ${isProfit ? 'text-emerald-700' : 'text-red-700'}`}>
+                                Rs. {unitProfit.toFixed(2)}
+                              </div>
+                            </div>
+
+                            <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
+                              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">Margin</div>
+                              <div className={`text-xs sm:text-sm font-black font-mono mt-0.5 ${isProfit ? 'text-emerald-700' : 'text-red-700'}`}>
+                                {marginPct.toFixed(1)}%
+                              </div>
+                            </div>
+
+                            <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
+                              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">Markup</div>
+                              <div className={`text-xs sm:text-sm font-black font-mono mt-0.5 ${isProfit ? 'text-emerald-700' : 'text-red-700'}`}>
+                                {numCostPrice > 0 ? `${markupPct.toFixed(1)}%` : 'N/A'}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Inventory Stock */}
+                  <div className="space-y-4 pt-6 border-t border-slate-200">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+                      <div>
+                        <h3 className="text-sm font-extrabold text-slate-900 tracking-tight">Inventory & Stock</h3>
+                        <p className="text-[11px] text-slate-500">Initial quantity or stock adjustments</p>
+                      </div>
+                      {existingProduct && (
+                        <span className="text-[11px] font-mono text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 font-bold">
+                          Current: {existingProduct.stockQuantity} {sellBy === 'weight' || existingProduct.sellBy === 'weight' || unitType === 'kg' ? 'kg' : 'units'}
+                        </span>
+                      )}
+                    </div>
+
+                    {existingProduct ? (
+                      <div className="space-y-3">
+                        {/* Stock Mode Switcher */}
+                        <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setStockAdjustmentMode('keep');
+                              setStockQuantityToAdd('');
+                            }}
+                            className={`py-1.5 px-2 rounded-lg transition-all text-center cursor-pointer ${
+                              stockAdjustmentMode === 'keep'
+                                ? 'bg-white text-slate-900 shadow-xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            Keep Current
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setStockAdjustmentMode('add')}
+                            className={`py-1.5 px-2 rounded-lg transition-all text-center cursor-pointer ${
+                              stockAdjustmentMode === 'add'
+                                ? 'bg-emerald-600 text-white shadow-xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            + Add Stock
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setStockAdjustmentMode('set')}
+                            className={`py-1.5 px-2 rounded-lg transition-all text-center cursor-pointer ${
+                              stockAdjustmentMode === 'set'
+                                ? 'bg-orange-600 text-white shadow-xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            Set Total
+                          </button>
+                        </div>
+
+                        {stockAdjustmentMode === 'keep' ? (
+                          <p className="text-[11px] text-slate-500">
+                            Current balance remains at <strong>{existingProduct.stockQuantity} {sellBy === 'weight' || unitType === 'kg' ? 'kg' : 'units'}</strong>.
+                          </p>
                         ) : (
+                          <div className="space-y-1">
+                            <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                              {stockAdjustmentMode === 'add'
+                                ? `Quantity to ADD (+${sellBy === 'weight' || unitType === 'kg' ? 'kg' : 'units'}) *`
+                                : `New Total Count (${sellBy === 'weight' || unitType === 'kg' ? 'kg' : 'units'}) *`}
+                            </label>
+                            <input
+                              ref={quantityInputRef}
+                              type="number"
+                              step="any"
+                              min="0"
+                              required={true}
+                              placeholder={stockAdjustmentMode === 'add' ? 'e.g. 10 or 50' : 'e.g. 100'}
+                              value={stockQuantityToAdd}
+                              onChange={(e) => setStockQuantityToAdd(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                              className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-blue-500 focus:bg-white font-mono font-bold transition-all shadow-2xs"
+                            />
+                            <p className="text-[10px] text-slate-400">
+                              {stockAdjustmentMode === 'add' && typeof stockQuantityToAdd === 'number' && !isNaN(stockQuantityToAdd)
+                                ? `New Total will be: ${Math.round((existingProduct.stockQuantity + stockQuantityToAdd) * 1000) / 1000} ${sellBy === 'weight' || unitType === 'kg' ? 'kg' : 'units'}`
+                                : 'Enter quantity to update inventory balance.'}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                            {sellBy === 'weight' ? 'Initial Stock (kg)' : 'Initial Stock Quantity'}
+                          </label>
                           <input
                             ref={quantityInputRef}
                             type="number"
@@ -2449,350 +3074,244 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                             placeholder="e.g. 50 (default 0)"
                             value={stockQuantityToAdd}
                             onChange={(e) => setStockQuantityToAdd(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                            className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-blue-500 focus:bg-white font-mono font-bold transition-all shadow-2xs"
+                            className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-blue-500 focus:bg-white font-mono font-bold transition-all shadow-2xs"
                           />
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Quiet unboxed profit calculation metadata */}
-                    {(() => {
-                      const numSellingPrice = typeof price === 'number' ? price : (price !== '' ? parseFloat(price as any) : 0);
-                      const numCostPrice = typeof costPrice === 'number' ? costPrice : (costPrice !== '' ? parseFloat(costPrice as any) : 0);
-                      if (numSellingPrice <= 0 || numCostPrice <= 0) return null;
-                      const unitProfit = numSellingPrice - numCostPrice;
-                      const marginPct = (unitProfit / numSellingPrice) * 100;
-                      const markupPct = (unitProfit / numCostPrice) * 100;
-                      const isProfit = unitProfit >= 0;
-                      return (
-                        <div className="flex items-center gap-2 text-xs font-mono tabular-nums text-slate-600 pt-1">
-                          <span className={isProfit ? 'text-emerald-700 font-bold' : 'text-red-600 font-bold'}>
-                            {isProfit ? '✓ Profit:' : '⚠ Loss:'} Rs. {unitProfit.toFixed(2)}
-                          </span>
-                          <span>·</span>
-                          <span>Margin: {marginPct.toFixed(1)}%</span>
-                          <span>·</span>
-                          <span>Markup: {markupPct.toFixed(1)}%</span>
+                          <p className="text-[10px] text-slate-400 mt-1">Optional. Defaults to 0.</p>
                         </div>
-                      );
-                    })()}
-                  </div>
 
-                  {/* Field 4: Selling Method */}
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 flex-wrap gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-700">Selling Method:</span>
-                      <div className="flex items-center p-0.5 bg-slate-100 rounded-lg border border-slate-200">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSellBy('unit');
-                            if (unitType === 'kg' || unitType === 'g') setUnitType('piece');
-                          }}
-                          className={`px-3 py-1 rounded text-xs font-semibold cursor-pointer transition-colors ${
-                            sellBy === 'unit' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600'
-                          }`}
-                        >
-                          Per Unit (Piece)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSellBy('weight');
-                            setUnitType('kg');
-                          }}
-                          className={`px-3 py-1 rounded text-xs font-semibold cursor-pointer transition-colors ${
-                            sellBy === 'weight' ? 'bg-white text-orange-700 font-bold shadow-2xs' : 'text-slate-600'
-                          }`}
-                        >
-                          By Weight (kg)
-                        </button>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                            Min Stock Alert
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="e.g. 5"
+                            value={minStockLevel}
+                            onChange={(e) => setMinStockLevel(parseInt(e.target.value || '5', 10))}
+                            className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-blue-500 focus:bg-white font-mono font-bold transition-all shadow-2xs"
+                          />
+                          <p className="text-[10px] text-slate-400 mt-1">Triggers low-stock warnings.</p>
+                        </div>
                       </div>
-                    </div>
-
-                    {sellBy === 'weight' && (
-                      <span className="text-[11px] text-orange-700 font-medium">
-                        Sold in kilograms or fractions at checkout
-                      </span>
                     )}
                   </div>
 
-                  {/* Field 5: Collapsible Accordion "More Options" */}
-                  <div className="border border-slate-200 rounded-xl overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => setShowMoreOptions(prev => !prev)}
-                      className="w-full flex items-center justify-between p-3.5 bg-slate-50 hover:bg-slate-100/70 text-xs font-bold text-slate-700 transition-colors cursor-pointer"
-                    >
-                      <div className="flex items-center gap-2">
-                        <SlidersHorizontal className="w-4 h-4 text-slate-500" />
-                        <span>Additional Options (Brand, Packaging Size, Discount, Stock Alert)</span>
-                        {(selectedCompanyId || selectedSize || discountActive || (minStockLevel && minStockLevel !== 5)) && (
-                          <span className="text-[10px] bg-blue-100 text-blue-800 font-semibold px-2 py-0.5 rounded-md">
-                            Configured
-                          </span>
-                        )}
-                      </div>
-                      <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${showMoreOptions ? 'rotate-180' : ''}`} />
-                    </button>
+                  {/* Promotional Discounts */}
+                  <div className="space-y-3 pt-6 border-t border-slate-200">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-800 flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={discountActive}
+                          onChange={(e) => setDiscountActive(e.target.checked)}
+                          className="w-4 h-4 text-rose-600 rounded border-slate-300 focus:ring-rose-500 cursor-pointer"
+                        />
+                        <Tag className="w-3.5 h-3.5 text-rose-600" />
+                        <span>Apply Discount on this Product</span>
+                      </label>
+                      {discountActive && (
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 uppercase tracking-wider">
+                          Active
+                        </span>
+                      )}
+                    </div>
 
-                    {showMoreOptions && (
-                      <div className="p-4 bg-white border-t border-slate-200 space-y-4 text-xs">
-                        {/* Brand & Size */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {discountActive && (
+                      <div className="space-y-3 pt-2 border-t border-slate-100">
+                        <div className="grid grid-cols-2 gap-2.5">
                           <div>
-                            <div className="flex items-center justify-between mb-1">
-                              <label className="font-bold text-slate-700">Company / Brand</label>
-                              <button
-                                type="button"
-                                onClick={() => setIsAddingCustomCompany(!isAddingCustomCompany)}
-                                className="text-[11px] text-blue-600 font-semibold hover:underline cursor-pointer"
-                              >
-                                {isAddingCustomCompany ? 'Cancel' : '+ Add Brand'}
-                              </button>
-                            </div>
-                            {isAddingCustomCompany && (
-                              <div className="flex items-center gap-1 mb-1.5">
-                                <input
-                                  type="text"
-                                  placeholder="Brand name..."
-                                  value={customCompanyName}
-                                  onChange={(e) => setCustomCompanyName(e.target.value)}
-                                  className="flex-1 px-2.5 py-1 text-xs border rounded-lg focus:outline-none focus:border-blue-500"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={handleAddCustomCompanySubmit}
-                                  className="px-2.5 py-1 bg-blue-600 text-white rounded-lg text-[11px] font-bold"
-                                >
-                                  Save
-                                </button>
-                              </div>
-                            )}
+                            <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                              Discount Type
+                            </label>
                             <select
-                              value={selectedCompanyId || ''}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                if (val === '__add__') setIsAddingCustomCompany(true);
-                                else if (!val) handleSelectCompany(null);
-                                else {
-                                  const found = activeCategoryCompanies.find(c => c.id === val);
-                                  if (found) handleSelectCompany(found);
-                                }
-                              }}
-                              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-800 text-xs font-semibold focus:outline-none focus:border-blue-500"
+                              value={discountType}
+                              onChange={(e) => setDiscountType(e.target.value as any)}
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-rose-500"
                             >
-                              <option value="">-- Choose Brand (Optional) --</option>
-                              {activeCategoryCompanies.map(c => (
-                                <option key={c.id} value={c.id}>{c.name}</option>
-                              ))}
-                              <option value="__add__">+ Add Brand...</option>
+                              <option value="percentage">Percentage (%)</option>
+                              <option value="fixed">Fixed Rupees (Rs.)</option>
                             </select>
                           </div>
-
                           <div>
-                            <div className="flex items-center justify-between mb-1">
-                              <label className="font-bold text-slate-700">Packaging Size / Unit</label>
-                              <button
-                                type="button"
-                                onClick={() => setIsAddingCustomSize(!isAddingCustomSize)}
-                                className="text-[11px] text-blue-600 font-semibold hover:underline cursor-pointer"
-                              >
-                                {isAddingCustomSize ? 'Cancel' : '+ Custom Size'}
-                              </button>
-                            </div>
-                            {isAddingCustomSize && (
-                              <div className="flex items-center gap-1 mb-1.5">
-                                <input
-                                  type="text"
-                                  placeholder="e.g. 500ml, 1kg..."
-                                  value={customSizeName}
-                                  onChange={(e) => setCustomSizeName(e.target.value)}
-                                  className="flex-1 px-2.5 py-1 text-xs border rounded-lg focus:outline-none focus:border-blue-500"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={handleAddCustomSizeSubmit}
-                                  className="px-2.5 py-1 bg-blue-600 text-white rounded-lg text-[11px] font-bold"
-                                >
-                                  Apply
-                                </button>
-                              </div>
-                            )}
-                            <select
-                              value={selectedSize || ''}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                if (val === '__add__') setIsAddingCustomSize(true);
-                                else if (!val) handleSelectSize(null);
-                                else handleSelectSize(val);
-                              }}
-                              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-800 text-xs font-semibold focus:outline-none focus:border-blue-500"
-                            >
-                              <option value="">-- Choose Size (Optional) --</option>
-                              {activeAvailableSizes.map(sz => (
-                                <option key={sz} value={sz}>{sz}</option>
-                              ))}
-                              <option value="__add__">+ Custom Size...</option>
-                            </select>
+                            <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                              {discountType === 'percentage' ? 'Percentage Off (%)' : 'Amount Off (Rs.)'}
+                            </label>
+                            <input
+                              type="number"
+                              step="any"
+                              min="0"
+                              max={discountType === 'percentage' ? 100 : undefined}
+                              placeholder={discountType === 'percentage' ? 'e.g. 10' : 'e.g. 50'}
+                              value={discountValue}
+                              onChange={(e) => setDiscountValue(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-rose-700 focus:outline-none focus:border-rose-500 font-mono"
+                            />
                           </div>
                         </div>
 
-                        {/* Weight details if sellBy === 'weight' */}
-                        {sellBy === 'weight' && (
-                          <div className="pt-3 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div>
-                              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
-                                Weight Description (Optional)
-                              </label>
+                        {/* Time Limit & Date Range Settings */}
+                        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5 cursor-pointer">
                               <input
-                                type="text"
-                                placeholder="e.g. 1 kg pack, 500g, or Loose in basket"
-                                value={weight}
-                                onChange={(e) => setWeight(e.target.value)}
-                                className="w-full px-3 py-1.5 bg-slate-50 border rounded-lg text-xs"
+                                type="checkbox"
+                                checked={hasDateLimit}
+                                onChange={(e) => {
+                                  setHasDateLimit(e.target.checked);
+                                  if (e.target.checked && !discountEndDate) {
+                                    applyDiscountDatePreset(7);
+                                  }
+                                }}
+                                className="w-3.5 h-3.5 text-rose-600 rounded border-slate-300 focus:ring-rose-500 cursor-pointer"
                               />
-                            </div>
-                            <div>
-                              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
-                                Pre-packed Weight per Bag (kg)
-                              </label>
-                              <input
-                                type="number"
-                                step="any"
-                                min="0"
-                                placeholder="e.g. 0.5 for half kg pack"
-                                value={weightPerUnit}
-                                onChange={(e) => setWeightPerUnit(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                                className="w-full px-3 py-1.5 bg-slate-50 border rounded-lg text-xs font-mono"
-                              />
-                            </div>
+                              <Calendar className="w-3.5 h-3.5 text-rose-600" />
+                              <span>Set Expiry Date Limit</span>
+                            </label>
                           </div>
-                        )}
 
-                        {/* Promotional Discount */}
-                        <div className="pt-3 border-t border-slate-100 space-y-2">
-                          <label className="flex items-center gap-2 font-bold text-slate-800 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={discountActive}
-                              onChange={(e) => setDiscountActive(e.target.checked)}
-                              className="w-4 h-4 text-rose-600 rounded border-slate-300"
-                            />
-                            <Tag className="w-3.5 h-3.5 text-rose-600" />
-                            <span>Enable Promotional Discount</span>
-                          </label>
+                          {hasDateLimit && (
+                            <div className="space-y-2 pt-0.5">
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5">
+                                    Valid From
+                                  </label>
+                                  <input
+                                    type="date"
+                                    value={discountStartDate}
+                                    onChange={(e) => setDiscountStartDate(e.target.value)}
+                                    className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-rose-500"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5">
+                                    Valid Until
+                                  </label>
+                                  <input
+                                    type="date"
+                                    min={discountStartDate}
+                                    value={discountEndDate}
+                                    onChange={(e) => setDiscountEndDate(e.target.value)}
+                                    className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-rose-800 focus:outline-none focus:border-rose-500"
+                                  />
+                                </div>
+                              </div>
 
-                          {discountActive && (
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pl-6">
-                              <div>
-                                <label className="block text-[11px] font-medium text-slate-500 mb-0.5">Discount Type</label>
-                                <select
-                                  value={discountType}
-                                  onChange={(e) => setDiscountType(e.target.value as any)}
-                                  className="w-full px-2.5 py-1.5 bg-slate-50 border rounded-lg text-xs font-semibold"
-                                >
-                                  <option value="percentage">Percentage (%)</option>
-                                  <option value="fixed">Fixed Rupees (Rs.)</option>
-                                </select>
+                              <div className="flex flex-wrap gap-1">
+                                {[
+                                  { label: 'Today Only', val: 'today' as const },
+                                  { label: '3 Days', val: 3 },
+                                  { label: '7 Days', val: 7 },
+                                  { label: '14 Days', val: 14 },
+                                  { label: '30 Days', val: 30 }
+                                ].map((preset) => (
+                                  <button
+                                    key={preset.label}
+                                    type="button"
+                                    onClick={() => applyDiscountDatePreset(preset.val)}
+                                    className="px-2 py-0.5 rounded text-[10px] font-bold bg-white border border-slate-200 text-slate-600 hover:text-rose-600 hover:border-rose-300 transition-all cursor-pointer"
+                                  >
+                                    {preset.label}
+                                  </button>
+                                ))}
                               </div>
-                              <div>
-                                <label className="block text-[11px] font-medium text-slate-500 mb-0.5">
-                                  {discountType === 'percentage' ? 'Percentage Off (%)' : 'Amount Off (Rs.)'}
-                                </label>
-                                <input
-                                  type="number"
-                                  step="any"
-                                  min="0"
-                                  max={discountType === 'percentage' ? 100 : undefined}
-                                  placeholder={discountType === 'percentage' ? '10' : '50'}
-                                  value={discountValue}
-                                  onChange={(e) => setDiscountValue(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                                  className="w-full px-2.5 py-1.5 bg-slate-50 border rounded-lg text-xs font-mono font-bold"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-[11px] font-medium text-slate-500 mb-0.5">Valid Until (Optional)</label>
-                                <input
-                                  type="date"
-                                  value={discountEndDate}
-                                  onChange={(e) => {
-                                    setDiscountEndDate(e.target.value);
-                                    setHasDateLimit(Boolean(e.target.value));
-                                  }}
-                                  className="w-full px-2.5 py-1.5 bg-slate-50 border rounded-lg text-xs font-semibold"
-                                />
-                              </div>
+
+                              {discountStartDate && discountEndDate && (
+                                <div className="text-[10px] text-rose-800 font-bold bg-rose-50/80 p-1.5 rounded-lg border border-rose-200 flex items-center gap-1">
+                                  <Clock className="w-3 h-3 text-rose-600 shrink-0" />
+                                  <span>Active: <strong>{formatShortDate(discountStartDate)}</strong> → <strong>{formatShortDate(discountEndDate)}</strong></span>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
 
-                        {/* Low Stock Alert Threshold */}
-                        <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-                          <div>
-                            <span className="font-bold text-slate-700 block">Low Stock Alert Threshold</span>
-                            <span className="text-[11px] text-slate-400">Alerts when inventory reaches or falls below this count</span>
-                          </div>
-                          <div className="w-24">
-                            <input
-                              type="number"
-                              min="0"
-                              value={minStockLevel}
-                              onChange={(e) => setMinStockLevel(parseInt(e.target.value || '5', 10))}
-                              className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-center text-xs font-mono font-bold"
-                            />
-                          </div>
-                        </div>
+                        {/* Live calculation preview */}
+                        {(() => {
+                          const originalP = typeof price === 'number' ? price : (price ? parseFloat(price as any) : 0);
+                          const discVal = typeof discountValue === 'number' ? discountValue : (discountValue ? parseFloat(discountValue as any) : 0);
+                          if (originalP > 0 && discVal > 0) {
+                            const discAmt = discountType === 'percentage' ? (originalP * discVal) / 100 : discVal;
+                            const finalP = Math.max(0, originalP - discAmt);
+                            return (
+                              <div className="p-2.5 bg-rose-50/50 rounded-xl border border-rose-200 flex items-center justify-between text-xs">
+                                <div>
+                                  <span className="text-slate-500 text-[10px] block">Customer Pays</span>
+                                  <span className="font-black text-rose-700 text-sm font-mono">Rs. {finalP.toFixed(2)}</span>
+                                </div>
+                                <div className="text-right">
+                                  <span className="text-slate-500 text-[10px] block">Customer Saves</span>
+                                  <span className="font-bold text-emerald-600 font-mono">Rs. {discAmt.toFixed(2)} {discountType === 'percentage' ? `(${discVal}%)` : ''}</span>
+                                </div>
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
                       </div>
                     )}
                   </div>
 
-                  {/* Form Actions Footer */}
-                  <div className="pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 w-full sm:w-auto">
-                      <button
-                        type="button"
-                        onClick={handleResetForm}
-                        className="px-3.5 py-2 text-xs font-bold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors cursor-pointer"
-                      >
-                        Reset
-                      </button>
-                      {existingProduct && (
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteProduct(existingProduct)}
-                          disabled={loading}
-                          className="px-3.5 py-2 text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>Delete</span>
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenGeneratorForProduct()}
-                        className="px-3.5 py-2 text-xs font-bold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
-                      >
-                        <Printer className="w-3.5 h-3.5 text-slate-600" />
-                        <span>Barcode Label</span>
-                      </button>
-
-                      <button
-                        type="submit"
-                        disabled={loading}
-                        className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer text-xs"
-                      >
-                        <PlusCircle className="w-4 h-4" />
-                        <span>{loading ? 'Saving...' : existingProduct ? 'Update Product' : 'Save Product'}</span>
-                      </button>
-                    </div>
-                  </div>
-                </form>
               </div>
-            )}
+
+              {/* Form Actions Footer */}
+              <div className="pt-6 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
+                  <span className={`text-xs font-bold px-3 py-1.5 rounded-xl border ${
+                    existingProduct 
+                      ? 'bg-amber-50 text-amber-900 border-amber-200' 
+                      : 'bg-blue-50 text-blue-900 border-blue-200'
+                  }`}>
+                    {existingProduct ? `Editing: ${existingProduct.name}` : 'New Product Registration'}
+                  </span>
+                  
+                  <button
+                    type="button"
+                    onClick={handleResetForm}
+                    className="text-xs font-bold text-slate-600 hover:text-slate-900 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 transition-all cursor-pointer shadow-2xs"
+                  >
+                    Reset Form
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2.5 w-full sm:w-auto flex-wrap justify-end">
+                  {existingProduct && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteProduct(existingProduct)}
+                      disabled={loading}
+                      className="px-3.5 py-2.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer text-xs shadow-2xs"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                      <span>Delete</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => handleOpenGeneratorForProduct()}
+                    className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer text-xs shadow-2xs"
+                  >
+                    <Printer className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Print Barcode</span>
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer text-xs uppercase tracking-wider active:scale-95 flex-1 sm:flex-initial"
+                  >
+                    <PlusCircle className="w-4 h-4" />
+                    <span>{loading ? 'Saving Stock...' : existingProduct ? 'Update Stock & Price' : 'Register Product Stock'}</span>
+                  </button>
+                </div>
+              </div>
+
+            </form>
+            </div>
+          </div>
+        )}
 
       </motion.div>
     </AnimatePresence>

@@ -975,12 +975,13 @@ export const CustomerPriceCheckerView: React.FC<CustomerPriceCheckerViewProps> =
         <BarcodeScannerModal
           isOpen={isScannerOpen}
           onClose={() => setIsScannerOpen(false)}
+          storeId={store?.id}
           onScanSuccess={(code) => {
             handleLookupBarcode(code);
             setIsScannerOpen(false);
           }}
           title="Price Checker Barcode Scanner"
-          subtitle="Point camera at product barcode or enter code & press Send"
+          subtitle="Point camera at product barcode or snap photo to recognize packaging"
         />
       )}
 

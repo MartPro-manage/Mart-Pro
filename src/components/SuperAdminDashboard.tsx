@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   db, 
@@ -40,6 +40,7 @@ import {
   AlertCircle,
   X,
   ChevronRight,
+  ChevronLeft,
   ChevronDown,
   Info,
   Lock,
@@ -75,6 +76,62 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
   const [stores, setStores] = useState<Store[]>([]);
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [activeTab, setActiveTab] = useState<'stores' | 'cash_counters' | 'product_registers' | 'price_checkers' | 'all_accounts' | 'settings' | 'database_usage'>('stores');
+
+  // Easily scrollable Action Tabs navigation bar state
+  const tabsNavRef = useRef<HTMLDivElement>(null);
+  const [canScrollTabsLeft, setCanScrollTabsLeft] = useState(false);
+  const [canScrollTabsRight, setCanScrollTabsRight] = useState(false);
+  const [isTabsMouseDown, setIsTabsMouseDown] = useState(false);
+  const tabsDragStartX = useRef(0);
+  const tabsDragScrollLeft = useRef(0);
+  const hasTabsMoved = useRef(false);
+
+  const checkTabsScroll = useCallback(() => {
+    const el = tabsNavRef.current;
+    if (!el) return;
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    setCanScrollTabsLeft(scrollLeft > 4);
+    setCanScrollTabsRight(scrollLeft < scrollWidth - clientWidth - 4);
+  }, []);
+
+  useEffect(() => {
+    const el = tabsNavRef.current;
+    if (!el) return;
+    checkTabsScroll();
+    el.addEventListener('scroll', checkTabsScroll, { passive: true });
+    window.addEventListener('resize', checkTabsScroll);
+
+    const handleWheel = (e: WheelEvent) => {
+      if (el.scrollWidth > el.clientWidth) {
+        if (Math.abs(e.deltaY) >= Math.abs(e.deltaX)) {
+          e.preventDefault();
+          el.scrollBy({ left: e.deltaY * 1.2, behavior: 'auto' });
+        }
+      }
+    };
+    el.addEventListener('wheel', handleWheel, { passive: false });
+
+    return () => {
+      el.removeEventListener('scroll', checkTabsScroll);
+      window.removeEventListener('resize', checkTabsScroll);
+      el.removeEventListener('wheel', handleWheel);
+    };
+  }, [checkTabsScroll]);
+
+  useEffect(() => {
+    const el = tabsNavRef.current;
+    if (!el) return;
+    const activeEl = el.querySelector(`[data-tab-id="${activeTab}"]`) as HTMLElement;
+    if (activeEl) {
+      const btnLeft = activeEl.offsetLeft;
+      const btnWidth = activeEl.offsetWidth;
+      const containerWidth = el.clientWidth;
+      const target = btnLeft - (containerWidth / 2) + (btnWidth / 2);
+      el.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
+    }
+    const timer = setTimeout(checkTabsScroll, 200);
+    return () => clearTimeout(timer);
+  }, [activeTab, checkTabsScroll]);
 
   // 8-Digit Safety PIN verification after login
   const [isPinVerified, setIsPinVerified] = useState(() => {
@@ -1176,98 +1233,220 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({ onSelectStoreTo
           </div>
         )}
 
-        {/* Action Tabs Navigation */}
-        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => setActiveTab('stores')}
-            className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm cursor-pointer transition-all ${
-              activeTab === 'stores'
-                ? 'bg-orange-600 text-white shadow-md shadow-orange-600/20'
-                : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
+        {/* Easily Scrollable Action Tabs Navigation */}
+        <div className="relative flex items-center border-b border-slate-200 pb-3 group">
+          {/* Left Scroll Button */}
+          <button
+            type="button"
+            onClick={() => tabsNavRef.current?.scrollBy({ left: -260, behavior: 'smooth' })}
+            className={`absolute left-0 z-30 p-2 rounded-full bg-white/95 hover:bg-orange-600 hover:text-white text-slate-700 border border-slate-200 shadow-md backdrop-blur-md transition-all duration-200 cursor-pointer flex items-center justify-center -translate-x-2 ${
+              canScrollTabsLeft ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-75 pointer-events-none'
             }`}
+            title="Scroll tabs left"
+            aria-label="Scroll tabs left"
           >
-            <Building2 className="w-4 h-4" /> 1. Manage Stores & Admins
-          </motion.button>
+            <ChevronLeft className="w-4 h-4" />
+          </button>
 
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => setActiveTab('cash_counters')}
-            className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm cursor-pointer transition-all ${
-              activeTab === 'cash_counters'
-                ? 'bg-orange-600 text-white shadow-md shadow-orange-600/20'
-                : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
-            }`}
-          >
-            <Calculator className="w-4 h-4" /> 2. Add Cash Counters
-          </motion.button>
+          {/* Left Gradient Fade */}
+          <div 
+            className={`absolute left-0 top-0 bottom-3 w-10 bg-gradient-to-r from-slate-50 via-slate-50/90 to-transparent z-10 pointer-events-none transition-opacity duration-200 ${
+              canScrollTabsLeft ? 'opacity-100' : 'opacity-0'
+            }`} 
+          />
 
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => setActiveTab('product_registers')}
-            className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm cursor-pointer transition-all ${
-              activeTab === 'product_registers'
-                ? 'bg-orange-600 text-white shadow-md shadow-orange-600/20'
-                : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
+          {/* Scrollable Action Tabs Track */}
+          <div 
+            ref={tabsNavRef}
+            onMouseDown={(e) => {
+              if (!tabsNavRef.current) return;
+              setIsTabsMouseDown(true);
+              hasTabsMoved.current = false;
+              tabsDragStartX.current = e.pageX - tabsNavRef.current.offsetLeft;
+              tabsDragScrollLeft.current = tabsNavRef.current.scrollLeft;
+            }}
+            onMouseMove={(e) => {
+              if (!isTabsMouseDown || !tabsNavRef.current) return;
+              const x = e.pageX - tabsNavRef.current.offsetLeft;
+              const walk = (x - tabsDragStartX.current) * 1.4;
+              if (Math.abs(walk) > 5) {
+                hasTabsMoved.current = true;
+              }
+              tabsNavRef.current.scrollLeft = tabsDragScrollLeft.current - walk;
+            }}
+            onMouseUp={() => setIsTabsMouseDown(false)}
+            onMouseLeave={() => setIsTabsMouseDown(false)}
+            className={`flex items-center gap-2 overflow-x-auto w-full nav-scrollbar scroll-smooth select-none py-1 px-1 ${
+              isTabsMouseDown ? 'cursor-grabbing' : 'cursor-grab'
             }`}
           >
-            <PackageCheck className="w-4 h-4" /> 3. Add Product Registers
-          </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              data-tab-id="stores"
+              onClick={(e) => {
+                if (hasTabsMoved.current) {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  return;
+                }
+                setActiveTab('stores');
+              }}
+              className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm cursor-pointer transition-all whitespace-nowrap shrink-0 ${
+                activeTab === 'stores'
+                  ? 'bg-orange-600 text-white shadow-md shadow-orange-600/20 ring-2 ring-orange-500/20'
+                  : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 shadow-2xs'
+              }`}
+            >
+              <Building2 className="w-4 h-4" /> 1. Manage Stores & Admins
+            </motion.button>
 
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => setActiveTab('price_checkers')}
-            className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm cursor-pointer transition-all ${
-              activeTab === 'price_checkers'
-                ? 'bg-orange-600 text-white shadow-md shadow-orange-600/20'
-                : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
-            }`}
-          >
-            <ScanLine className="w-4 h-4" /> 4. Customer Price Checkers
-          </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              data-tab-id="cash_counters"
+              onClick={(e) => {
+                if (hasTabsMoved.current) {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  return;
+                }
+                setActiveTab('cash_counters');
+              }}
+              className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm cursor-pointer transition-all whitespace-nowrap shrink-0 ${
+                activeTab === 'cash_counters'
+                  ? 'bg-orange-600 text-white shadow-md shadow-orange-600/20 ring-2 ring-orange-500/20'
+                  : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 shadow-2xs'
+              }`}
+            >
+              <Calculator className="w-4 h-4" /> 2. Add Cash Counters
+            </motion.button>
 
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => setActiveTab('all_accounts')}
-            className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm cursor-pointer transition-all ${
-              activeTab === 'all_accounts'
-                ? 'bg-orange-600 text-white shadow-md shadow-orange-600/20'
-                : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
-            }`}
-          >
-            <UserCheck className="w-4 h-4" /> 5. Security Matrix & Accounts
-          </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              data-tab-id="product_registers"
+              onClick={(e) => {
+                if (hasTabsMoved.current) {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  return;
+                }
+                setActiveTab('product_registers');
+              }}
+              className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm cursor-pointer transition-all whitespace-nowrap shrink-0 ${
+                activeTab === 'product_registers'
+                  ? 'bg-orange-600 text-white shadow-md shadow-orange-600/20 ring-2 ring-orange-500/20'
+                  : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 shadow-2xs'
+              }`}
+            >
+              <PackageCheck className="w-4 h-4" /> 3. Add Product Registers
+            </motion.button>
 
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => setActiveTab('settings')}
-            className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm cursor-pointer transition-all ${
-              activeTab === 'settings'
-                ? 'bg-orange-600 text-white shadow-md shadow-orange-600/20'
-                : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
-            }`}
-          >
-            <Settings className="w-4 h-4" /> 6. Global Settings & Master Policies
-          </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              data-tab-id="price_checkers"
+              onClick={(e) => {
+                if (hasTabsMoved.current) {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  return;
+                }
+                setActiveTab('price_checkers');
+              }}
+              className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm cursor-pointer transition-all whitespace-nowrap shrink-0 ${
+                activeTab === 'price_checkers'
+                  ? 'bg-orange-600 text-white shadow-md shadow-orange-600/20 ring-2 ring-orange-500/20'
+                  : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 shadow-2xs'
+              }`}
+            >
+              <ScanLine className="w-4 h-4" /> 4. Customer Price Checkers
+            </motion.button>
 
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => setActiveTab('database_usage')}
-            className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm cursor-pointer transition-all ${
-              activeTab === 'database_usage'
-                ? 'bg-orange-600 text-white shadow-md shadow-orange-600/20'
-                : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              data-tab-id="all_accounts"
+              onClick={(e) => {
+                if (hasTabsMoved.current) {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  return;
+                }
+                setActiveTab('all_accounts');
+              }}
+              className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm cursor-pointer transition-all whitespace-nowrap shrink-0 ${
+                activeTab === 'all_accounts'
+                  ? 'bg-orange-600 text-white shadow-md shadow-orange-600/20 ring-2 ring-orange-500/20'
+                  : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 shadow-2xs'
+              }`}
+            >
+              <UserCheck className="w-4 h-4" /> 5. Security Matrix & Accounts
+            </motion.button>
+
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              data-tab-id="settings"
+              onClick={(e) => {
+                if (hasTabsMoved.current) {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  return;
+                }
+                setActiveTab('settings');
+              }}
+              className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm cursor-pointer transition-all whitespace-nowrap shrink-0 ${
+                activeTab === 'settings'
+                  ? 'bg-orange-600 text-white shadow-md shadow-orange-600/20 ring-2 ring-orange-500/20'
+                  : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 shadow-2xs'
+              }`}
+            >
+              <Settings className="w-4 h-4" /> 6. Global Settings & Master Policies
+            </motion.button>
+
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              data-tab-id="database_usage"
+              onClick={(e) => {
+                if (hasTabsMoved.current) {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  return;
+                }
+                setActiveTab('database_usage');
+              }}
+              className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm cursor-pointer transition-all whitespace-nowrap shrink-0 ${
+                activeTab === 'database_usage'
+                  ? 'bg-orange-600 text-white shadow-md shadow-orange-600/20 ring-2 ring-orange-500/20'
+                  : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 shadow-2xs'
+              }`}
+            >
+              <Database className="w-4 h-4" /> 7. Real-Time Database Usage
+            </motion.button>
+          </div>
+
+          {/* Right Gradient Fade */}
+          <div 
+            className={`absolute right-0 top-0 bottom-3 w-10 bg-gradient-to-l from-slate-50 via-slate-50/90 to-transparent z-10 pointer-events-none transition-opacity duration-200 ${
+              canScrollTabsRight ? 'opacity-100' : 'opacity-0'
+            }`} 
+          />
+
+          {/* Right Scroll Button */}
+          <button
+            type="button"
+            onClick={() => tabsNavRef.current?.scrollBy({ left: 260, behavior: 'smooth' })}
+            className={`absolute right-0 z-30 p-2 rounded-full bg-white/95 hover:bg-orange-600 hover:text-white text-slate-700 border border-slate-200 shadow-md backdrop-blur-md transition-all duration-200 cursor-pointer flex items-center justify-center translate-x-2 ${
+              canScrollTabsRight ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-75 pointer-events-none'
             }`}
+            title="Scroll tabs right"
+            aria-label="Scroll tabs right"
           >
-            <Database className="w-4 h-4" /> 7. Real-Time Database Usage
-          </motion.button>
+            <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
 
         {/* TAB 1: STORES & STORE ADMINS */}

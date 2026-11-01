@@ -1081,6 +1081,7 @@ export const ReturnProductModal: React.FC<ReturnProductModalProps> = ({
           <BarcodeScannerModal
             isOpen={isCameraScannerOpen}
             onClose={() => setIsCameraScannerOpen(false)}
+            storeId={store?.id}
             onScanSuccess={(code) => {
               setIsCameraScannerOpen(false);
               handleBarcodeSubmit(code);

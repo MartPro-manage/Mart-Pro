@@ -547,14 +547,45 @@ const MASTER_IMAGE_CATALOG: Array<{
   }
 ];
 
+// Query Open Food Facts with strict timeout for real FMCG barcode packaged product images
+async function searchOpenFoodFacts(term: string): Promise<ProductImageCandidate[]> {
+  const candidates: ProductImageCandidate[] = [];
+  try {
+    const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(term)}&search_simple=1&action=process&json=1&page_size=8`;
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'MartProSupermarket/1.0 (contact@martpro.com)' },
+      signal: AbortSignal.timeout(2500)
+    });
+    if (!res.ok) return candidates;
+    const data: any = await res.json();
+    const prods = Array.isArray(data.products) ? data.products : [];
+    for (const p of prods) {
+      const imgUrl = p.image_front_url || p.image_url || p.image_front_small_url || p.image_small_url;
+      if (imgUrl && typeof imgUrl === 'string' && imgUrl.startsWith('http')) {
+        const prodName = p.product_name || p.product_name_en || p.brands || term;
+        candidates.push({
+          url: imgUrl,
+          thumbnail: p.image_front_small_url || p.image_small_url || imgUrl,
+          title: prodName,
+          domain: 'openfoodfacts.org'
+        });
+        if (candidates.length >= 6) break;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return candidates;
+}
+
 // Query Wikimedia Commons with strict timeout
 async function searchWikimediaCommons(term: string): Promise<ProductImageCandidate[]> {
   const candidates: ProductImageCandidate[] = [];
   try {
-    const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(term)}&gsrlimit=3&gsrnamespace=6&prop=imageinfo&iiprop=url&iiurlwidth=600&format=json`;
+    const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(term)}&gsrlimit=10&gsrnamespace=6&prop=imageinfo&iiprop=url&iiurlwidth=600&format=json`;
     const res = await fetch(url, {
       headers: { 'User-Agent': 'MartPro/1.0 (pos@martpro.com)' },
-      signal: AbortSignal.timeout(2000)
+      signal: AbortSignal.timeout(2500)
     });
     if (!res.ok) return candidates;
     const data: any = await res.json();
@@ -562,14 +593,21 @@ async function searchWikimediaCommons(term: string): Promise<ProductImageCandida
     for (const p of pages as any[]) {
       const info = p.imageinfo?.[0];
       const imgUrl = info?.thumburl || info?.url;
-      if (imgUrl && typeof imgUrl === 'string' && !imgUrl.endsWith('.svg') && !imgUrl.includes('Question_book')) {
+      if (
+        imgUrl && 
+        typeof imgUrl === 'string' && 
+        !imgUrl.endsWith('.svg') && 
+        !imgUrl.includes('Question_book') &&
+        !imgUrl.includes('.ogg') &&
+        !imgUrl.includes('.pdf')
+      ) {
         candidates.push({
           url: imgUrl,
           thumbnail: info.thumburl || imgUrl,
-          title: (p.title || term).replace('File:', '').replace(/\.[^/.]+$/, ''),
+          title: (p.title || term).replace('File:', '').replace(/\.[^/.]+$/, '').replace(/_/g, ' '),
           domain: 'wikimedia.org'
         });
-        if (candidates.length >= 2) break;
+        if (candidates.length >= 6) break;
       }
     }
   } catch {
@@ -582,10 +620,10 @@ async function searchWikimediaCommons(term: string): Promise<ProductImageCandida
 async function searchWikipedia(term: string): Promise<ProductImageCandidate[]> {
   const candidates: ProductImageCandidate[] = [];
   try {
-    const url = `https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(term + ' brand product')}&gsrlimit=2&prop=pageimages&pithumbsize=600&piprop=thumbnail|original&format=json`;
+    const url = `https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(term + ' brand product')}&gsrlimit=6&prop=pageimages&pithumbsize=600&piprop=thumbnail|original&format=json`;
     const res = await fetch(url, {
       headers: { 'User-Agent': 'MartPro/1.0 (pos@martpro.com)' },
-      signal: AbortSignal.timeout(2000)
+      signal: AbortSignal.timeout(2500)
     });
     if (!res.ok) return candidates;
     const data: any = await res.json();
@@ -599,7 +637,7 @@ async function searchWikipedia(term: string): Promise<ProductImageCandidate[]> {
           title: p.title || term,
           domain: 'wikipedia.org'
         });
-        if (candidates.length >= 2) break;
+        if (candidates.length >= 4) break;
       }
     }
   } catch {
@@ -608,7 +646,60 @@ async function searchWikipedia(term: string): Promise<ProductImageCandidate[]> {
   return candidates;
 }
 
-// Main image resolver
+// Curated high-resolution fallback image pools by category to guarantee 5 to 10 results
+const CATEGORY_IMAGE_POOLS: Record<string, Array<{ url: string; title: string; domain: string }>> = {
+  beverage: [
+    { url: 'https://images.unsplash.com/photo-1597481499750-3e6b22637e12?auto=format&fit=crop&w=600&q=80', title: 'Black Tea Pack', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?auto=format&fit=crop&w=600&q=80', title: 'Loose Tea Leaves', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1627435601361-ec25f5b1d0e5?auto=format&fit=crop&w=600&q=80', title: 'Herbal Green Tea', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1546173159-315724a31696?auto=format&fit=crop&w=600&q=80', title: 'Fruit Syrup Beverage', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1621263764928-df1444c5e859?auto=format&fit=crop&w=600&q=80', title: 'Powdered Instant Drink Mix', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?auto=format&fit=crop&w=600&q=80', title: 'Chilled Cola Bottle', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1551024709-8f23befc6f87?auto=format&fit=crop&w=600&q=80', title: 'Soft Drink Refreshment', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1625772299848-391b6a87d7b3?auto=format&fit=crop&w=600&q=80', title: 'Sparkling Soda Can', domain: 'unsplash.com' }
+  ],
+  dairy: [
+    { url: 'https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=600&q=80', title: 'Full Cream Milk Carton', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1563636619-e9143da7973b?auto=format&fit=crop&w=600&q=80', title: 'Dairy Milk Tetrapack', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1486297678162-eb2a19b0a32d?auto=format&fit=crop&w=600&q=80', title: 'Natural Cheese & Dairy', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1589985270826-4b7bb135bc9d?auto=format&fit=crop&w=600&q=80', title: 'Creamy Yogurt Cup', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1528751014936-863e6e7a319c?auto=format&fit=crop&w=600&q=80', title: 'Fresh Dairy Spread', domain: 'unsplash.com' }
+  ],
+  grocery: [
+    { url: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=600&q=80', title: 'Kernel Basmati Rice', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=600&q=80', title: 'Chakki Atta Flour', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1515543237350-b3eea1ec8082?auto=format&fit=crop&w=600&q=80', title: 'Washed Pulses & Daal', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?auto=format&fit=crop&w=600&q=80', title: 'Pure Cooking Oil', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1618160702438-9b02ab6515c9?auto=format&fit=crop&w=600&q=80', title: 'Canola Oil & Ghee', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1589301760014-d929f3979dbc?auto=format&fit=crop&w=600&q=80', title: 'Tomato Ketchup Pouch', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=600&q=80', title: 'Grounded Masala Spices', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1622484216854-c9f2868ffcb4?auto=format&fit=crop&w=600&q=80', title: 'Refined White Sugar', domain: 'unsplash.com' }
+  ],
+  personal_care: [
+    { url: 'https://images.unsplash.com/photo-1535585209827-a15fcdbc4c2d?auto=format&fit=crop&w=600&q=80', title: 'Hair Care Shampoo', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1600857544200-b2f666a9a2ec?auto=format&fit=crop&w=600&q=80', title: 'Beauty Bath Soap Bar', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=600&q=80', title: 'Toothpaste Dental Care', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1559591937-e160a0a9ef86?auto=format&fit=crop&w=600&q=80', title: 'Toothbrush Oral Care', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1556228722-d0b5de75d776?auto=format&fit=crop&w=600&q=80', title: 'Moisturizing Skin Cream', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&w=600&q=80', title: 'Hand Wash & Hygiene', domain: 'unsplash.com' }
+  ],
+  cleaning: [
+    { url: 'https://images.unsplash.com/photo-1585421514738-01798e348b17?auto=format&fit=crop&w=600&q=80', title: 'Washing Powder Detergent', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1585421514284-efb74c2b69ba?auto=format&fit=crop&w=600&q=80', title: 'Dishwashing Bar & Liquid', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1584820927498-cfe5211fd8bf?auto=format&fit=crop&w=600&q=80', title: 'Bathroom Cleaner Liquid', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1583947215259-38e31be8751f?auto=format&fit=crop&w=600&q=80', title: 'Cleaning Sponge & Scrubber', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1607613009820-a29f7bb81c04?auto=format&fit=crop&w=600&q=80', title: 'Insect Protection Refill', domain: 'unsplash.com' }
+  ],
+  snacks: [
+    { url: 'https://images.unsplash.com/photo-1549007994-cb92caebd54b?auto=format&fit=crop&w=600&q=80', title: 'Chocolates & Candies Box', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=600&q=80', title: 'Fresh Bakery Biscuits & Cakes', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?auto=format&fit=crop&w=600&q=80', title: 'Crispy Potato Chips & Snacks', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1536591375315-0552899ee0b6?auto=format&fit=crop&w=600&q=80', title: 'Mixed Dry Fruits & Nuts', domain: 'unsplash.com' },
+    { url: 'https://images.unsplash.com/photo-1612927601601-6638404737ce?auto=format&fit=crop&w=600&q=80', title: 'Instant Noodles & Pasta', domain: 'unsplash.com' }
+  ]
+};
+
+// Main image resolver - Guarantees 5 to 10 high-quality results
 export async function resolveProductImage(
   _aiClient: any,
   name: string,
@@ -619,68 +710,120 @@ export async function resolveProductImage(
   const cleanName = (name || '').trim();
   const { cleanName: normalized, keywords } = normalizeProductName(cleanName);
   const candidates: ProductImageCandidate[] = [];
+  const seenUrls = new Set<string>();
 
-  // 1. Check our rich curated catalog
+  const addCandidate = (c: ProductImageCandidate) => {
+    if (!c.url || typeof c.url !== 'string' || !c.url.startsWith('http')) return;
+    const cleanUrl = c.url.trim();
+    if (seenUrls.has(cleanUrl)) return;
+    seenUrls.add(cleanUrl);
+    candidates.push({
+      url: cleanUrl,
+      thumbnail: c.thumbnail || cleanUrl,
+      title: c.title || cleanName,
+      domain: c.domain || 'web'
+    });
+  };
+
+  // 1. Check all matching entries in our rich curated catalog
   for (const entry of MASTER_IMAGE_CATALOG) {
-    if (entry.match.test(cleanName) || entry.match.test(normalized)) {
-      candidates.push({
+    if (
+      entry.match.test(cleanName) || 
+      entry.match.test(normalized) ||
+      (keywords.length > 0 && keywords.some(k => k.length > 2 && entry.match.test(k)))
+    ) {
+      addCandidate({
         url: entry.url,
         thumbnail: entry.thumb || entry.url,
         title: entry.title,
         domain: entry.domain
       });
-      break;
+      if (candidates.length >= 6) break;
     }
   }
 
-  // 2. Search Wikimedia Commons & Wikipedia ONLY if not found in curated catalog
-  if (candidates.length === 0) {
-    const searchTerms = [
-      brand ? `${brand} ${cleanName}` : cleanName,
-      normalized
-    ].filter(Boolean);
+  // 2. Fetch from Open Food Facts, Wikimedia Commons & Wikipedia in parallel
+  const searchTerms = [
+    brand ? `${brand} ${cleanName}` : cleanName,
+    normalized
+  ].filter(Boolean);
 
-    for (const term of searchTerms) {
-      if (candidates.length >= 2) break;
-      try {
-        const [comm, wiki] = await Promise.all([
-          searchWikimediaCommons(term),
-          searchWikipedia(term)
-        ]);
-        candidates.push(...comm, ...wiki);
-      } catch {
-        // ignore
+  const queryTerm = searchTerms[0] || cleanName;
+
+  try {
+    const results = await Promise.allSettled([
+      searchOpenFoodFacts(queryTerm),
+      searchWikimediaCommons(queryTerm),
+      searchWikipedia(queryTerm)
+    ]);
+
+    for (const r of results) {
+      if (r.status === 'fulfilled' && Array.isArray(r.value)) {
+        for (const c of r.value) {
+          addCandidate(c);
+          if (candidates.length >= 10) break;
+        }
       }
     }
+  } catch {
+    // ignore
   }
 
-  // 3. Fallback: match by keyword or category
-  if (candidates.length === 0) {
-    const mainKeyword = keywords[0] || (category || '').toLowerCase() || 'groceries';
-    const matchingCurated = MASTER_IMAGE_CATALOG.find(c => c.match.test(mainKeyword));
-    if (matchingCurated) {
-      candidates.push({
-        url: matchingCurated.url,
-        thumbnail: matchingCurated.thumb || matchingCurated.url,
-        title: `${cleanName} - Grocery Item`,
-        domain: matchingCurated.domain
+  // 3. Fallback / supplement: fill from category pools to guarantee at least 5 to 10 candidates
+  const catLower = (category || '').toLowerCase();
+  const nameLower = cleanName.toLowerCase();
+  
+  let poolKey = 'grocery';
+  if (catLower.includes('bev') || catLower.includes('drink') || catLower.includes('tea') || nameLower.includes('tea') || nameLower.includes('cola') || nameLower.includes('juice')) {
+    poolKey = 'beverage';
+  } else if (catLower.includes('dairy') || catLower.includes('milk') || nameLower.includes('milk') || nameLower.includes('cheese') || nameLower.includes('yogurt')) {
+    poolKey = 'dairy';
+  } else if (catLower.includes('snack') || catLower.includes('biscuit') || catLower.includes('conf') || nameLower.includes('chips') || nameLower.includes('chocolate')) {
+    poolKey = 'snacks';
+  } else if (catLower.includes('clean') || catLower.includes('detergent') || nameLower.includes('soap') || nameLower.includes('surf') || nameLower.includes('harpic')) {
+    poolKey = 'cleaning';
+  } else if (catLower.includes('personal') || catLower.includes('cosmetic') || nameLower.includes('shampoo') || nameLower.includes('cream') || nameLower.includes('paste')) {
+    poolKey = 'personal_care';
+  }
+
+  const pool = CATEGORY_IMAGE_POOLS[poolKey] || CATEGORY_IMAGE_POOLS.grocery;
+  for (const item of pool) {
+    if (candidates.length >= 8) break;
+    addCandidate({
+      url: item.url,
+      thumbnail: item.url,
+      title: `${cleanName} - ${item.title}`,
+      domain: item.domain
+    });
+  }
+
+  // If still under 5, add from general grocery pool
+  if (candidates.length < 5) {
+    for (const item of CATEGORY_IMAGE_POOLS.grocery) {
+      addCandidate({
+        url: item.url,
+        thumbnail: item.url,
+        title: `${cleanName} - ${item.title}`,
+        domain: item.domain
       });
-    } else {
-      candidates.push({
-        url: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=600&q=80',
-        thumbnail: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=150&q=80',
-        title: `${cleanName} - Supermarket Product`,
-        domain: 'unsplash.com'
-      });
+      if (candidates.length >= 6) break;
     }
   }
 
-  const selected = candidates[0];
+  // Ensure between 5 and 10 results
+  const finalCandidates = candidates.slice(0, 10);
+  const selected = finalCandidates[0] || {
+    url: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=600&q=80',
+    thumbnail: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=150&q=80',
+    title: `${cleanName} - Supermarket Product`,
+    domain: 'unsplash.com'
+  };
+
   return {
     imageUrl: selected.url,
     thumbnailUrl: selected.thumbnail || selected.url,
     source: 'google_web_search',
     sourceDomain: selected.domain,
-    candidates
+    candidates: finalCandidates
   };
 }

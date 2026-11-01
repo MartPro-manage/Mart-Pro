@@ -2685,6 +2685,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           <BarcodeScannerModal
             isOpen={isScannerOpen}
             onClose={() => setIsScannerOpen(false)}
+            storeId={store?.id}
             onScanSuccess={(scannedCode) => {
               handleAddByBarcode(scannedCode);
             }}
@@ -3889,6 +3890,7 @@ export const CashCounterView: React.FC<CashCounterViewProps> = ({ store, current
           <BarcodeScannerModal
             isOpen={isScannerOpen}
             onClose={() => setIsScannerOpen(false)}
+            storeId={store?.id}
             onScanSuccess={(scannedCode) => {
               handleAddByBarcode(scannedCode, true);
               setIsScannerOpen(false);

@@ -144,6 +144,7 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
   const [imageSourceDomain, setImageSourceDomain] = useState<string | null>(null);
   const [fallbackThumbnailUrl, setFallbackThumbnailUrl] = useState<string | null>(null);
   const [searchCandidates, setSearchCandidates] = useState<Array<{ url: string; thumbnail: string; title: string; domain?: string }>>([]);
+  const [customImageSearchQuery, setCustomImageSearchQuery] = useState('');
   const aiImageFetchDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const lastFetchedNameRef = useRef<string>('');
   const [weight, setWeight] = useState('');
@@ -421,6 +422,10 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     setExistingProduct(p);
     setName(p.name);
     setImageUrl(p.imageUrl || '');
+    setSearchCandidates([]);
+    setCustomImageSearchQuery('');
+    setImageSourceDomain(null);
+    setFallbackThumbnailUrl(null);
     setWeight(p.weight || '');
     setCategory(p.category || 'General');
     const cPrice = p.costPrice !== undefined ? p.costPrice : '';
@@ -557,17 +562,17 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     }
   }, [barcode, serialNumber, products]);
 
-  // Handler to search Google and copy/paste real product image URL
+  // Handler to search Google and return 5 to 10 image candidates so user can select any one
   const handleSearchProductImageOnline = async (productTitle?: string, force = false) => {
-    const targetTitle = (productTitle !== undefined ? productTitle : name).trim();
+    const targetTitle = (productTitle !== undefined ? productTitle : (customImageSearchQuery.trim() || name)).trim();
     if (!targetTitle) {
       if (force) {
-        showNotification('error', 'Please enter a product name first to search Google for an image.');
+        showNotification('error', 'Please enter a product name first to search for images.');
       }
       return;
     }
 
-    if (!force && lastFetchedNameRef.current.toLowerCase() === targetTitle.toLowerCase() && imageUrl) {
+    if (!force && lastFetchedNameRef.current.toLowerCase() === targetTitle.toLowerCase() && imageUrl && searchCandidates.length >= 5) {
       return;
     }
 
@@ -590,27 +595,44 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
       }
 
       const data = await res.json();
-      if (data && data.imageUrl) {
-        setImageUrl(data.imageUrl);
-        setFallbackThumbnailUrl(data.thumbnailUrl || null);
-        setAiImageSource(data.source || 'google_web_search');
-        setImageSourceDomain(data.sourceDomain || null);
+      if (data) {
         if (Array.isArray(data.candidates) && data.candidates.length > 0) {
           setSearchCandidates(data.candidates);
+          // Auto select candidate #0 if no image is already set or this is a fresh search
+          if (!imageUrl || force || aiImageSource) {
+            setImageUrl(data.imageUrl || data.candidates[0].url);
+            setFallbackThumbnailUrl(data.thumbnailUrl || data.candidates[0].thumbnail);
+            setAiImageSource(data.source || 'google_web_search');
+            setImageSourceDomain(data.sourceDomain || data.candidates[0].domain);
+          }
+        } else if (data.imageUrl) {
+          setImageUrl(data.imageUrl);
+          setFallbackThumbnailUrl(data.thumbnailUrl || null);
+          setAiImageSource(data.source || 'google_web_search');
+          setImageSourceDomain(data.sourceDomain || null);
         }
         lastFetchedNameRef.current = targetTitle;
-        showNotification('success', `✓ Automatically searched image, copied link & pasted for "${targetTitle}"!`);
+        const candidateCount = data.candidates?.length || 1;
+        showNotification('success', `✓ Found ${candidateCount} images for "${targetTitle}"! Select any image below.`);
       }
     } catch (err: any) {
       console.warn('[Online Image Search Error]:', err);
       if (force) {
-        showNotification('error', 'Could not retrieve image from Google. You can paste any image URL or upload manually.');
+        showNotification('error', 'Could not retrieve images automatically. You can paste an image URL or upload manually.');
       }
     } finally {
       setIsGeneratingAiImage(false);
     }
   };
   const handleAutoGenerateProductPicture = handleSearchProductImageOnline;
+
+  const handleSelectCandidateImage = (c: { url: string; thumbnail?: string; title?: string; domain?: string }, index: number) => {
+    setImageUrl(c.url);
+    setFallbackThumbnailUrl(c.thumbnail || c.url);
+    setImageSourceDomain(c.domain || null);
+    setAiImageSource('candidate_select');
+    showNotification('success', `✓ Selected Image #${index + 1} (${c.title || c.domain || 'Selected'})`);
+  };
 
   // Automatically trigger AI Product Picture when user enters or edits product name/category/brand
   useEffect(() => {
@@ -694,6 +716,10 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
     setName('');
     setImageUrl('');
     setAiImageSource(null);
+    setSearchCandidates([]);
+    setCustomImageSearchQuery('');
+    setImageSourceDomain(null);
+    setFallbackThumbnailUrl(null);
     lastFetchedNameRef.current = '';
     setWeight('');
     setWeightPerUnit('');
@@ -2756,50 +2782,163 @@ export const ProductRegisterView: React.FC<ProductRegisterViewProps> = ({ store,
                       </button>
                     </div>
 
-                    {/* Alternate Candidates from Google/Web Search */}
-                    {searchCandidates && searchCandidates.length > 1 && (
-                      <div className="pt-2 border-t border-slate-100">
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
-                            <Search className="w-3 h-3 text-sky-600" />
-                            <span>Other Google Candidates:</span>
-                          </span>
-                          <span className="text-[10px] text-slate-400">{searchCandidates.length} found</span>
+                    {/* AUTO SEARCH IMAGE LOADING INDICATOR */}
+                    {isGeneratingAiImage && (
+                      <div className="p-3.5 bg-sky-50/80 border border-sky-200 rounded-2xl flex items-center justify-between gap-3 text-sky-800 animate-pulse">
+                        <div className="flex items-center gap-2.5">
+                          <RefreshCw className="w-4 h-4 animate-spin text-sky-600 shrink-0" />
+                          <div>
+                            <p className="text-xs font-bold text-sky-950">Searching 5 to 10 Product Images Online...</p>
+                            <p className="text-[10px] text-sky-700">Checking Open Food Facts, packaging databases & web catalogs</p>
+                          </div>
                         </div>
-                        <div className="flex gap-2 overflow-x-auto pb-1 pt-0.5">
-                          {searchCandidates.slice(0, 6).map((c, idx) => {
-                            const isCurrent = imageUrl === c.url || imageUrl === c.thumbnail;
-                            return (
-                              <button
-                                key={idx}
-                                type="button"
-                                onClick={() => {
-                                  setImageUrl(c.url);
-                                  setFallbackThumbnailUrl(c.thumbnail);
-                                  setImageSourceDomain(c.domain || null);
-                                  showNotification('success', `Selected image from ${c.domain || 'Google candidate'}`);
+                        <span className="text-[10px] font-mono px-2 py-0.5 bg-white text-sky-700 rounded-md border border-sky-200 font-bold">
+                          Auto-Searching
+                        </span>
+                      </div>
+                    )}
+
+                    {/* 5 TO 10 AUTO SEARCH IMAGE RESULTS GALLERY */}
+                    {searchCandidates && searchCandidates.length > 0 && (
+                      <div className="p-3.5 bg-gradient-to-b from-sky-50/70 to-blue-50/30 border border-sky-200 rounded-2xl space-y-3 shadow-2xs">
+                        {/* Header Banner */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-sky-200/70 pb-2.5">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg bg-sky-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                              <Sparkles className="w-4 h-4 text-amber-300" />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h4 className="text-xs font-black text-slate-900 uppercase tracking-wide">
+                                  Auto Search Image Results
+                                </h4>
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-sky-600 text-white shadow-2xs">
+                                  {searchCandidates.length} Results Found
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-sky-900 font-medium">
+                                Choose any image below ({searchCandidates.length} available) to apply it to this product:
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Search Refinement Input */}
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <div className="relative flex-1 sm:w-48">
+                              <input
+                                type="text"
+                                placeholder="Refine query (e.g. 950g jar)..."
+                                value={customImageSearchQuery}
+                                onChange={(e) => setCustomImageSearchQuery(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleSearchProductImageOnline(customImageSearchQuery, true);
+                                  }
                                 }}
-                                className={`shrink-0 w-12 h-12 rounded-lg border-2 p-0.5 overflow-hidden transition-all relative group cursor-pointer ${
-                                  isCurrent
-                                    ? 'border-sky-500 ring-2 ring-sky-200 shadow-xs'
-                                    : 'border-slate-200 hover:border-sky-400 bg-white'
+                                className="w-full pl-2.5 pr-6 py-1 text-xs bg-white border border-sky-300 rounded-lg focus:outline-none focus:border-sky-500 font-medium"
+                              />
+                              {customImageSearchQuery && (
+                                <button
+                                  type="button"
+                                  onClick={() => setCustomImageSearchQuery('')}
+                                  className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              disabled={isGeneratingAiImage}
+                              onClick={() => handleSearchProductImageOnline(customImageSearchQuery || name, true)}
+                              className="px-2.5 py-1 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shadow-2xs disabled:opacity-50"
+                              title="Search fresh image results"
+                            >
+                              <RefreshCw className={`w-3 h-3 ${isGeneratingAiImage ? 'animate-spin' : ''}`} />
+                              <span>Search</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Interactive Grid of 5-10 Results */}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
+                          {searchCandidates.map((c, idx) => {
+                            const isSelected = imageUrl === c.url || imageUrl === c.thumbnail;
+                            return (
+                              <div
+                                key={idx}
+                                onClick={() => handleSelectCandidateImage(c, idx)}
+                                className={`group relative flex flex-col justify-between p-2 rounded-xl transition-all cursor-pointer border text-left ${
+                                  isSelected
+                                    ? 'bg-white border-sky-600 ring-2 ring-sky-400 shadow-md transform scale-[1.02]'
+                                    : 'bg-white hover:bg-sky-50/60 border-slate-200 hover:border-sky-300 shadow-2xs hover:shadow-xs'
                                 }`}
-                                title={`Use this image: ${c.title || c.domain || 'Candidate'}`}
                               >
-                                <img
-                                  src={c.thumbnail || c.url}
-                                  alt={c.title || 'Candidate'}
-                                  className="w-full h-full object-cover rounded"
-                                  referrerPolicy="no-referrer"
-                                />
-                                {isCurrent && (
-                                  <div className="absolute inset-0 bg-sky-600/20 flex items-center justify-center">
-                                    <CheckCircle className="w-3.5 h-3.5 text-sky-600 drop-shadow" />
+                                {/* Header: # Number & Selected badge */}
+                                <div className="flex items-center justify-between gap-1 mb-1.5">
+                                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-black ${
+                                    isSelected 
+                                      ? 'bg-sky-600 text-white' 
+                                      : 'bg-slate-100 text-slate-600 group-hover:bg-sky-100 group-hover:text-sky-800'
+                                  }`}>
+                                    #{idx + 1}
+                                  </span>
+                                  {isSelected ? (
+                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-600 text-white flex items-center gap-0.5 shadow-2xs">
+                                      <CheckCircle2 className="w-3 h-3" />
+                                      <span>Selected</span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] font-bold text-sky-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      Select
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Thumbnail Box */}
+                                <div className="w-full aspect-square bg-slate-50/90 rounded-lg overflow-hidden border border-slate-100 flex items-center justify-center p-1.5 relative">
+                                  <img
+                                    src={c.thumbnail || c.url}
+                                    alt={c.title || `Image #${idx + 1}`}
+                                    className="w-full h-full object-contain transition-transform group-hover:scale-105"
+                                    referrerPolicy="no-referrer"
+                                    onError={(e) => {
+                                      (e.target as any).src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%2394a3b8" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
+                                    }}
+                                  />
+                                </div>
+
+                                {/* Title & Domain Chip */}
+                                <div className="mt-2 space-y-1">
+                                  <p className="text-[11px] font-bold text-slate-800 truncate leading-snug" title={c.title}>
+                                    {c.title || `Result #${idx + 1}`}
+                                  </p>
+                                  <div className="flex items-center justify-between text-[10px]">
+                                    <span className="truncate max-w-[85px] font-mono text-[9px] text-slate-400">
+                                      {c.domain || 'web'}
+                                    </span>
+                                    <span className={`font-bold text-[10px] ${isSelected ? 'text-sky-700' : 'text-slate-400 group-hover:text-sky-600'}`}>
+                                      {isSelected ? 'Active ✓' : 'Select →'}
+                                    </span>
                                   </div>
-                                )}
-                              </button>
+                                </div>
+                              </div>
                             );
                           })}
+                        </div>
+
+                        {/* Footer Info */}
+                        <div className="pt-2 border-t border-sky-100 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600">
+                          <span className="flex items-center gap-1.5 font-medium">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>
+                              Active Image: <strong className="text-slate-900">{searchCandidates.find(c => imageUrl === c.url || imageUrl === c.thumbnail)?.title || 'Selected Photo'}</strong>
+                            </span>
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-mono">
+                            Tip: Click any tile to switch photo immediately
+                          </span>
                         </div>
                       </div>
                     )}

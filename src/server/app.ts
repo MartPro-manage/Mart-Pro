@@ -16,7 +16,7 @@ import {
   increment 
 } from 'firebase/firestore';
 import { GoogleGenAI } from '@google/genai';
-import { resolveProductImage } from './productImageService.ts';
+import { resolveProductImage, identifyProductFromImage } from './productImageService.ts';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
@@ -140,7 +140,7 @@ export function createApiApp() {
   });
 
   // Health check endpoint for Cloud Run, Vercel, and monitoring
-  app.get('/api/health', (_req: Request, res: Response) => {
+  app.get(['/api/health', '/healthz', '/health'], (_req: Request, res: Response) => {
     res.json({
       status: 'healthy',
       service: 'mart-pro-pos',
@@ -627,12 +627,12 @@ ${storeContext ? JSON.stringify(storeContext, null, 2) : 'No live store context 
   // Automated AI Product Image Generator Endpoint
   app.post('/api/ai/product-image', async (req: Request, res: Response) => {
     try {
-      const { name, category, brand, size } = req.body;
+      const { name, category, brand, size, query } = req.body;
       if (!name || typeof name !== 'string' || !name.trim()) {
         return res.status(400).json({ error: 'Product name is required' });
       }
 
-      const result = await resolveProductImage(ai, name.trim(), category, brand, size);
+      const result = await resolveProductImage(ai, name.trim(), category, brand, size, query);
       return res.json(result);
     } catch (err: any) {
       console.error('[AI Product Image Error]:', err);
@@ -640,6 +640,121 @@ ${storeContext ? JSON.stringify(storeContext, null, 2) : 'No live store context 
         error: err?.message || 'Failed to generate product image',
         fallback: true
       });
+    }
+  });
+
+  // Visual Product Identification & Search via Gemini 3.8 Flash Multimodal Vision
+  app.post('/api/ai/visual-product-search', async (req: Request, res: Response) => {
+    try {
+      const { image, mimeType = 'image/jpeg', storeId } = req.body;
+      if (!image || typeof image !== 'string') {
+        return res.status(400).json({ error: 'Image data is required' });
+      }
+
+      // Step 1: Multimodal visual analysis by Gemini 3.8 Flash
+      const identification = await identifyProductFromImage(ai, image, mimeType);
+
+      // Step 2: Correlate against the store's inventory
+      const currentDb = getDbInstance();
+      let matchedProduct: any = null;
+      let matchedCandidates: any[] = [];
+
+      if (currentDb) {
+        let prodsQuery;
+        if (storeId) {
+          prodsQuery = query(collection(currentDb, 'products'), where('storeId', '==', storeId));
+        } else {
+          prodsQuery = collection(currentDb, 'products');
+        }
+        const snap = await getDocs(prodsQuery);
+        const storeProducts: any[] = [];
+        snap.forEach(d => storeProducts.push({ id: d.id, ...(d.data() as Record<string, any>) }));
+
+        // Strategy A: Exact barcode match
+        if (identification.barcode) {
+          matchedProduct = storeProducts.find(p => 
+            p.barcode === identification.barcode || 
+            (p.serialNumber && p.serialNumber === identification.barcode)
+          );
+        }
+
+        // Strategy B: Brand and Name token scoring
+        if (!matchedProduct && storeProducts.length > 0) {
+          const idNameLower = identification.productName.toLowerCase();
+          const idBrandLower = identification.brand.toLowerCase();
+          const idKeywords = identification.searchKeywords.map(k => k.toLowerCase());
+
+          const scored = storeProducts.map(p => {
+            const pName = (p.name || '').toLowerCase();
+            const pBrand = ((p as any).brand || '').toLowerCase();
+            let score = 0;
+
+            if (pName === idNameLower) score += 100;
+            if (idBrandLower && (pName.includes(idBrandLower) || pBrand.includes(idBrandLower))) score += 40;
+            for (const kw of idKeywords) {
+              if (pName.includes(kw)) score += 20;
+            }
+            if (identification.size && pName.includes(identification.size.toLowerCase())) score += 25;
+            return { product: p, score };
+          }).filter(sp => sp.score >= 35);
+
+          scored.sort((a, b) => b.score - a.score);
+          if (scored.length > 0) {
+            matchedProduct = scored[0].product;
+            matchedCandidates = scored.slice(0, 5).map(s => s.product);
+          }
+        }
+      }
+
+      return res.json({
+        success: true,
+        identification,
+        matchedProduct,
+        matchedCandidates
+      });
+    } catch (err: any) {
+      console.error('[Visual Product Search Error]:', err);
+      return res.status(500).json({
+        error: err?.message || 'Failed to visually identify product'
+      });
+    }
+  });
+
+  // Safe Image Proxy for high-authority retail domains with hotlink/CORS blocking
+  app.get('/api/proxy-image', async (req: Request, res: Response) => {
+    try {
+      const targetUrl = req.query.url as string;
+      if (!targetUrl || !targetUrl.startsWith('http')) {
+        return res.status(400).send('Invalid target image URL');
+      }
+
+      const parsedUrl = new URL(targetUrl);
+      const host = parsedUrl.hostname.toLowerCase();
+      if (host === 'localhost' || host === '127.0.0.1' || host.startsWith('192.168.') || host.startsWith('10.')) {
+        return res.status(403).send('Forbidden destination host');
+      }
+
+      const imgRes = await fetch(targetUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+          'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+          'Referer': `${parsedUrl.origin}/`
+        },
+        signal: AbortSignal.timeout(6000)
+      });
+
+      if (!imgRes.ok) {
+        return res.status(imgRes.status).send('Could not fetch image');
+      }
+
+      const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+
+      const arrayBuffer = await imgRes.arrayBuffer();
+      return res.send(Buffer.from(arrayBuffer));
+    } catch (err: any) {
+      return res.status(502).send('Error proxying product image');
     }
   });
 

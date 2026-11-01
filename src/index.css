@@ -26,6 +26,31 @@
     background: #94a3b8;
   }
 
+  /* Sleek, easily scrollable navigation bar scrollbar */
+  .nav-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .nav-scrollbar::-webkit-scrollbar {
+    height: 4px;
+  }
+
+  .nav-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 9999px;
+  }
+
+  .nav-scrollbar::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 9999px;
+  }
+
+  .nav-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #ea580c;
+  }
+
   /* Dark custom scrollbar */
   .custom-scrollbar-dark {
     scrollbar-width: thin;

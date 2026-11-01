@@ -20,8 +20,10 @@ import {
   RotateCcw,
   Lock,
   Unlock,
-  Video
+  Video,
+  ImageIcon
 } from 'lucide-react';
+import { visualSearchProduct } from '../lib/imageFetcher';
 
 interface BarcodeScannerModalProps {
   isOpen: boolean;
@@ -29,6 +31,7 @@ interface BarcodeScannerModalProps {
   onScanSuccess: (barcode: string) => void;
   title?: string;
   subtitle?: string;
+  storeId?: string;
 }
 
 export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
@@ -36,7 +39,8 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   onClose,
   onScanSuccess,
   title = 'Barcode Scanner',
-  subtitle = 'Point camera at barcode or upload image'
+  subtitle = 'Point camera at barcode or upload image',
+  storeId
 }) => {
   const [manualBarcode, setManualBarcode] = useState('');
   const [detectedBarcode, setDetectedBarcode] = useState<string | null>(null);
@@ -51,6 +55,11 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const [torchOn, setTorchOn] = useState(false);
   const [hasTorch, setHasTorch] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+
+  // AI Visual Product Search States
+  const [isVisualSearching, setIsVisualSearching] = useState(false);
+  const [visualIdentification, setVisualIdentification] = useState<any>(null);
+  const [visualMatchedProduct, setVisualMatchedProduct] = useState<any>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -375,10 +384,54 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     }
   };
 
-  // Image Upload Scanner
+  // Snap active camera frame & identify product using Gemini AI Vision
+  const handleSnapAndIdentify = async () => {
+    if (!videoRef.current) return;
+    try {
+      setIsVisualSearching(true);
+      setCameraError(null);
+      const video = videoRef.current;
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Could not create canvas context');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const base64Data = canvas.toDataURL('image/jpeg', 0.85);
+
+      const result = await visualSearchProduct(base64Data, storeId);
+      if (result && result.success && result.identification) {
+        setVisualIdentification(result.identification);
+        setVisualMatchedProduct(result.matchedProduct || null);
+        
+        if (result.identification.barcode) {
+          handleBarcodeDecoded(result.identification.barcode);
+        } else if (result.matchedProduct) {
+          handleBarcodeDecoded(result.matchedProduct.barcode || result.matchedProduct.shortcutCode || result.matchedProduct.name);
+        } else {
+          setManualBarcode(result.identification.productName);
+        }
+      } else {
+        setCameraError('AI could not recognize the product from the camera frame. Try moving closer or adjusting lighting.');
+      }
+    } catch (err: any) {
+      console.warn('AI Visual identification error:', err);
+      setCameraError(err?.message || 'Visual product identification failed.');
+    } finally {
+      setIsVisualSearching(false);
+    }
+  };
+
+  // Image Upload Scanner: First attempts standard barcode decoding; on failure, automatically falls back to Gemini AI Visual Product Recognition!
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    const fileReader = new FileReader();
+    const base64Promise = new Promise<string>((resolve) => {
+      fileReader.onload = (event) => resolve(event.target?.result as string);
+    });
+    fileReader.readAsDataURL(file);
 
     try {
       setCameraError(null);
@@ -406,10 +459,33 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
       if (decodedText) {
         handleBarcodeDecoded(decodedText.trim());
+        return;
       }
     } catch (err) {
-      console.warn('File decode error:', err);
-      setCameraError('No barcode detected in the uploaded image. Please ensure the image shows a clear barcode label.');
+      console.log('Barcode not detected via pixel decode, executing AI Visual Product Recognition...');
+      setIsVisualSearching(true);
+      try {
+        const base64Data = await base64Promise;
+        const result = await visualSearchProduct(base64Data, storeId, file.type || 'image/jpeg');
+        if (result && result.success && result.identification) {
+          setVisualIdentification(result.identification);
+          setVisualMatchedProduct(result.matchedProduct || null);
+
+          if (result.identification.barcode) {
+            handleBarcodeDecoded(result.identification.barcode);
+          } else if (result.matchedProduct) {
+            handleBarcodeDecoded(result.matchedProduct.barcode || result.matchedProduct.shortcutCode || result.matchedProduct.name);
+          } else {
+            setManualBarcode(result.identification.productName);
+          }
+        } else {
+          setCameraError('No barcode detected and visual AI could not identify this product. Please ensure packaging is clear.');
+        }
+      } catch (aiErr: any) {
+        setCameraError('Could not decode barcode or visually recognize product: ' + (aiErr?.message || 'Upload a clearer photo.'));
+      } finally {
+        setIsVisualSearching(false);
+      }
     }
   };
 
@@ -560,6 +636,38 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
             </div>
           )}
 
+          {/* Direct Camera Viewfinder Controls: Floating AI Snap Button */}
+          {isScanning && !cameraError && (
+            <div className="absolute bottom-2.5 z-20 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSnapAndIdentify}
+                disabled={isVisualSearching}
+                className="px-3.5 py-1.5 rounded-full bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 shadow-lg shadow-orange-600/40 backdrop-blur-xs transition-all cursor-pointer border border-orange-400/40"
+                title="Identify product packaging with Gemini AI Vision"
+              >
+                {isVisualSearching ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="w-3.5 h-3.5 text-amber-200" />
+                )}
+                <span>{isVisualSearching ? 'AI Identifying Product...' : '✨ Snap & Identify Product'}</span>
+              </button>
+            </div>
+          )}
+
+          {/* AI Vision Analyzing Processing Overlay */}
+          {isVisualSearching && (
+            <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-sm z-30 flex flex-col items-center justify-center p-4 text-center space-y-2">
+              <div className="relative">
+                <Sparkles className="w-10 h-10 text-amber-400 animate-pulse" />
+                <RefreshCw className="w-5 h-5 text-orange-500 animate-spin absolute -bottom-1 -right-1" />
+              </div>
+              <h4 className="text-sm font-black text-white">Gemini AI Vision Analyzing Product...</h4>
+              <p className="text-xs text-slate-300 max-w-xs">Reading packaging text, brand, variant, net quantity, and visible barcodes</p>
+            </div>
+          )}
+
           {/* Camera Permission / Error Recovery View */}
           {cameraError && (
             <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-xs flex flex-col items-center justify-center p-5 text-center space-y-3.5 z-20">
@@ -598,6 +706,50 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
             </div>
           )}
         </div>
+
+        {/* AI VISUAL IDENTIFICATION CARD */}
+        {visualIdentification && (
+          <div className="bg-gradient-to-r from-sky-50 via-indigo-50 to-sky-50 border-2 border-sky-400 rounded-2xl p-3.5 shadow-sm space-y-2 animate-in fade-in duration-200">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-black uppercase text-sky-800 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-sky-600" />
+                AI Visual Product Recognition
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-200 text-sky-900">
+                {Math.round((visualIdentification.confidence || 0.9) * 100)}% Confidence
+              </span>
+            </div>
+            <div className="flex items-start justify-between gap-3 bg-white p-2.5 rounded-xl border border-sky-200">
+              <div className="space-y-0.5 min-w-0">
+                <div className="text-xs font-black text-slate-900 truncate">
+                  {visualIdentification.brand && <span className="text-sky-700">{visualIdentification.brand} </span>}
+                  {visualIdentification.productName}
+                </div>
+                <div className="text-[11px] text-slate-500 font-medium flex items-center gap-2 flex-wrap">
+                  {visualIdentification.size && <span className="bg-slate-100 px-1.5 py-0.2 rounded font-mono">{visualIdentification.size}</span>}
+                  {visualIdentification.packagingType && <span>Pack: {visualIdentification.packagingType}</span>}
+                  {visualIdentification.barcode && <span className="text-emerald-700 font-mono font-bold">Code: {visualIdentification.barcode}</span>}
+                </div>
+                {visualMatchedProduct && (
+                  <div className="text-[11px] font-bold text-emerald-700 flex items-center gap-1 pt-0.5">
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Matched in Store Catalog: "{visualMatchedProduct.name}"</span>
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const code = visualIdentification.barcode || (visualMatchedProduct && (visualMatchedProduct.barcode || visualMatchedProduct.shortcutCode || visualMatchedProduct.name)) || visualIdentification.productName;
+                  handleSendBarcode(code);
+                }}
+                className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer shrink-0"
+              >
+                Select
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* SCANNED BARCODE NUMBER DISPLAY & SEND ACTION AREA */}
         {detectedBarcode && (

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'motion/react';
 import { AuthState } from '../types';
 import { Logo } from './Logo';
@@ -15,10 +15,27 @@ import {
   LayoutDashboard, 
   ScanLine, 
   Users,
-  UserPlus
+  UserPlus,
+  CalendarCheck2,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 
-export type AppNavView = 'dashboard' | 'pos' | 'inventory' | 'suppliers' | 'add_supplier' | 'staff' | 'price_checker' | 'attendance';
+export type AppNavView = 
+  | 'dashboard' 
+  | 'pos' 
+  | 'inventory' 
+  | 'products'
+  | 'sales'
+  | 'customers'
+  | 'expenses'
+  | 'reports'
+  | 'settings'
+  | 'suppliers' 
+  | 'add_supplier' 
+  | 'staff' 
+  | 'attendance' 
+  | 'price_checker';
 
 interface NavbarProps {
   auth: AuthState;
@@ -34,6 +51,14 @@ export const Navbar: React.FC<NavbarProps> = ({
   onLogout 
 }) => {
   const { user, store } = auth;
+
+  const navRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+  const [isMouseDown, setIsMouseDown] = useState(false);
+  const dragStartX = useRef(0);
+  const dragScrollLeft = useRef(0);
+  const hasMovedDistance = useRef(false);
 
   const getRoleLabel = (role?: string) => {
     switch (role) {
@@ -86,8 +111,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   const roleInfo = getRoleLabel(user?.role);
   const RoleIcon = roleInfo.icon;
 
-  // Single unified navigation options list - Dashboard is explicitly the first option
-  // Super Admin has centralized master control and does not use store-level interface slide bar
   const isSuperAdmin = user?.role === 'super_admin';
   const isStoreAdmin = user?.role === 'store_admin' || user?.role === 'admin';
 
@@ -97,7 +120,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       label: isStoreAdmin ? 'Executive Analytics' : isSuperAdmin ? 'Master Control' : 'Dashboard',
       shortLabel: isStoreAdmin ? 'Analytics' : isSuperAdmin ? 'Control' : 'Dashboard',
       icon: LayoutDashboard,
-      roles: ['super_admin', 'store_admin', 'admin', 'branch_admin']
+      roles: ['super_admin', 'store_admin', 'admin', 'branch_admin', 'cash_counter', 'product_register', 'customer_price_checker']
     },
     {
       id: 'pos' as AppNavView,
@@ -118,28 +141,35 @@ export const Navbar: React.FC<NavbarProps> = ({
       label: 'Supplier Management',
       shortLabel: 'Suppliers',
       icon: Truck,
-      roles: ['store_admin', 'admin', 'branch_admin', 'product_register', 'cash_counter']
+      roles: ['super_admin', 'store_admin', 'admin', 'branch_admin', 'product_register', 'cash_counter']
     },
     {
       id: 'add_supplier' as AppNavView,
       label: 'Add Supplier',
       shortLabel: 'Add Supplier',
       icon: UserPlus,
-      roles: ['store_admin', 'admin', 'branch_admin', 'product_register', 'cash_counter']
+      roles: ['super_admin', 'store_admin', 'admin', 'branch_admin', 'product_register', 'cash_counter']
     },
     {
       id: 'staff' as AppNavView,
       label: 'Staff Sessions',
       shortLabel: 'Staff',
       icon: Users,
-      roles: ['branch_admin']
+      roles: ['super_admin', 'store_admin', 'admin', 'branch_admin']
+    },
+    {
+      id: 'attendance' as AppNavView,
+      label: 'Staff Attendance',
+      shortLabel: 'Attendance',
+      icon: CalendarCheck2,
+      roles: ['super_admin', 'store_admin', 'admin', 'branch_admin']
     },
     {
       id: 'price_checker' as AppNavView,
       label: 'Price Checker',
       shortLabel: 'Kiosk',
       icon: ScanLine,
-      roles: ['branch_admin', 'customer_price_checker']
+      roles: ['super_admin', 'store_admin', 'admin', 'branch_admin', 'customer_price_checker']
     }
   ];
 
@@ -147,15 +177,111 @@ export const Navbar: React.FC<NavbarProps> = ({
     !user?.role || item.roles.includes(user.role)
   );
 
+  // Check scroll bounds to enable/disable arrow controls and fade shadows
+  const checkScroll = useCallback(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    setCanScrollLeft(scrollLeft > 4);
+    setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 4);
+  }, []);
+
+  // Update scroll bounds on mount, items change, resize and scroll
+  useEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+
+    checkScroll();
+    el.addEventListener('scroll', checkScroll, { passive: true });
+    window.addEventListener('resize', checkScroll);
+
+    return () => {
+      el.removeEventListener('scroll', checkScroll);
+      window.removeEventListener('resize', checkScroll);
+    };
+  }, [checkScroll, visibleNavItems.length]);
+
+  // Translate vertical mouse wheel scrolling into horizontal scrolling
+  useEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (el.scrollWidth > el.clientWidth) {
+        if (Math.abs(e.deltaY) >= Math.abs(e.deltaX)) {
+          e.preventDefault();
+          el.scrollBy({
+            left: e.deltaY * 1.2,
+            behavior: 'auto'
+          });
+        }
+      }
+    };
+
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, []);
+
+  // Auto-scroll the active tab into center view smoothly
+  useEffect(() => {
+    const container = navRef.current;
+    if (!container) return;
+
+    const activeEl = container.querySelector(`[data-nav-id="${activeView}"]`) as HTMLElement;
+    if (activeEl) {
+      const elLeft = activeEl.offsetLeft;
+      const elWidth = activeEl.offsetWidth;
+      const containerWidth = container.clientWidth;
+      const target = elLeft - (containerWidth / 2) + (elWidth / 2);
+      container.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
+    }
+    const timer = setTimeout(checkScroll, 250);
+    return () => clearTimeout(timer);
+  }, [activeView, checkScroll]);
+
+  // Smooth scroll button handlers
+  const handleScrollLeft = () => {
+    if (!navRef.current) return;
+    navRef.current.scrollBy({ left: -240, behavior: 'smooth' });
+  };
+
+  const handleScrollRight = () => {
+    if (!navRef.current) return;
+    navRef.current.scrollBy({ left: 240, behavior: 'smooth' });
+  };
+
+  // Mouse Drag-to-Scroll handlers
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!navRef.current) return;
+    setIsMouseDown(true);
+    hasMovedDistance.current = false;
+    dragStartX.current = e.pageX - navRef.current.offsetLeft;
+    dragScrollLeft.current = navRef.current.scrollLeft;
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isMouseDown || !navRef.current) return;
+    const x = e.pageX - navRef.current.offsetLeft;
+    const walk = (x - dragStartX.current) * 1.4;
+    if (Math.abs(walk) > 5) {
+      hasMovedDistance.current = true;
+    }
+    navRef.current.scrollLeft = dragScrollLeft.current - walk;
+  };
+
+  const handleMouseUpOrLeave = () => {
+    setIsMouseDown(false);
+  };
+
   return (
     <header 
       id="main-navigation-bar"
       className="bg-white/95 backdrop-blur-md border-b border-slate-200 text-slate-900 sticky top-0 z-40 shadow-xs transition-all shrink-0 select-none"
     >
-      <div className="max-w-7xl mx-auto px-3 sm:px-5 lg:px-6 h-16 flex items-center justify-between gap-3">
+      <div className="max-w-[1920px] w-full mx-auto px-2 sm:px-4 lg:px-6 h-16 flex items-center justify-between gap-2 sm:gap-4">
         
         {/* Left: Brand & Store Indicator */}
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <div 
             onClick={() => onSelectView('dashboard')}
             className="flex items-center cursor-pointer transition-transform hover:scale-[1.02]"
@@ -173,35 +299,95 @@ export const Navbar: React.FC<NavbarProps> = ({
           )}
         </div>
 
-        {/* Center: Dedicated Navigation Tabs - Hidden for Super Admin to remove slide bar */}
+        {/* Center: Dedicated Easily Scrollable Navigation Bar above the interface */}
         {visibleNavItems.length > 0 && (
-          <nav 
-            aria-label="Interface Selector" 
-            className="flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-none"
-          >
-            {visibleNavItems.map((item) => {
-              const isActive = activeView === item.id;
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.id}
-                  id={`nav-btn-${item.id}`}
-                  type="button"
-                  onClick={() => onSelectView(item.id)}
-                  className={`px-3 py-2 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
-                    isActive
-                      ? 'bg-orange-600 text-white shadow-sm shadow-orange-600/30 ring-2 ring-orange-500/20'
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900'
-                  }`}
-                  title={`Switch to ${item.label}`}
-                >
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-600'}`} />
-                  <span className="hidden md:inline">{item.label}</span>
-                  <span className="md:hidden">{item.shortLabel}</span>
-                </button>
-              );
-            })}
-          </nav>
+          <div className="flex-1 min-w-0 mx-1 sm:mx-2 relative flex items-center group">
+            
+            {/* Left Scroll Button */}
+            <button
+              type="button"
+              onClick={handleScrollLeft}
+              className={`absolute left-0 z-30 p-1.5 rounded-full bg-white/95 hover:bg-orange-600 hover:text-white text-slate-700 border border-slate-200 shadow-md backdrop-blur-md transition-all duration-200 cursor-pointer flex items-center justify-center -translate-x-1 sm:translate-x-0 ${
+                canScrollLeft ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-75 pointer-events-none'
+              }`}
+              title="Scroll interfaces left (or roll mouse wheel)"
+              aria-label="Scroll left"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            {/* Left Edge Gradient Mask */}
+            <div 
+              className={`absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-white via-white/90 to-transparent z-10 pointer-events-none transition-opacity duration-200 ${
+                canScrollLeft ? 'opacity-100' : 'opacity-0'
+              }`} 
+            />
+
+            {/* Scrollable Navigation Track */}
+            <nav 
+              ref={navRef}
+              aria-label="Interface Selector" 
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUpOrLeave}
+              onMouseLeave={handleMouseUpOrLeave}
+              className={`flex items-center gap-1.5 overflow-x-auto py-1 px-2 w-full nav-scrollbar scroll-smooth select-none ${
+                isMouseDown ? 'cursor-grabbing' : 'cursor-grab'
+              }`}
+            >
+              {visibleNavItems.map((item) => {
+                const isActive = activeView === item.id;
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.id}
+                    id={`nav-btn-${item.id}`}
+                    data-nav-id={item.id}
+                    type="button"
+                    onClick={(e) => {
+                      if (hasMovedDistance.current) {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        return;
+                      }
+                      onSelectView(item.id);
+                    }}
+                    className={`px-3 py-2 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                      isActive
+                        ? 'bg-orange-600 text-white shadow-sm shadow-orange-600/30 ring-2 ring-orange-500/20 scale-[1.02]'
+                        : 'bg-slate-100 hover:bg-slate-200/90 text-slate-700 hover:text-slate-900 border border-slate-200/60'
+                    }`}
+                    title={`Switch to ${item.label}`}
+                  >
+                    <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-600'}`} />
+                    <span className="hidden md:inline">{item.label}</span>
+                    <span className="md:hidden">{item.shortLabel}</span>
+                  </button>
+                );
+              })}
+            </nav>
+
+            {/* Right Edge Gradient Mask */}
+            <div 
+              className={`absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white via-white/90 to-transparent z-10 pointer-events-none transition-opacity duration-200 ${
+                canScrollRight ? 'opacity-100' : 'opacity-0'
+              }`} 
+            />
+
+            {/* Right Scroll Button */}
+            <button
+              type="button"
+              onClick={handleScrollRight}
+              className={`absolute right-0 z-30 p-1.5 rounded-full bg-white/95 hover:bg-orange-600 hover:text-white text-slate-700 border border-slate-200 shadow-md backdrop-blur-md transition-all duration-200 cursor-pointer flex items-center justify-center translate-x-1 sm:translate-x-0 ${
+                canScrollRight ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-75 pointer-events-none'
+              }`}
+              title="Scroll interfaces right (or roll mouse wheel)"
+              aria-label="Scroll right"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+
+          </div>
         )}
 
         {/* Right: Cloud Connection, User Role Badge & Logout */}

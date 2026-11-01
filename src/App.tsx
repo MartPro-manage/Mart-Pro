@@ -1,21 +1,31 @@
 import React, { useState, useEffect } from 'react';
-import { AuthState, Store, Sale, UserAccount } from './types';
+import { AuthState, Store, Sale, UserAccount, Product, Expense, Supplier, Customer, SupplierProfile } from './types';
 import { ensureSuperAdminExists, db, doc, updateDoc, setDoc, collection, query, where, getDocs, onSnapshot } from './lib/firebase';
 import { Login } from './components/Login';
-import { Navbar, AppNavView } from './components/Navbar';
+import { AppNavView } from './components/Navbar';
+import { MartProSidebar } from './components/MartProSidebar';
+import { MartProTopBar } from './components/MartProTopBar';
+import { UniversalSearchModal } from './components/UniversalSearchModal';
+import { ModernStoreDashboard } from './components/ModernStoreDashboard';
 import { SuperAdminDashboard } from './components/SuperAdminDashboard';
 import { StoreAdminDashboard } from './components/StoreAdminDashboard';
+import { ModernProductsView } from './components/ModernProductsView';
 import { ProductRegisterView } from './components/ProductRegisterView';
 import { CashCounterView } from './components/CashCounterView';
 import { CustomerPriceCheckerView } from './components/CustomerPriceCheckerView';
+import { ModernSalesOrdersView } from './components/ModernSalesOrdersView';
+import { ModernCustomersView } from './components/ModernCustomersView';
 import { SupplierManagementView } from './components/SupplierManagementView';
 import { AddSupplierView } from './components/AddSupplierView';
+import { ModernExpensesView } from './components/ModernExpensesView';
+import { ModernReportsView } from './components/ModernReportsView';
+import { ModernSettingsView } from './components/ModernSettingsView';
 import { StaffSessionsView } from './components/StaffSessionsView';
 import { StaffAttendanceView } from './components/StaffAttendanceView';
 import { ReceiptModal } from './components/ReceiptModal';
+import { BarcodeGeneratorModal } from './components/BarcodeGeneratorModal';
 import { PublicReceiptView } from './components/PublicReceiptView';
 import { OnlineStorefrontView } from './components/OnlineStorefrontView';
-import { PackagePlus } from 'lucide-react';
 
 export default function App() {
   const [auth, setAuth] = useState<AuthState>({
@@ -111,6 +121,118 @@ export default function App() {
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [disabledNotice, setDisabledNotice] = useState<string | null>(null);
 
+  // Left Vertical Sidebar state
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
+  // Universal Search modal state
+  const [isUniversalSearchOpen, setIsUniversalSearchOpen] = useState(false);
+
+  // Barcode Generator modal state
+  const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState(false);
+  const [selectedBarcodeProduct, setSelectedBarcodeProduct] = useState<Product | null>(null);
+
+  // Dashboard presentation mode (Modern / Classic)
+  const [dashboardViewMode, setDashboardViewMode] = useState<'modern' | 'classic'>('modern');
+
+  // Real-time synchronized collections for universal search and modern views
+  const [products, setProducts] = useState<Product[]>([]);
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+
+  // Subscriptions for products, sales, expenses, suppliers, customers
+  useEffect(() => {
+    if (!auth.user) return;
+    const storeId = inspectedStore?.id || auth.store?.id;
+
+    // 1. Products
+    const unsubProd = onSnapshot(collection(db, 'products'), (snapshot) => {
+      const list: Product[] = [];
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data() as Product;
+        if (!storeId || data.storeId === storeId || !data.storeId) {
+          list.push({ id: docSnap.id, ...data });
+        }
+      });
+      setProducts(list);
+    }, (err) => console.warn('Products sync warning in App:', err));
+
+    // 2. Sales
+    const unsubSales = onSnapshot(collection(db, 'sales'), (snapshot) => {
+      const list: Sale[] = [];
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data() as Sale;
+        if (!storeId || data.storeId === storeId || !data.storeId) {
+          list.push({ id: docSnap.id, ...data });
+        }
+      });
+      list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      setSales(list);
+    }, (err) => console.warn('Sales sync warning in App:', err));
+
+    // 3. Expenses
+    const unsubExpenses = onSnapshot(collection(db, 'expenses'), (snapshot) => {
+      const list: Expense[] = [];
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data() as Expense;
+        if (!storeId || data.storeId === storeId || !data.storeId) {
+          list.push({ id: docSnap.id, ...data });
+        }
+      });
+      list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      setExpenses(list);
+    }, (err) => console.warn('Expenses sync warning in App:', err));
+
+    // 4. Suppliers
+    const unsubSuppliers = onSnapshot(collection(db, 'suppliers'), (snapshot) => {
+      const list: Supplier[] = [];
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data() as Supplier;
+        if (!storeId || data.storeId === storeId || !data.storeId) {
+          list.push({ id: docSnap.id, ...data });
+        }
+      });
+      setSuppliers(list);
+    }, (err) => console.warn('Suppliers sync warning in App:', err));
+
+    // 5. Customers
+    const unsubCustomers = onSnapshot(collection(db, 'customers'), (snapshot) => {
+      const list: Customer[] = [];
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data() as Customer;
+        if (!storeId || data.storeId === storeId || !data.storeId) {
+          list.push({ id: docSnap.id, ...data });
+        }
+      });
+      setCustomers(list);
+    }, (err) => console.warn('Customers sync warning in App:', err));
+
+    return () => {
+      unsubProd();
+      unsubSales();
+      unsubExpenses();
+      unsubSuppliers();
+      unsubCustomers();
+    };
+  }, [auth.user, auth.store?.id, inspectedStore?.id]);
+
+  // Global Keyboard shortcuts: Cmd+K / Ctrl+K for search, F9 for POS
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsUniversalSearchOpen(prev => !prev);
+      } else if (e.key === 'F9') {
+        e.preventDefault();
+        setActiveNavView('pos');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // Real-time access revocation listener: when Super Admin disables any account or store, immediately terminate active session
   useEffect(() => {
     if (!auth.user || auth.user.role === 'super_admin') return;
@@ -164,6 +286,18 @@ export default function App() {
     }
     setPublicReceiptTarget(null);
   };
+
+  // If user scanned a receipt QR code, render PublicReceiptView directly
+  if (publicReceiptTarget) {
+    return (
+      <PublicReceiptView
+        receiptId={publicReceiptTarget.id || undefined}
+        receiptNumber={publicReceiptTarget.number || undefined}
+        encodedData={publicReceiptTarget.encodedData || undefined}
+        onExitToLogin={handleExitPublicReceipt}
+      />
+    );
+  }
 
   // If user navigated via ?onlineStore=..., render Online Storefront View directly
   if (onlineStoreTarget) {
@@ -295,230 +429,298 @@ export default function App() {
     setIsReceiptModalOpen(true);
   };
 
-  // Render Login if not authenticated
+  // 1. Render Login Page if not authenticated
   if (!auth.user) {
     return <Login onLoginSuccess={handleLoginSuccess} initialError={disabledNotice} />;
   }
 
+  const defaultStore: Store = {
+    id: 'mart-pro-store',
+    name: 'Mart Pro Main Supermarket',
+    adminUsername: 'admin@martpro.com',
+    phone: '0300-8899770',
+    address: 'Commercial Avenue, Block 4, Supermarket Hub',
+    currencySymbol: 'Rs.',
+    status: 'active',
+    createdAt: new Date().toISOString()
+  };
+
   const userRole = auth.user.role;
   const currentStoreId = inspectedStore?.id || auth.store?.id;
   const liveStoreFromList = currentStoreId ? allStores.find(s => s.id === currentStoreId) : null;
-  const activeStore = liveStoreFromList || inspectedStore || auth.store || (userRole === 'super_admin' && allStores.length === 1 ? allStores[0] : null);
+  const effectiveStore = liveStoreFromList || inspectedStore || auth.store || defaultStore;
 
-  // Universal return action: returns back to main panel / default view
-  const handleUniversalReturn = () => {
-    if (userRole === 'cash_counter') {
-      setActiveNavView('pos');
-    } else if (userRole === 'product_register') {
-      setActiveNavView('inventory');
-    } else if (userRole === 'customer_price_checker') {
-      setActiveNavView('price_checker');
-    } else {
-      setActiveNavView('dashboard');
-    }
-  };
-
+  // 2. Render Mart Pro Full Interactive System
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-slate-50 text-slate-900 font-sans selection:bg-orange-500 selection:text-white">
-      {/* Top Navbar with Dynamic Interface Switching - Moves separately from page interface */}
-      <Navbar 
-        auth={auth} 
+    <div className="min-h-screen bg-[#F8F9FA] flex text-slate-900 font-sans antialiased selection:bg-[#FF6500] selection:text-white">
+      {/* 1. Left Vertical Dark Sidebar (Matches Mart Pro Mockup) */}
+      <MartProSidebar
         activeView={activeNavView}
-        onSelectView={(view) => setActiveNavView(view)}
-        onLogout={handleLogout} 
+        onSelectView={(view) => {
+          setActiveNavView(view);
+          setIsMobileSidebarOpen(false);
+        }}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(prev => !prev)}
+        isOpenMobile={isMobileSidebarOpen}
+        onCloseMobile={() => setIsMobileSidebarOpen(false)}
+        currentUser={auth.user}
+        store={effectiveStore}
       />
 
-      {/* Main Content Body - Dynamically renders ONLY the selected view and scrolls separately (scroll slide bar hidden for super admin) */}
-      <main className={`flex-1 min-h-0 flex flex-col ${
-        activeNavView === 'dashboard' || activeNavView === 'pos' || activeNavView === 'price_checker'
-          ? 'overflow-hidden'
-          : userRole === 'super_admin' 
-            ? 'overflow-y-auto scrollbar-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' 
-            : 'overflow-y-auto'
-      }`}>
+      {/* 2. Main Right Column with Top Header Bar + Active Screen */}
+      <div 
+        className={`flex-1 flex flex-col min-h-screen min-w-0 transition-all duration-300 ${
+          isSidebarCollapsed ? 'lg:pl-20' : 'lg:pl-64'
+        }`}
+      >
+        {/* Top Header Bar matching Showcase Reference */}
+        <MartProTopBar
+          currentUser={auth.user}
+          currentStore={effectiveStore}
+          allStores={allStores}
+          onSelectStore={(st) => setInspectedStore(st)}
+          onOpenSearch={() => setIsUniversalSearchOpen(true)}
+          onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}
+          onNavigate={(view) => setActiveNavView(view)}
+          onLogout={handleLogout}
+          isSidebarCollapsed={isSidebarCollapsed}
+          dateText="25-10-2026 13:56:08"
+        />
 
-        {/* 1. SUPPLIER MODULE (Explicitly in Main Navigation) */}
-        {activeNavView === 'suppliers' && activeStore && (
-          <SupplierManagementView 
-            store={activeStore} 
-            currentUser={auth.user} 
-            initialTab="suppliers"
-            onBack={handleUniversalReturn}
-          />
-        )}
-
-        {/* 1b. ADD SUPPLIER OPTION */}
-        {activeNavView === 'add_supplier' && activeStore && (
-          <AddSupplierView 
-            store={activeStore} 
-            currentUser={auth.user} 
-            onBack={handleUniversalReturn}
-          />
-        )}
-
-        {/* 2. STAFF & SALARIES */}
-        {activeNavView === 'staff' && activeStore && (
-          <StaffSessionsView 
-            store={activeStore} 
-            currentUser={auth.user} 
-            onBack={handleUniversalReturn}
-          />
-        )}
-
-        {/* 3. CASH COUNTER POINT OF SALE (POS) */}
-        {activeNavView === 'pos' && activeStore && (
-          <CashCounterView 
-            store={activeStore} 
-            currentUser={auth.user} 
-            onBack={handleUniversalReturn}
-            onLogout={handleLogout}
-          />
-        )}
-
-        {/* 4. PRODUCT REGISTER & STOCK IN */}
-        {activeNavView === 'inventory' && (
-          activeStore ? (
-            <ProductRegisterView 
-              store={activeStore} 
-              currentUser={auth.user} 
-              onBack={handleUniversalReturn}
-            />
-          ) : (
-            <div className="flex-1 min-h-0 flex flex-col items-center justify-center p-6 bg-slate-50 text-slate-800">
-              <div className="max-w-md w-full bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-md text-center space-y-4">
-                <div className="w-14 h-14 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
-                  <PackagePlus className="w-7 h-7" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-black text-slate-900 tracking-tight">Select Store for Product Register</h3>
-                  <p className="text-xs text-slate-500 mt-1 font-medium">
-                    You are logged in as Central Super Admin. Choose which store inventory to register and manage products for:
-                  </p>
-                </div>
-                <div className="space-y-2 pt-2 max-h-72 overflow-y-auto">
-                  {allStores.map(s => (
+        {/* Dynamic Main Views */}
+        <main className="flex-1 w-full overflow-y-auto">
+          {activeNavView === 'dashboard' && (
+            userRole === 'super_admin' ? (
+              <SuperAdminDashboard
+                onSelectStoreToManage={(s) => {
+                  setInspectedStore(s);
+                  setActiveNavView('pos');
+                }}
+              />
+            ) : (
+              <div className="relative">
+                {/* Optional Quick Mode Switcher for Store Admin */}
+                <div className="px-4 pt-3 pb-1 flex justify-end items-center gap-2">
+                  <span className="text-[11px] font-semibold text-slate-500">View Style:</span>
+                  <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs font-bold shadow-2xs">
                     <button
-                      key={s.id}
-                      onClick={() => setInspectedStore(s)}
-                      className="w-full p-3.5 rounded-2xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50/80 text-left font-bold text-sm text-slate-800 flex items-center justify-between transition-all cursor-pointer shadow-xs"
+                      type="button"
+                      onClick={() => setDashboardViewMode('modern')}
+                      className={`px-2.5 py-1 rounded-md transition-colors ${
+                        dashboardViewMode === 'modern' ? 'bg-[#FF6500] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                      }`}
                     >
-                      <div>
-                        <div className="font-extrabold text-slate-900">{s.name}</div>
-                        <div className="text-[11px] text-slate-500 font-medium">{s.adminUsername || s.branchCode || 'Active Store'}</div>
-                      </div>
-                      <span className="text-xs text-blue-600 font-black flex items-center gap-1">Open Register &rarr;</span>
+                      Modern Showcase
                     </button>
-                  ))}
-                  {allStores.length === 0 && (
-                    <p className="text-xs text-slate-400 py-3">No stores configured yet.</p>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={handleUniversalReturn}
-                  className="text-xs font-bold text-slate-500 hover:text-slate-800 pt-2 cursor-pointer"
-                >
-                  ← Return to Master Control
-                </button>
-              </div>
-            </div>
-          )
-        )}
-
-        {/* 5. CUSTOMER PRICE CHECKER KIOSK */}
-        {activeNavView === 'price_checker' && activeStore && (
-          <CustomerPriceCheckerView 
-            store={activeStore} 
-            currentUser={auth.user} 
-            onBack={handleUniversalReturn}
-          />
-        )}
-
-        {/* 6. STAFF ATTENDANCE & MONTHLY REPORTS */}
-        {activeNavView === 'attendance' && activeStore && (
-          <StaffAttendanceView 
-            store={activeStore} 
-            currentUser={auth.user} 
-            storeUsers={storeUsers}
-            onBack={handleUniversalReturn}
-          />
-        )}
-
-        {/* 6. PRIMARY DASHBOARD / MAIN PANEL */}
-        {activeNavView === 'dashboard' && (
-          <div className="h-full w-full flex-1 min-h-0 flex flex-col">
-            {userRole === 'super_admin' ? (
-              inspectedStore ? (
-                <div className="h-full w-full flex-1 min-h-0 flex flex-col">
-                  <div className="bg-orange-50 border-b border-orange-200 px-6 py-2.5 flex items-center justify-between text-xs text-orange-950 font-medium shrink-0">
-                    <span className="font-bold text-orange-700">
-                      Inspecting Store: {inspectedStore.name}
-                    </span>
                     <button
-                      onClick={() => setInspectedStore(null)}
-                      className="px-3 py-1 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-lg cursor-pointer transition-colors shadow-sm"
+                      type="button"
+                      onClick={() => setDashboardViewMode('classic')}
+                      className={`px-2.5 py-1 rounded-md transition-colors ${
+                        dashboardViewMode === 'classic' ? 'bg-[#FF6500] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                      }`}
                     >
-                      ← Back to Central Super Admin
+                      Classic Analytics
                     </button>
                   </div>
-
-                  <div className="flex-1 min-h-0 h-full w-full">
-                    <StoreAdminDashboard
-                      store={inspectedStore}
-                      currentUser={auth.user}
-                      onNavigateToPOS={() => setActiveNavView('pos')}
-                      onNavigateToInventory={() => setActiveNavView('inventory')}
-                      onNavigateToSuppliers={() => setActiveNavView('suppliers')}
-                      onNavigateToLiveSessions={() => setActiveNavView('staff')}
-                      onViewReceipt={handleViewReceipt}
-                    />
-                  </div>
                 </div>
-              ) : (
-                <div className="h-full w-full flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain">
-                  <SuperAdminDashboard
-                    onSelectStoreToManage={(store) => setInspectedStore(store)}
+
+                {dashboardViewMode === 'modern' ? (
+                  <ModernStoreDashboard
+                    store={effectiveStore}
+                    currentUser={auth.user}
+                    products={products}
+                    sales={sales}
+                    expenses={expenses}
+                    onNavigateToPOS={() => setActiveNavView('pos')}
+                    onNavigateToProducts={() => setActiveNavView('products')}
+                    onNavigateToReports={() => setActiveNavView('reports')}
+                    onViewReceipt={handleViewReceipt}
                   />
-                </div>
-              )
-            ) : (userRole === 'admin' || userRole === 'store_admin' || userRole === 'branch_admin') && activeStore ? (
-              <StoreAdminDashboard
-                store={activeStore}
+                ) : (
+                  <StoreAdminDashboard
+                    store={effectiveStore}
+                    currentUser={auth.user}
+                    onNavigateToPOS={() => setActiveNavView('pos')}
+                    onNavigateToInventory={() => setActiveNavView('inventory')}
+                    onViewReceipt={handleViewReceipt}
+                  />
+                )}
+              </div>
+            )
+          )}
+
+          {activeNavView === 'pos' && (
+            <CashCounterView
+              store={effectiveStore}
+              currentUser={auth.user}
+              onBack={() => setActiveNavView('dashboard')}
+              onLogout={handleLogout}
+            />
+          )}
+
+          {(activeNavView === 'products' || activeNavView === 'inventory') && (
+            activeNavView === 'inventory' ? (
+              <ProductRegisterView
+                store={effectiveStore}
                 currentUser={auth.user}
-                onNavigateToPOS={() => setActiveNavView('pos')}
-                onNavigateToInventory={() => setActiveNavView('inventory')}
-                onNavigateToSuppliers={() => setActiveNavView('suppliers')}
-                onNavigateToLiveSessions={() => setActiveNavView('staff')}
-                onViewReceipt={handleViewReceipt}
+                onBack={() => setActiveNavView('products')}
               />
-            ) : userRole === 'cash_counter' && activeStore ? (
-              <CashCounterView 
-                store={activeStore} 
-                currentUser={auth.user} 
+            ) : (
+              <ModernProductsView
+                store={effectiveStore}
+                currentUser={auth.user}
+                products={products}
+                onOpenBarcodeGenerator={(prod) => {
+                  setSelectedBarcodeProduct(prod || null);
+                  setIsBarcodeModalOpen(true);
+                }}
+                onOpenAdvancedRegister={() => setActiveNavView('inventory')}
               />
-            ) : userRole === 'product_register' && activeStore ? (
-              <ProductRegisterView 
-                store={activeStore} 
-                currentUser={auth.user} 
-              />
-            ) : userRole === 'customer_price_checker' && activeStore ? (
-              <CustomerPriceCheckerView 
-                store={activeStore} 
-                currentUser={auth.user} 
-              />
-            ) : null}
-          </div>
-        )}
+            )
+          )}
 
-      </main>
+          {activeNavView === 'sales' && (
+            <ModernSalesOrdersView
+              store={effectiveStore}
+              currentUser={auth.user}
+              sales={sales}
+              onViewReceipt={handleViewReceipt}
+              allStores={allStores}
+            />
+          )}
 
-      {/* Global Receipt Modal for Viewing Historical or Inspected Receipts */}
-      <ReceiptModal
-        sale={selectedReceiptSale}
-        store={activeStore}
-        isOpen={isReceiptModalOpen}
-        onClose={() => setIsReceiptModalOpen(false)}
+          {activeNavView === 'customers' && (
+            <ModernCustomersView
+              store={effectiveStore}
+              currentUser={auth.user}
+            />
+          )}
+
+          {activeNavView === 'suppliers' && (
+            <SupplierManagementView
+              store={effectiveStore}
+              currentUser={auth.user}
+              onBack={() => setActiveNavView('dashboard')}
+            />
+          )}
+
+          {activeNavView === 'add_supplier' && (
+            <AddSupplierView
+              store={effectiveStore}
+              currentUser={auth.user}
+              onBack={() => setActiveNavView('suppliers')}
+            />
+          )}
+
+          {activeNavView === 'expenses' && (
+            <ModernExpensesView
+              store={effectiveStore}
+              currentUser={auth.user}
+              expenses={expenses}
+            />
+          )}
+
+          {activeNavView === 'reports' && (
+            <ModernReportsView
+              store={effectiveStore}
+              sales={sales}
+              products={products}
+              expenses={expenses}
+              customers={customers}
+              suppliers={suppliers}
+            />
+          )}
+
+          {activeNavView === 'staff' && (
+            <StaffSessionsView
+              store={effectiveStore}
+              currentUser={auth.user}
+              onBack={() => setActiveNavView('dashboard')}
+            />
+          )}
+
+          {activeNavView === 'attendance' && (
+            <StaffAttendanceView
+              store={effectiveStore}
+              currentUser={auth.user}
+              storeUsers={storeUsers}
+              onBack={() => setActiveNavView('dashboard')}
+            />
+          )}
+
+          {activeNavView === 'settings' && (
+            <ModernSettingsView
+              store={effectiveStore}
+              currentUser={auth.user}
+              storeUsers={storeUsers}
+              sales={sales}
+              products={products}
+              onBack={() => setActiveNavView('dashboard')}
+              onUpdateStore={(updated) => {
+                setInspectedStore(updated);
+              }}
+            />
+          )}
+
+          {activeNavView === 'price_checker' && (
+            <CustomerPriceCheckerView
+              store={effectiveStore}
+              currentUser={auth.user}
+              onBack={() => setActiveNavView('dashboard')}
+            />
+          )}
+        </main>
+      </div>
+
+      {/* 3. Universal Search Modal (Cmd+K / Ctrl+K) */}
+      <UniversalSearchModal
+        isOpen={isUniversalSearchOpen}
+        onClose={() => setIsUniversalSearchOpen(false)}
+        products={products}
+        sales={sales}
+        customers={customers}
+        suppliers={suppliers}
+        onSelectProduct={() => {
+          setIsUniversalSearchOpen(false);
+          setActiveNavView('products');
+        }}
+        onSelectSale={(sale) => {
+          setIsUniversalSearchOpen(false);
+          handleViewReceipt(sale);
+        }}
+        onSelectCustomer={() => {
+          setIsUniversalSearchOpen(false);
+          setActiveNavView('customers');
+        }}
+        onSelectSupplier={() => {
+          setIsUniversalSearchOpen(false);
+          setActiveNavView('suppliers');
+        }}
       />
+
+      {/* 4. Barcode Generator Modal */}
+      {isBarcodeModalOpen && (
+        <BarcodeGeneratorModal
+          isOpen={isBarcodeModalOpen}
+          onClose={() => {
+            setIsBarcodeModalOpen(false);
+            setSelectedBarcodeProduct(null);
+          }}
+          store={effectiveStore}
+          initialProduct={selectedBarcodeProduct}
+        />
+      )}
+
+      {/* 5. Shared Receipt Modal */}
+      {selectedReceiptSale && (
+        <ReceiptModal
+          sale={selectedReceiptSale}
+          isOpen={isReceiptModalOpen}
+          onClose={() => setIsReceiptModalOpen(false)}
+          store={effectiveStore}
+        />
+      )}
     </div>
   );
 }
